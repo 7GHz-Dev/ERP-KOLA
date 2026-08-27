@@ -748,6 +748,6 @@ label.mini span { font-size: 12px; }
 .do-buttons { display: flex; gap: 5px; align-items: center; white-space: nowrap; }
 
 /* ช่องแก้ไขในแถว Invoice DO ขึ้นสองบรรทัดได้ จะได้เห็นครบทุกช่อง */
-.do-row { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+.do-row { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
 .do-buttons { grid-column: 1 / -1; justify-content: flex-end; margin-top: 2px; }
 table.data td.col-wrap:has(.do-row) { min-width: 430px; }

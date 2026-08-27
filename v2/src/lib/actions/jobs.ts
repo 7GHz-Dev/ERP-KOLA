@@ -96,7 +96,11 @@ async function saveDoHandoffImpl(formData: FormData) {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
 
-  const transportDate = day(formData.get('transportDate'));
+  // หน้า Invoice DO ไม่มีช่องนี้แล้ว ถ้าฟอร์มไม่ส่งมาต้องคงค่าเดิมไว้ ไม่ใช่ล้างทิ้ง
+  // เพราะวันสุดท้ายของ DET คำนวณจากวันนี้ ล้างแล้วคอลัมน์นั้นจะว่างทั้งระบบ
+  const transportDate = formData.has('transportDate')
+    ? day(formData.get('transportDate'))
+    : job.transportDate;
   // FAH เลือก Partner จาก Master Data เก็บชื่อไว้ด้วยเพื่อให้รายงานเก่ายังอ่านออก
   const partnerId = text(formData.get('partnerId'), 80);
   let partnerName = text(formData.get('partnerName'), 180);

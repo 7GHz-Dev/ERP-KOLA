@@ -52,7 +52,6 @@ export default async function FahDoPage({
         <DoRowForm
           jobId={r.id}
           eta={r.eta}
-          transportDate={r.transportDate}
           portId={r.portId}
           terminalId={r.terminalId}
           partnerName={r.releasePartner}

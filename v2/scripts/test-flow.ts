@@ -483,6 +483,17 @@ async function main() {
           select sent_at from do_handoffs where job_id = ${jobId}`;
         check(h1 && h1.sent_at === null, 'กดบันทึกอย่างเดียวแล้วยังไม่นับว่าส่ง Partner');
 
+        // ฟอร์มไม่มีช่องนี้แล้ว ต้องไม่ไปล้างค่าที่เก็บไว้ ไม่งั้นวันสุดท้ายของ DET จะหาย
+        await sql`update jobs set transport_date = '2026-09-05' where id = ${jobId}`;
+        await post('/fah/do', doSpec, {
+          eta: '2026-09-02', partnerId: partner.id, sendToPartner: '0',
+        });
+        // ให้ Postgres จัดรูปแบบมาให้ จะได้ไม่ต้องเทียบกับ Date ของ JS ที่มี timezone ติดมา
+        const [kept] = await sql<{ td: string | null }[]>`
+          select to_char(transport_date, 'YYYY-MM-DD') as td from jobs where id = ${jobId}`;
+        check(kept.td === '2026-09-05',
+          `บันทึกแล้ววันที่ขนย้ายเดิมยังอยู่ (${kept.td ?? 'หาย'})`);
+
         const [j1] = await sql<{ eta_is_official: boolean; release_partner: string }[]>`
           select eta_is_official, release_partner from jobs where id = ${jobId}`;
         check(j1.eta_is_official === true, 'บันทึกแล้ว ETA ขึ้นเป็น official (OFC)');
@@ -534,10 +545,11 @@ async function main() {
 
     // หน้า Invoice DO ต้องมีครบทุกช่องและเรียงน้อยไปมาก
     const doPage2 = await get('/fah/do');
-    for (const label of ['ETA official', 'วันที่ขนย้าย', 'Terminal', 'Port of Discharge',
+    for (const label of ['ETA official', 'Terminal', 'Port of Discharge',
       'Port Release Partner']) {
       check(doPage2.includes(label), `หน้า Invoice DO มีช่อง ${label}`);
     }
+    check(!doPage2.includes('วันที่ขนย้าย'), 'หน้า Invoice DO ไม่มีช่องวันที่ขนย้ายแล้ว');
   } finally {
     await cleanup();
   }

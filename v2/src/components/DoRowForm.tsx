@@ -12,12 +12,11 @@ import { ConfirmSubmit } from '@/components/Interactions';
 export type Choice = { id: string; code: string | null; name: string };
 
 export function DoRowForm({
-  jobId, eta, transportDate, portId, terminalId, partnerName,
+  jobId, eta, portId, terminalId, partnerName,
   ports, terminals, partners, sentAt,
 }: {
   jobId: string;
   eta: string | null;
-  transportDate: string | null;
   portId: string | null;
   terminalId: string | null;
   partnerName: string | null;
@@ -53,15 +52,6 @@ export function DoRowForm({
       <label className="do-cell">
         <span>ETA official</span>
         <input key={`eta-${eta ?? ''}`} type="date" name="eta" defaultValue={eta ?? ''} required />
-      </label>
-      <label className="do-cell">
-        <span>วันที่ขนย้าย</span>
-        <input
-          key={`td-${transportDate ?? ''}`}
-          type="date"
-          name="transportDate"
-          defaultValue={transportDate ?? ''}
-        />
       </label>
       <label className="do-cell">
         <span>Port of Discharge</span>
