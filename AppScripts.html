@@ -1,0 +1,986 @@
+<script>
+(function () {
+  'use strict';
+
+  var state = {
+    token: sessionStorage.getItem('kolaSession') || '', user: null, jobs: [], masters: {}, users: [], dashboard: {},
+    route: 'overview', pendingStage: 'bl', pendingSub: 'wait', masterType: 'shippers',
+    selectedJobId: '', selectedDetail: null, modalSubmit: null, modalLocked: false, busy: false,
+    intakeFile: null, intakeSource: 'AN', intakeBls: [{ shipperId: '', shipperName: '', blNo: '' }],
+    intakeContainers: [{ containerNo: '', containerType: '', sealNo: '' }]
+  };
+
+  var STATUS_LABELS = {
+    WAITING_ARRIVAL_NOTICE_BL: 'BL Waiting Confirm', WAITING_ENTER_BL: 'Waiting ENTER BL',
+    WAITING_AN_APPROVAL: 'รอ NAMKANG อนุมัติ AN', AN_REJECTED: 'AN ไม่อนุมัติ',
+    WAITING_INVOICE_DO: 'Waiting Invoice / DO', WAITING_FN_APPROVAL: 'รอ FAH อนุมัติ Final Invoice',
+    FN_REJECTED: 'Final Invoice ไม่อนุมัติ', FN_APPROVED: 'Final Invoice อนุมัติแล้ว',
+    DO_SENT: 'ส่ง DO ให้ Partner แล้ว', ENTRY_DRAFTED: 'Entry Drafted', CUSTOMS_FILED: 'Entry Filed',
+    PORT_RELEASED: 'Port Released', RELEASED: 'Released'
+  };
+  var MASTER_LABELS = {
+    shippers: 'Shipper', people: 'ผู้รับผิดชอบ', consignees: 'Consignee', notify: 'Notify Party',
+    loadingTypes: 'Loading Type', ports: 'Port of Discharge', terminals: 'Port Terminal',
+    jobTypes: 'Job Type', containerTypes: 'ขนาดตู้ / Container', packageTypes: 'หน่วยนับ / Package',
+    settings: 'ค่าตั้งต้น', users: 'ผู้ใช้งาน'
+  };
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  function init() {
+    if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    bindStaticEvents();
+    if (state.token) loadApplication().catch(showLogin); else showLogin();
+  }
+
+  function bindStaticEvents() {
+    byId('loginForm').addEventListener('submit', login);
+    byId('logoutButton').addEventListener('click', logout);
+    byId('passwordButton').addEventListener('click', function () { openPassword(false); });
+    byId('refreshButton').addEventListener('click', refreshAll);
+    byId('menuButton').addEventListener('click', function () { byId('appShell').classList.toggle('menu-open'); });
+    byId('mainNav').addEventListener('click', function (event) {
+      var button = event.target.closest('[data-route]');
+      if (!button) return;
+      state.route = button.dataset.route;
+      byId('appShell').classList.remove('menu-open');
+      renderNav(); renderRoute();
+    });
+    byId('routeContent').addEventListener('click', handleRouteClick);
+    byId('routeContent').addEventListener('change', handleRouteChange);
+    byId('routeContent').addEventListener('input', handleRouteInput);
+    byId('routeContent').addEventListener('dblclick', handleRouteDoubleClick);
+    byId('routeContent').addEventListener('submit', handleRouteSubmit);
+    byId('drawerBackdrop').addEventListener('click', closeDrawer);
+    byId('closeDrawerButton').addEventListener('click', closeDrawer);
+    byId('drawerContent').addEventListener('click', handleDrawerClick);
+    byId('closePreviewButton').addEventListener('click', closePreview);
+    byId('closeModalButton').addEventListener('click', closeModal);
+    byId('cancelModalButton').addEventListener('click', closeModal);
+    byId('modalForm').addEventListener('submit', submitModal);
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') { if (!state.modalLocked) closeModal(); closePreview(); closeDrawer(); }
+      if (byId('jobDrawer').classList.contains('open') && event.key === 'ArrowLeft') navigateDrawer(-1);
+      if (byId('jobDrawer').classList.contains('open') && event.key === 'ArrowRight') navigateDrawer(1);
+    });
+  }
+
+  async function login(event) {
+    event.preventDefault(); var form = event.currentTarget; var error = byId('loginError');
+    error.classList.add('hidden'); setFormBusy(form, true);
+    try {
+      var result = await rpc('authLogin', form.username.value, form.password.value);
+      state.token = result.token; sessionStorage.setItem('kolaSession', state.token); form.reset(); await loadApplication();
+    } catch (exception) { error.textContent = errorMessage(exception); error.classList.remove('hidden'); }
+    finally { setFormBusy(form, false); }
+  }
+
+  async function logout() {
+    try { await rpc('authLogout', state.token); } catch (ignore) {}
+    state.token = ''; state.user = null; sessionStorage.removeItem('kolaSession'); showLogin();
+  }
+
+  async function loadApplication() {
+    showLoading(); var data = await rpc('getBootstrapData', state.token); applyBootstrap(data); showApp();
+    if (state.user.mustChangePassword) openPassword(true);
+  }
+
+  async function refreshAll(silent) {
+    if (state.busy) return; state.busy = true; byId('refreshButton').disabled = true;
+    try {
+      // ดึงผลจาก Hub ก่อน แล้วค่อยโหลดข้อมูล จะได้เห็น Ref No./เลขใบขน ที่เพิ่งเสร็จทันที
+      try { await rpc('syncHubResults', state.token); } catch (hubError) { console.warn('[hub]', hubError); }
+      var data = await rpc('getBootstrapData', state.token); applyBootstrap(data);
+      if (state.selectedJobId) await openDrawer(state.selectedJobId, true);
+      if (!silent) toast('อัปเดตข้อมูลแล้ว', 'success');
+    } catch (error) { handleError(error); }
+    finally { state.busy = false; byId('refreshButton').disabled = false; }
+  }
+
+  function applyBootstrap(data) {
+    state.user = data.user; state.jobs = data.jobs || []; state.masters = data.masters || {};
+    state.users = data.users || []; state.dashboard = data.dashboard || {};
+    if (!routeAllowed(state.route)) state.route = defaultRoute();
+    byId('sidebarUserName').textContent = state.user.displayName;
+    byId('sidebarUserRole').textContent = state.user.role;
+    renderNav(); renderRoute();
+  }
+
+  function defaultRoute() {
+    if (can('PAINT')) return 'paint-an';
+    if (can('FAH')) return 'fah-do';
+    if (can('NAMKANG')) return 'nam-approve';
+    return 'overview';
+  }
+  function routeAllowed(route) {
+    if (!state.user) return false;
+    if (route === 'overview') return true;
+    if (route === 'master') return can('ADMIN');
+    if (route.indexOf('paint-') === 0) return can('PAINT');
+    if (route.indexOf('fah-') === 0) return can('FAH');
+    if (route.indexOf('nam-') === 0) return can('NAMKANG');
+    return false;
+  }
+  function can(role) { return state.user && (state.user.role === 'ADMIN' || state.user.role === role); }
+
+  function renderNav() {
+    var groups = [
+      { label: 'Overview', color: '#a4a097', roles: null, items: [['overview','Shipment Master']] },
+      { label: 'PAINT', color: '#0075de', roles: ['PAINT'], items: [
+        ['paint-an','Arrival Notice BL'], ['paint-bl','BL Waiting Confirm'], ['paint-pending','งานคงค้าง'],
+        ['paint-eoffice','Upload E-Office']
+      ]},
+      { label: 'FAH', color: '#dd5b00', roles: ['FAH'], items: [
+        ['fah-do','จัดการ Invoice DO'], ['fah-fn','อนุมัติ Final Invoice'], ['fah-draft','ตรวจ Draft / ทำใบขน']
+      ]},
+      { label: 'NAMKANG', color: '#1aae39', roles: ['NAMKANG'], items: [
+        ['nam-approve','ตรวจรายการรออนุมัติ'], ['nam-cust','ข้อมูลลูกค้า / File'], ['nam-release','ตรวจ & ปล่อยสินค้า']
+      ]},
+      { label: 'SYSTEM', color: '#793400', roles: ['ADMIN'], items: [['master','Master Data']] }
+    ];
+    byId('mainNav').innerHTML = groups.filter(function (group) {
+      return !group.roles || group.roles.some(can);
+    }).map(function (group) {
+      return '<div class="nav-group-title"><span class="nav-group-dot" style="background:' + group.color + '"></span>' + esc(group.label) + '</div>' +
+        group.items.map(function (item) {
+          return '<button class="nav-button ' + (state.route === item[0] ? 'active' : '') + '" data-route="' + item[0] + '">' +
+            esc(item[1]) + navCount(item[0]) + '</button>';
+        }).join('');
+    }).join('');
+  }
+
+  function navCount(route) {
+    var count = 0;
+    if (route === 'nam-approve') count = state.jobs.filter(function (j) { return approvalStatus(j,'AN') === 'PENDING'; }).length;
+    if (route === 'fah-fn') count = state.jobs.filter(function (j) { return approvalStatus(j,'FN') === 'PENDING'; }).length;
+    if (route === 'fah-draft') count = state.jobs.filter(function (j) { return j.draftStatus === 'SUBMITTED'; }).length;
+    if (route === 'paint-pending') count = state.jobs.filter(function (j) { return j.releaseStatus !== 'RELEASED'; }).length;
+    return count ? '<span class="nav-count">' + count + '</span>' : '';
+  }
+
+  /**
+   * ดึงผลจาก Hub เองเป็นระยะ
+   *
+   * ERP เป็นฝ่ายถาม Hub ไม่ใช่ Hub ยิงเข้ามา เพราะ Hub ไม่มี session token ของผู้ใช้
+   * และการเปิดช่องให้ยิงเข้า ERP ได้จะกลายเป็นรูโหว่
+   * ถามเฉพาะตอนมีงานค้างรอผลจริง ๆ และหยุดทันทีที่ออกจากหน้านี้
+   */
+  function jobsAwaitingHub(){
+    return (state.jobs||[]).filter(function(j){
+      var waitingDraft=j.draftTaskId&&!j.draftRefNo;
+      var waitingCustoms=j.customsTaskId&&j.customsStatus!=='FILED';
+      return waitingDraft||waitingCustoms;
+    });
+  }
+  function stopHubPolling(){
+    if(state.hubPollTimer){clearTimeout(state.hubPollTimer);state.hubPollTimer=null;}
+  }
+  function scheduleHubPolling(){
+    stopHubPolling();
+    if(state.hubPollDisabled)return;
+    var waiting=jobsAwaitingHub();
+    if(!waiting.length)return;
+    state.hubPollTimer=setTimeout(async function(){
+      state.hubPollTimer=null;
+      if((state.route!=='paint-pending'&&state.route!=='fah-draft')||!state.token)return;
+      try{
+        var result=await rpc('syncHubResults',state.token);
+        if(result&&result.configured===false){
+          // ยังไม่ได้ตั้งค่า Hub ถามซ้ำไปก็เปลืองเปล่า
+          state.hubPollDisabled=true;
+          return;
+        }
+        if(result&&result.applied>0){
+          var data=await rpc('getBootstrapData',state.token);
+          applyBootstrap(data);
+          toast('ได้ผลจาก Hub แล้ว '+result.applied+' รายการ','success');
+          return state.route==='fah-draft'?renderFahDraft():renderPaintPending();
+        }
+      }catch(error){console.warn('[hub poll]',error);}
+      scheduleHubPolling();
+    },15000);
+  }
+
+  function routeRenderer(){
+    var map = {
+      overview: renderOverview, 'paint-an': function(){ renderIntake('AN'); }, 'paint-bl': function(){ renderIntake('BL'); },
+      'paint-pending': renderPaintPending, 'paint-fn': renderFinalInvoicePage, 'paint-eoffice': renderEofficePage,
+      'fah-do': renderFahDo, 'fah-fn': renderFahFn, 'fah-draft': renderFahDraft,
+      'nam-approve': renderNamApprove, 'nam-cust': renderNamCustomer, 'nam-release': renderNamRelease,
+      master: renderMaster
+    };
+    return map[state.route] || renderOverview;
+  }
+
+  function renderRoute() {
+    closePreview();
+    stopHubPolling();
+    routeRenderer()();
+  }
+
+  /** วาดหน้าเดิมใหม่โดยไม่ปิดหน้าตัวอย่างเอกสารที่ผู้ใช้เปิดค้างไว้ ใช้ตอนค้นหา/เรียงลำดับ */
+  function rerenderRoute() {
+    stopHubPolling();
+    routeRenderer()();
+  }
+
+  function setPage(title, subtitle) {
+    byId('pageTitle').textContent = title; byId('pageSubtitle').textContent = subtitle || '';
+  }
+  function pageHead(role, title, subtitle) {
+    return '<div class="page-head"><div><h2>' + (role ? '<span class="dept-tag ' + role.toLowerCase() + '">' + role + '</span>' : '') +
+      esc(title) + '</h2><p>' + esc(subtitle || '') + '</p></div></div>';
+  }
+
+  function renderOverview() {
+    setPage('Shipment Master', 'ฐานข้อมูลกลางทุกชุดงาน');
+    var d = state.dashboard;
+    var metrics = [['งานทั้งหมด',d.total||0,''],['Invoice เปลี่ยน',d.invoiceAlerts||0,'alert'],['รอ AN',d.waitingAN||0,'pending'],['รอ FN',d.waitingFN||0,'pending']];
+    var rows = state.jobs.map(function (job) {
+      return '<tr class="' + (job.hasInvoiceAlert?'invoice-alert':'') + '" data-open-job="' + attr(job.id) + '">' +
+        '<td><strong class="job-link">' + esc(job.jobNo) + '</strong><span class="cell-sub">' + esc(job.sourceType||'AN') + '</span></td>' +
+        '<td>' + esc(job.blNo||'-') + '</td><td>' + esc(masterName('shippers',job.shipperId)) + '</td>' +
+        '<td>' + esc(job.vessel||'-') + '<span class="cell-sub">' + esc(job.voyage||'') + '</span></td>' +
+        '<td>' + formatDate(job.eta) + '</td><td>' + statusBadge(job.status) + '</td><td>' + fileCount(job) + '</td></tr>';
+    }).join('');
+    byId('routeContent').innerHTML = pageHead('', 'Shipment Master', 'คลิกแถวเพื่อดู Job Detail, Container, Files และ Timeline') +
+      '<div class="metrics mockup-metrics">' + metrics.map(function(m){return '<div class="metric '+m[2]+'"><span>'+esc(m[0])+'</span><strong>'+m[1]+'</strong></div>';}).join('') + '</div>' +
+      tableHtml(['Job No.','BL No.','Shipper','Vessel / Voyage','ETA','สถานะ','Files'], rows, 'ยังไม่มี Job');
+  }
+
+  function renderIntake(sourceType) {
+    state.intakeSource = sourceType; resetIntakeRows();
+    setPage(sourceType === 'AN' ? 'Arrival Notice BL' : 'BL Waiting Confirm', 'อ่านข้อมูลจาก PDF และตรวจทานก่อนส่งเข้า Draft');
+    byId('routeContent').innerHTML = pageHead('PAINT', sourceType === 'AN' ? 'จัดการ Arrival Notice BL' : 'BL Waiting Confirm',
+      'อัปโหลด PDF → ระบบอ่านข้อมูลและเติมฟอร์ม → ตรวจสอบ → SENT TO DRAFT') +
+      '<form id="intakeForm" class="card-panel intake-layout">' +
+        '<input type="hidden" name="token" value="' + attr(state.token) + '"><input type="hidden" name="payloadJson" id="payloadJson">' +
+        '<div class="section-title">อัปโหลด ' + (sourceType === 'AN' ? 'Arrival Notice' : 'Bill of Lading') + '</div>' +
+        '<label class="drop-zone" id="arrivalDrop">ลากไฟล์ PDF จากอีเมลมาวาง หรือ <strong>เลือกไฟล์</strong> เพื่อดึงข้อมูลอัตโนมัติ' +
+          '<input id="arrivalFile" name="fileBlob" type="file" accept="application/pdf,.pdf" hidden required></label>' +
+        '<div id="readStatus" class="read-status">รองรับ Maersk · Evergreen · OOCL · ONE · Wan Hai · CNC · Namsung · Jinjiang</div>' +
+        '<div class="section-title">ข้อมูลจาก ' + (sourceType === 'AN' ? 'Arrival Notice' : 'BL') + '</div>' +
+        '<div class="extract-grid">' +
+          extractField('JOB TYPE', selectHtml('jobTypeId', masterOptionsDefault('jobTypes','','MU'), 'an_jobtype')) +
+          extractField('PRODUCT', inputHtml('product','an_product','text',false,'USED CAR')) +
+          extractField('BL TYPE', '<select id="an_bltype" name="blType"><option>SWB</option><option>OBL</option><option>S</option><option>TWB</option><option>HBL</option><option>MBL</option><option>Original</option></select>') +
+          extractField('SHIPLINE', inputHtml('shipline','an_shipline')) +
+          extractField('SHIPPER / B/L', '<div id="blRows" class="repeat-list"></div><button class="button secondary small-add" type="button" data-action="add-bl">+ เพิ่ม BL</button>', true) +
+          extractField('CONTAINER NO.', '<div id="containerRows" class="repeat-list"></div><button class="button secondary small-add" type="button" data-action="add-container">+ เพิ่มตู้</button>', true) +
+          extractField('QUANTITY', '<div class="qty-pair">' + inputHtml('unitAmount','an_unit','number') + selectHtml('packageType', masterNameOptions('packageTypes','','UNIT'),'an_package') + '</div>') + extractField('WEIGHT (KG)', inputHtml('grossWeight','an_weight')) +
+          extractField('VESSEL', inputHtml('vessel','an_vessel', 'text', true)) + extractField('VOYAGE', inputHtml('voyage','an_voyage')) +
+          extractField('ETA', inputHtml('eta','an_eta','date')) +
+          extractField('CONSIGNEE', selectHtml('consigneeId', masterOptionsDefault('consignees','','CNE0001'),'an_consignee')) +
+          extractField('NOTIFY PARTY', selectHtml('notifyPartyId', masterOptionsDefault('notify','','NTP0001'),'an_notify')) +
+          extractField('CLIENT IN CHARGE', selectHtml('personId', masterOptions('people',''),'an_person')) +
+          extractField('PORT OF DISCHARGE', selectHtml('portId', masterOptionsDefault('ports','','THLCH'),'an_port')) +
+          extractField('PORT TERMINAL', selectHtml('terminalId', masterOptions('terminals',''),'an_terminal')) +
+          extractField('DEM FREE (วัน)', inputHtml('demDays','an_dem','number',false,settingValue('DEM_FREE_DAYS','5'))) + extractField('DET FREE (วัน)', inputHtml('detDays','an_det','number',false,settingValue('DET_FREE_DAYS','3'))) +
+        '</div><div class="notice" style="margin-top:12px">CON = <b id="containerCount">0</b> ตู้ · BL = <b id="blCount">0</b> ฉบับ · SENT TO DRAFT 1 ครั้ง = Job No. ใหม่ 1 เลข</div>' +
+        '<div class="form-actions"><button class="button primary" type="submit">SENT TO DRAFT</button><button class="button secondary" type="button" data-action="clear-intake">ล้างฟอร์ม</button></div>' +
+      '</form>';
+    renderRepeatRows(); bindDropZone();
+  }
+
+  function resetIntakeRows() {
+    state.intakeFile = null; state.intakeBls = [{shipperId:'',shipperName:'',blNo:''}];
+    state.intakeContainers = [{containerNo:'',containerType:'',sealNo:''}];
+  }
+  function renderRepeatRows() {
+    var blBox = byId('blRows'), contBox = byId('containerRows'); if (!blBox || !contBox) return;
+    blBox.innerHTML = state.intakeBls.map(function (row,index) {
+      return '<div class="repeat-row" data-bl-row="' + index + '"><select class="bl-shipper">' + masterOptions('shippers',row.shipperId) +
+        '</select><button class="icon-button add-master" type="button" data-action="quick-add-shipper" data-index="'+index+'" title="เพิ่ม Shipper ใหม่">+</button>' +
+        '<input class="bl-number" value="' + attr(row.blNo) + '" placeholder="BILL OF LADING NO."><button class="icon-button" type="button" data-action="remove-bl" data-index="'+index+'">×</button></div>';
+    }).join('');
+    contBox.innerHTML = state.intakeContainers.map(function (row,index) {
+      return '<div class="repeat-row container" data-container-row="'+index+'"><input class="container-number" value="'+attr(row.containerNo)+'" placeholder="CONTAINER NO.">' +
+        '<select class="container-type">'+masterNameOptions('containerTypes',row.containerType,'40')+'</select><input class="container-seal" value="'+attr(row.sealNo)+'" placeholder="SEAL NO.">' +
+        '<button class="icon-button" type="button" data-action="remove-container" data-index="'+index+'">×</button></div>';
+    }).join(''); updateRepeatCounts();
+  }
+  function collectRepeatRows() {
+    state.intakeBls = Array.prototype.map.call(document.querySelectorAll('[data-bl-row]'), function (row) {
+      var select = row.querySelector('.bl-shipper'); var selected = select.options[select.selectedIndex];
+      return { shipperId: select.value, shipperName: selected && select.value ? selected.textContent.replace(/^.*? · /,'') : '', blNo: row.querySelector('.bl-number').value.trim() };
+    });
+    state.intakeContainers = Array.prototype.map.call(document.querySelectorAll('[data-container-row]'), function (row) {
+      return { containerNo: row.querySelector('.container-number').value.trim(), containerType: row.querySelector('.container-type').value.trim(), sealNo: row.querySelector('.container-seal').value.trim() };
+    });
+  }
+  function updateRepeatCounts() {
+    if (byId('blCount')) byId('blCount').textContent = document.querySelectorAll('.bl-number').length;
+    if (byId('containerCount')) byId('containerCount').textContent = Array.prototype.filter.call(document.querySelectorAll('.container-number'),function(x){return x.value.trim();}).length;
+  }
+  function bindDropZone() {
+    var zone = byId('arrivalDrop'); if (!zone) return;
+    zone.addEventListener('dragover',function(e){e.preventDefault();zone.classList.add('dragging');});
+    zone.addEventListener('dragleave',function(){zone.classList.remove('dragging');});
+    zone.addEventListener('drop',function(e){e.preventDefault();zone.classList.remove('dragging');if(e.dataTransfer.files[0]){var input=byId('arrivalFile');try{var dt=new DataTransfer();dt.items.add(e.dataTransfer.files[0]);input.files=dt.files;}catch(ignore){}readArrival(e.dataTransfer.files[0]);}});
+  }
+
+  async function readArrival(file) {
+    if (!file) return; var status = byId('readStatus'); state.intakeFile = file;
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { setReadStatus('กรุณาเลือกไฟล์ PDF เท่านั้น','error'); return; }
+    if (!window.pdfjsLib) { setReadStatus('โหลดตัวอ่าน PDF ไม่ได้ กรุณาตรวจอินเทอร์เน็ต','error'); return; }
+    setReadStatus('กำลังอ่านไฟล์ ' + file.name + ' ...','');
+    try {
+      var buffer = await file.arrayBuffer(); var pdf = await pdfjsLib.getDocument({data:buffer.slice(0)}).promise;
+      await renderPdfDocument(pdf, 'ตัวอย่าง ' + (state.intakeSource === 'AN' ? 'Arrival Notice' : 'Bill of Lading'));
+      var lines = [];
+      for (var pageNo=1; pageNo<=pdf.numPages; pageNo+=1) lines = lines.concat(await pdfPageLines(await pdf.getPage(pageNo)));
+      if (!lines.length) { setReadStatus('อ่านข้อความไม่ได้: เป็นไฟล์สแกน/รูปภาพ ต้องใช้ OCR','error'); return; }
+      var extracted = extractBL(lines); fillExtracted(extracted, lines);
+      setReadStatus('อ่านสำเร็จ · ' + (extracted.shipline || extracted.carrier || 'กฎทั่วไป') + ' · กรุณาตรวจสอบก่อนบันทึก','ok');
+      toast('ดึงข้อมูลจาก PDF สำเร็จ', 'success');
+    } catch (error) { setReadStatus('อ่านไฟล์ไม่สำเร็จ: ' + error.message,'error'); }
+  }
+  async function pdfPageLines(page) {
+    var content = await page.getTextContent(); var rows = {};
+    content.items.forEach(function(item){if(!item.str||!item.str.trim())return;var y=Math.round(item.transform[5]);(rows[y]=rows[y]||[]).push({x:item.transform[4],s:item.str});});
+    return Object.keys(rows).map(Number).sort(function(a,b){return b-a;}).map(function(y){return rows[y].sort(function(a,b){return a.x-b.x;}).map(function(x){return x.s;}).join(' ').replace(/\s+/g,' ').trim();}).filter(Boolean);
+  }
+  function setReadStatus(message,type) { var el=byId('readStatus');if(el){el.textContent=message;el.className='read-status '+(type||'');} }
+
+  function extractBL(rawLines) {
+    var lines=rawLines.filter(Boolean).map(function(l){return l.replace(/\s+/g,' ').trim();}); var T=lines.join('\n'),U=T.toUpperCase();
+    var r={product:'',bl_type:'',shipper:'',bl:'',containers:'',unit:'',weight:'',shipline:'',vessel:'',voyage:'',consignee:'',notify:'',carrier:''};
+    var m1=function(re,s){var m=String(s===undefined?T:s).match(re);return m?(m[1]!=null?m[1]:m[0]).trim():'';};
+    var index=function(re){return lines.findIndex(function(l){return re.test(l);});};
+    var next=function(re){var i=index(re);return i>=0&&i+1<lines.length?lines[i+1]:'';};
+    var previous=function(re){var i=index(re);return i>0?lines[i-1]:'';};
+    var clean=function(s){return String(s||'').replace(/\s+(TEL|FAX|E-?MAIL|ATTN|TAX|PH|BERTH)\b.*$/i,'').replace(/\s{2,}/g,' ').trim();};
+    var company=function(s){var m=String(s||'').match(/^(.*?(?:CO\.,?\s?LTD\.?|LIMITED|L\.?L\.?C|LLC|CORPORATION|INC\.?|COMPANY))\b\.?/i);return clean(m?m[1]:s);};
+    var splitVessel=function(s){s=clean(s);var m=s.match(/^(.*\S)\s+([A-Z]?\d{2,4}[A-Z]?|\d[\dA-Z\-\/]*[A-Z0-9])$/);return m?[m[1].trim(),m[2].trim()]:[s,''];};
+    var fmt=function(s){var n=parseFloat(String(s||'').replace(/,/g,''));return isNaN(n)?String(s||''):n.toLocaleString('en-US',{maximumFractionDigits:3});};
+    var party=function(name){var line=lines.find(function(l){return l.toUpperCase().indexOf(name)>=0;});return line?company(line.substring(line.toUpperCase().indexOf(name))):'';};
+    var product=function(){return m1(/\b(USED\s+(?:VEHICLES?|CARS?)|OTHER\s+VEHICLES?[^\n]*)/i).toUpperCase();};
+    var carrier=/MAERSK|\bMAEU\b/.test(U)?'MAERSK':/EVERGREEN|\bEGLV/.test(U)?'EVERGREEN':/JINJIANG|JJSHIPPING|\bJJ[A-Z]{4}/.test(U)?'JINJIANG':/NAMSUNG|NSSL/.test(U)?'NAMSUNG':/CMA\s*CGM|\bCNC\b/.test(U)?'CNC':/\bOOCL\b|\bOOLU/.test(U)?'OOCL':/OCEAN NETWORK EXPRESS|ONE-?LINE|\bONEY/.test(U)?'ONE':/WAN\s*HAI|\bWHSU|\bWHLC/.test(U)?'WANHAI':'GENERIC';
+    r.carrier=carrier;r.shipline={MAERSK:'MAERSK',EVERGREEN:'EVERGREEN',JINJIANG:'SHANGHAI JINJIANG',NAMSUNG:'NAMSUNG',CNC:'CNC LINE (CMA CGM)',OOCL:'OOCL',ONE:'ONE (OCEAN NETWORK EXPRESS)',WANHAI:'WAN HAI',GENERIC:''}[carrier];
+    var seen={};r.containers=(T.match(/\b[A-Z]{4}\s?\d{7}\b/g)||[]).map(function(c){return c.replace(/\s/g,'');}).filter(function(c){if(seen[c])return false;seen[c]=true;return true;}).join(',');
+    r.consignee=party('MAESOT FREEZONE');r.notify=party('KOLA SHIPPING');r.bl_type=/SEA\s*WAY\s*BILL|SEAWAYBILL|WAY\s*BILL/i.test(U)?'SWB':(/NEGOTIABLE/i.test(U)&&!/NON-?NEGOTIABLE/i.test(U)?'OBL':'');
+    if(carrier==='MAERSK'){r.bl='MAEU'+(m1(/MAEU\s?(\d{9})/)||'');var mm=T.match(/VESSEL\s+(.+?)\s+(\d{2,4}[NSEW])\s+ETA/i);if(mm){r.vessel=mm[1].trim();r.voyage=mm[2];}var cn=next(/Consignee.*Shipper/i);mm=cn.match(/(?:CO\.,?\s?LTD\.?|LIMITED|LLC|CORPORATION|INC\.?)\.?\s+(.+)$/i);if(mm)r.shipper=company(mm[1]);r.weight=fmt(m1(/([\d,]+\.\d+)\s*KGS\s+[\d.]+\s*CBM/i));r.unit=m1(/(\d+)\s*UNITS?\b/i);}
+    else if(carrier==='EVERGREEN'){r.bl=m1(/B\/L\s*NO\s*:\s*([A-Z]{4}\d{6,})/i);var ev=splitVessel(m1(/VSL\/VOY\s*:\s*(.+)/i));r.vessel=ev[0];r.voyage=ev[1];r.shipper=company(m1(/Shipper\s*:\s*(.+)/i));r.product=clean(m1(/Description\s*:\s*(.+)/i));var em=T.match(/[A-Z]{4}\d{7}\s+.+?\s+(\d+)\s*\/\s*UNT\s+([\d,]+\.\d+)/i);if(em){r.unit=em[1];r.weight=fmt(em[2]);}}
+    else if(carrier==='JINJIANG'){var jr=lines.find(function(l){return /\bJJ[A-Z0-9]{6,}\b/.test(l);})||'';var jm=jr.match(/^(.+?)\s+(JJ[A-Z0-9]{6,})\s*$/);if(jm){r.shipper=company(jm[1]);r.bl=jm[2];}else r.bl=m1(/\b(JJ[A-Z0-9]{6,})\b/);var jv=lines.find(function(l){return /\b\d{3,4}[NSEW]\b/.test(l)&&!/MAESOT|KOLA/i.test(l);})||'';jm=jv.match(/([A-Z][A-Z ]+?)\s+(\d{3,4}[NSEW])\b/);if(jm){r.vessel=jm[1].trim();r.voyage=jm[2];}r.weight=fmt(m1(/G\.?W\.?\s*([\d,]+\.\d+)/i));r.product=product()||'USED CAR';}
+    else if(carrier==='NAMSUNG'){r.bl=m1(/\b(NSSL[A-Z0-9]{6,})\b/);var ni=index(/\bNSSL[A-Z0-9]{6,}\b/);if(ni>0)r.shipper=company(lines[ni-1]);var nv=lines.find(function(l){return /\d{3,4}[NSEW]\b/.test(l)&&!/MAESOT|KOLA/i.test(l);})||'';var nm=nv.match(/([A-Z][A-Z ]+?)\s+(\d{3,4}[NSEW])\b/);if(nm){r.vessel=nm[1].trim();r.voyage=nm[2];}}
+    else if(carrier==='CNC'){var cv=splitVessel(previous(/VESSEL\s*\/\s*VOY/i).replace(/\s+\d{1,2}-[A-Z]{3}-\d{2}.*$/i,''));r.vessel=cv[0];r.voyage=cv[1];r.bl=m1(/^([A-Z]{2,}\d{4,})\b/,previous(/B\/L-?NO/i));r.shipper=company(previous(/^SHIPPER:/i));if(!r.bl_type)r.bl_type='OBL';}
+    else if(carrier==='OOCL'){r.bl=m1(/\b(OOLU\d{7,})\b/);var vi=index(/B\/L\s*Vessel\/Voyage/i);for(var j=vi+1;j<Math.min(lines.length,vi+8);j+=1){if(/[A-Za-z]{3,}.*\s+\d{2,4}[A-Z]?$/.test(lines[j])){var ov=splitVessel(lines[j]);r.vessel=ov[0];r.voyage=ov[1];break;}}var ol=lines.find(function(l){return /MAESOT FREEZONE/i.test(l);})||'';var before=ol.substring(0,ol.toUpperCase().indexOf('MAESOT')).trim();if(/AUTOMOBILES|TRADING|CO\.|LTD|LIMITED|CORPORATION|COMPANY|LLC/i.test(before))r.shipper=company(before);var om=T.match(/Total:\s*(\d+)\s+([\d,]+)\s*KG/i);if(om){r.unit=om[1];r.weight=fmt(om[2]);}}
+    else if(carrier==='ONE'){r.bl=m1(/B\/L\s*No\.?\s*([A-Z]{2,}\d{4,})/i)||m1(/\b(ONEY[A-Z0-9]{8,})\b/);r.vessel=clean(previous(/^VESSEL\s*:/i));r.voyage=m1(/VOYAGE\s*:\s*([A-Z0-9\-]+)/i);var oneLine=lines.find(function(l){return /CORPORATION|CO\.,?\s?LTD|LIMITED|LLC|INC|COMPANY/i.test(l)&&new RegExp(r.vessel.replace(/[^A-Z0-9 ]/gi,''),'i').test(l);})||'';var oneMatch=oneLine.match(/^(.+?(?:CORPORATION|CO\.,?\s?LTD\.?|LIMITED|LLC|INC\.?|COMPANY))\b/i);if(oneMatch)r.shipper=company(oneMatch[1]);}
+    else if(carrier==='WANHAI'){r.bl=m1(/B\/L\s*No:?\s*([A-Z0-9]+)/i);var wm=T.match(/\b(WAN\s*HAI\s*\d+)\s+([A-Z]?\d{2,4}[A-Z]?)\b/i);if(wm){r.vessel=clean(wm[1]);r.voyage=wm[2];}var bi=index(/B\/L\s*No:/i);for(var wi=Math.max(0,bi);wi<lines.length;wi+=1){if(/(CO\.,?\s?LTD\.?|LIMITED|LLC|CORPORATION|INC\.?)/i.test(lines[wi])&&!/WAN\s*HAI|MAESOT FREEZONE|KOLA SHIPPING/i.test(lines[wi])){r.shipper=company(lines[wi]);break;}}}
+    else {r.bl=m1(/B[\/.]?L\s*(?:No\.?|Number|NO)?\s*[:#]?\s*([A-Z]{2,}\d{5,}|[A-Z0-9]{8,})/i);var vv=splitVessel(next(/Vessel/i)||previous(/Vessel/i));r.vessel=vv[0];r.voyage=vv[1];}
+    if(!r.shipper)r.shipper=company(next(/Shipper/i)||previous(/Shipper/i));
+    if(!r.weight)r.weight=fmt(m1(/([\d,]+\.\d{2,})\s*KG[SM]?\b/i)||m1(/([\d,]+)\s*KG[SM]?\b/i));
+    if(!r.unit)r.unit=m1(/(\d+)\s*(?:UNIT|UNT|UN\b|PKG|PACKAGE)/i);
+    if(!r.product)r.product=product(); return r;
+  }
+
+  function fillExtracted(result, lines) {
+    setValue('an_product',result.product);setValue('an_bltype',result.bl_type);setValue('an_unit',result.unit);setValue('an_weight',result.weight);
+    setValue('an_shipline',result.shipline);setValue('an_vessel',result.vessel);setValue('an_voyage',result.voyage);
+    setMasterSelect('an_consignee','consignees',result.consignee);setMasterSelect('an_notify','notify',result.notify);
+    var eta=extractEta(lines);if(eta)setValue('an_eta',eta);
+    collectRepeatRows(); var shipperId=masterIdByName('shippers',result.shipper);
+    if(state.intakeBls.length===1&&!state.intakeBls[0].blNo) state.intakeBls[0]={shipperId:shipperId,shipperName:result.shipper,blNo:result.bl};
+    else state.intakeBls.push({shipperId:shipperId,shipperName:result.shipper,blNo:result.bl});
+    String(result.containers||'').split(',').filter(Boolean).forEach(function(c){
+      if(state.intakeContainers.length===1&&!state.intakeContainers[0].containerNo)state.intakeContainers[0]={containerNo:c,containerType:'',sealNo:''};
+      else if(!state.intakeContainers.some(function(x){return x.containerNo===c;}))state.intakeContainers.push({containerNo:c,containerType:'',sealNo:''});
+    }); renderRepeatRows();
+  }
+  function extractEta(lines) { var m=lines.join(' ').match(/E\.?T\.?A\.?\b[^0-9]{0,15}(\d{1,2}[\/\-.][A-Za-z0-9]{2,9}[\/\-.]\d{2,4}|\d{4}-\d{2}-\d{2})/i);return m?toIsoDate(m[1]):''; }
+  function toIsoDate(value) {if(/^\d{4}-\d{2}-\d{2}$/.test(value))return value;var mon={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};var m=value.match(/^(\d{1,2})[\/\-\.\s]([A-Za-z]{3})[A-Za-z]*[\/\-\.\s](\d{2,4})$/);if(m)return (m[3].length===2?'20':'')+m[3]+'-'+mon[m[2].toUpperCase()]+'-'+String(m[1]).padStart(2,'0');m=value.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);return m?((m[3].length===2?'20':'')+m[3]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[1]).padStart(2,'0')):'';}
+
+  // ---- ตารางงานคงค้าง: ค้นหารายคอลัมน์ + คลิกหัวคอลัมน์เพื่อสลับการเรียงลำดับ ----
+  function tableCell(text,html){return {text:String(text===undefined||text===null?'':text),html:html===undefined?null:html};}
+
+  function pendingColumns(stage,sub){
+    var C=tableCell;
+    var clientInCharge={label:'Client in charge',get:function(j){return C(masterName('people',j.personId));}};
+    var shipper={label:'Shipper',get:function(j){return C(masterName('shippers',j.shipperId));}};
+    var blNo={label:'BL No.',get:function(j){return C(j.blNo);}};
+    var consignee={label:'Consignee',get:function(j){return C(masterName('consignees',j.consigneeId));}};
+    // เรียงด้วยค่าดิบ ISO ไม่ใช่ข้อความ mm/dd/yyyy ที่แสดง มิฉะนั้นลำดับจะผิด
+    // (OFC) = FAH ยืนยัน ETA ที่หน้า Invoice DO แล้ว ก่อนหน้านั้นเป็นค่าเบื้องต้นจาก PAINT
+    var eta={label:'ETA',get:function(j){return C(formatDate(j.eta)+(asBool(j.etaIsOfficial)?' (OFC)':''));},sortKey:function(j){return j.eta||'';}};
+    var demDet={label:'DEM/DET',get:function(j){return C((j.demDays||0)+' / '+(j.detDays||0));},sortKey:function(j){return Number(j.demDays)||0;}};
+    var lastDem={label:'Last Date of DEM',get:function(j){return C(formatDate(addDays(j.eta,j.demDays)));},sortKey:function(j){return addDays(j.eta,j.demDays);}};
+    var lastDet={label:'Last Date of DET',get:function(j){return C(formatDate(addDays(j.transportDate,j.detDays)));},sortKey:function(j){return addDays(j.transportDate,j.detDays);}};
+    var refNo={label:'Ref No.',get:function(j){return C(j.draftRefNo||'-');}};
+
+    if(stage==='bl'){
+      return [clientInCharge,
+        {label:'ที่มา',get:function(j){var v=j.sourceType||'AN';return C(v,'<span class="source-badge">'+esc(v)+'</span>');}},
+        shipper,blNo,consignee,eta,demDet,
+        {label:'สถานะ / จัดการ',plain:true,get:function(j){
+          var a=j.approvals&&j.approvals.AN;
+          if(sub!=='wait')return C('',approvalCell(a,j));
+          // งานที่ถูกตีกลับจะเด้งกลับมาอยู่แท็บนี้ ต้องเห็นเหตุผลที่ผู้ตรวจส่งมาด้วย
+          var rejected=a&&a.status==='REJECTED';
+          return C('','<div class="row-actions">'+
+            (rejected?'<span class="badge rejected">ไม่อนุมัติ</span><button class="button tiny secondary" data-action="show-reason" data-value="'+attr(a.reason)+'">ดูเหตุผล</button>':'')+
+            '<button class="button tiny secondary" data-action="edit-job" data-id="'+j.id+'">แก้ไข</button>'+
+            '<button class="button tiny namkang" data-action="request-an" data-id="'+j.id+'">'+(rejected?'ส่งใหม่':'ส่งอนุมัติ')+'</button></div>');}}];
+    }
+    if(stage==='fn'){
+      return [clientInCharge,shipper,blNo,consignee,eta,lastDem,lastDet,
+        {label:'Invoice สินค้า',plain:true,get:function(j){return C('',invoiceAlertCell(j));}},
+        {label:'Surrender BL',plain:true,get:function(j){return C('',fileChip(j,'SURRENDER'));}},
+        // คอลัมน์นี้เหลือแค่จัดการตัวไฟล์ ส่วนสถานะและการส่งใหม่ย้ายไปคอลัมน์ถัดไปทั้งหมด
+        {label:'Final Invoice / จัดการ',plain:true,get:function(j){
+          var file=j.currentFiles&&j.currentFiles.FINAL_INVOICE;
+          if(!file)return C('','<button class="button tiny paint" data-action="upload" data-category="FINAL_INVOICE" data-id="'+j.id+'">อัปโหลด Final Invoice</button>');
+          // ส่งไปรออนุมัติแล้วห้ามสลับไฟล์ใต้มือผู้ตรวจ ต้องรอผลก่อน
+          if(sub==='approve')return C(file.fileName,'<span class="badge approved">'+esc(file.fileName)+'</span>');
+          return C(file.fileName,'<div class="row-actions"><span class="badge approved">'+esc(file.fileName)+'</span><button class="button tiny secondary" data-action="upload" data-category="FINAL_INVOICE" data-id="'+j.id+'">เปลี่ยนไฟล์</button></div>');}},
+        {label:'สถานะ / จัดการ',plain:true,get:function(j){
+          var file=j.currentFiles&&j.currentFiles.FINAL_INVOICE,a=j.approvals&&j.approvals.FN;
+          if(!file)return C('','<span class="badge pending">รอ Final Invoice</span>');
+          if(a&&a.status==='REJECTED')return C('','<div class="row-actions"><span class="badge rejected">ไม่อนุมัติ</span><button class="button tiny secondary" data-action="show-reason" data-value="'+attr(a.reason)+'">ดูเหตุผล</button><button class="button tiny paint" data-action="upload" data-category="FINAL_INVOICE" data-id="'+j.id+'">ส่งใหม่</button></div>');
+          if(a&&a.status==='APPROVED')return C('','<span class="badge approved">อนุมัติแล้ว</span>');
+          return C('','<span class="badge pending">รอ FAH อนุมัติ</span>');}}];
+    }
+    if(stage==='draft'){
+      return [clientInCharge,shipper,blNo,consignee,eta,lastDem,lastDet,refNo,
+        {label:'สถานะ / จัดการ',plain:true,get:function(j){return C('',draftActionCell(j,sub));}}];
+    }
+    return [clientInCharge,shipper,blNo,refNo,
+      {label:'เลขใบขน',get:function(j){return C(j.customsEntry?j.customsEntry.declarationNo:'-');}},
+      consignee,eta,lastDem,lastDet,
+      {label:'E-Office / จัดการ',plain:true,get:function(j){
+        var req=j.currentFiles&&j.currentFiles.EOFFICE_REQUEST;
+        var bundled=j.currentFiles&&j.currentFiles.EOFFICE_MERGED;
+        return C('','<div class="row-actions">'+
+          '<button class="button tiny paint" data-action="create-request" data-id="'+j.id+'">'+(req?'ออกคำร้องใหม่':'สร้างคำร้อง')+'</button>'+
+          (req?'<button class="button tiny fah" data-action="merge-eoffice" data-id="'+j.id+'">รวมชุด E-Office</button>':'')+
+          (bundled?'<button class="button tiny secondary" data-action="print-bundle" data-id="'+attr(bundled.id)+'">พิมพ์ชุด E-Office</button>':'')+'</div>');}}];
+  }
+
+  function tableCompare(a,b){
+    if(typeof a==='number'&&typeof b==='number')return a-b;
+    var x=String(a),y=String(b);
+    var nx=Number(x),ny=Number(y);
+    if(x!==''&&y!==''&&!isNaN(nx)&&!isNaN(ny))return nx-ny;
+    return x.localeCompare(y,'th');
+  }
+
+  /**
+   * ตารางกลางที่ค้นหารายคอลัมน์และคลิกหัวคอลัมน์เพื่อเรียงลำดับได้
+   * ทุกหน้าที่แสดงรายการงานใช้ตัวนี้ร่วมกัน สถานะการค้นหา/เรียง แยกเก็บตาม tableKey
+   */
+  function dataTableHtml(tableKey,columns,rows,sort,filters,emptyText){
+    var head='<tr><th class="col-no">No.</th>'+columns.map(function(c,i){
+      var arrow=sort&&sort.index===i?(sort.dir==='asc'?' ▲':' ▼'):'';
+      return '<th class="sortable" data-action="table-sort" data-table="'+attr(tableKey)+'" data-index="'+i+'" title="คลิกเพื่อเรียงลำดับ">'+esc(c.label)+arrow+'</th>';
+    }).join('')+'</tr>';
+    var filterRow='<tr class="filter-row"><th></th>'+columns.map(function(c,i){
+      return c.plain?'<th></th>':'<th><input type="search" class="col-filter" data-table="'+attr(tableKey)+'" data-filter-col="'+i+'" value="'+attr(filters[tableKey+'|'+i]||'')+'" placeholder="ค้นหา"></th>';
+    }).join('')+'</tr>';
+    var body=rows.length?rows.map(function(r,index){
+      return '<tr class="'+(r.job&&r.job.hasInvoiceAlert?'invoice-alert':'')+'"'+(r.job?' data-open-job="'+attr(r.job.id)+'"':'')+'><td>'+(index+1)+'</td>'+
+        r.cells.map(function(c){return '<td>'+(c.html===null?esc(c.text):c.html)+'</td>';}).join('')+'</tr>';
+    }).join(''):'<tr><td colspan="'+(columns.length+1)+'" class="empty-state">'+esc(emptyText||'ไม่มีรายการ')+'</td></tr>';
+    return '<div class="table-wrap"><table class="data-table queue-table pending-table"><thead>'+head+filterRow+'</thead><tbody>'+body+'</tbody></table></div>';
+  }
+
+  /** กรอง เรียง แล้วคืน HTML ของตารางในคราวเดียว */
+  function renderDataTable(tableKey,columns,list,emptyText){
+    state.tableFilters=state.tableFilters||{};
+    state.tableSort=state.tableSort||{};
+    var filters=state.tableFilters,sort=state.tableSort[tableKey];
+
+    var rows=list.map(function(j){return {job:j,cells:columns.map(function(c){return c.get(j);})};});
+    rows=rows.filter(function(r){
+      return columns.every(function(c,i){
+        var needle=String(filters[tableKey+'|'+i]||'').trim().toLowerCase();
+        return !needle||r.cells[i].text.toLowerCase().indexOf(needle)>=0;
+      });
+    });
+    if(sort&&columns[sort.index]){
+      var column=columns[sort.index];
+      rows.sort(function(a,b){
+        var x=column.sortKey?column.sortKey(a.job):a.cells[sort.index].text;
+        var y=column.sortKey?column.sortKey(b.job):b.cells[sort.index].text;
+        var result=tableCompare(x,y);
+        return sort.dir==='desc'?-result:result;
+      });
+    }
+    return dataTableHtml(tableKey,columns,rows,sort,filters,emptyText);
+  }
+
+  /** คืนโฟกัสให้ช่องค้นหาที่กำลังพิมพ์ เพราะการ re-render สร้าง input ใหม่ทั้งหมด */
+  function restoreTableFocus(){
+    if(!state.tableFocus)return;
+    var parts=String(state.tableFocus).split('|');
+    var active=document.querySelector('[data-table="'+parts[0]+'"][data-filter-col="'+parts[1]+'"]');
+    if(active){active.focus();try{active.setSelectionRange(active.value.length,active.value.length);}catch(ignore){}}
+  }
+
+  function renderPaintPending() {
+    setPage('งานคงค้าง','BL → Final Invoice → Draft ใบขน → เตรียมเอกสารเดิน E');
+    var stage=state.pendingStage,sub=state.pendingSub; var list=jobsForPending(stage,sub);
+    var stageCounts=['bl','fn','draft','edoc'].reduce(function(o,k){o[k]=jobsForPending(k,'wait').length+jobsForPending(k,'approve').length;return o;},{});
+
+    var columns=pendingColumns(stage,sub);
+
+    byId('routeContent').innerHTML=pageHead('PAINT','งานคงค้าง','แต่ละขั้นมี รอส่งอนุมัติ / รออนุมัติรายการ')+
+      '<div class="stage-tabs">'+stageButton('bl','1. งานใส่ข้อมูล BL',stageCounts.bl)+stageButton('fn','2. Final Invoice',stageCounts.fn)+stageButton('draft','3. Draft ใบขน',stageCounts.draft)+stageButton('edoc','4. เตรียมเอกสารเดิน E',stageCounts.edoc)+'</div>'+
+      (stage!=='edoc'?'<div class="sub-tabs">'+subButton('wait','รอส่งอนุมัติ',jobsForPending(stage,'wait').length)+subButton('approve','รออนุมัติรายการ',jobsForPending(stage,'approve').length)+'</div>':'')+
+      '<div class="notice">ดับเบิลคลิกแถวเพื่อดู Container, File และ Timeline ใน Drawer · พิมพ์ในช่องใต้หัวคอลัมน์เพื่อค้นหา · คลิกหัวคอลัมน์เพื่อเรียงลำดับ</div>'+
+      renderDataTable('pending-'+stage,columns,list,'ไม่มีรายการ');
+
+    scheduleHubPolling();
+    restoreTableFocus();
+  }
+  function jobsForPending(stage,sub){return state.jobs.filter(function(j){var an=approvalStatus(j,'AN'),fn=approvalStatus(j,'FN');if(stage==='bl')return sub==='wait'?(!an||an==='REJECTED'):(an==='PENDING');if(stage==='fn')return an==='APPROVED'&&(sub==='wait'?fn!=='PENDING'&&fn!=='APPROVED':fn==='PENDING');if(stage==='draft')return fn==='APPROVED'&&(sub==='wait'?j.draftStatus!=='SUBMITTED'&&j.draftStatus!=='FILED':j.draftStatus==='SUBMITTED');return j.customsStatus==='FILED';});}
+  function stageButton(id,label,count){return '<button class="stage-tab '+(state.pendingStage===id?'active':'')+'" data-action="pending-stage" data-value="'+id+'">'+label+' <small>('+count+')</small></button>';}
+  function subButton(id,label,count){return '<button class="stage-tab '+(state.pendingSub===id?'active':'')+'" data-action="pending-sub" data-value="'+id+'">'+label+' <small>('+count+')</small></button>';}
+  function approvalCell(a,j){if(!a)return '-';if(a.status==='REJECTED')return '<span class="badge rejected">ไม่อนุมัติ</span> <button class="button tiny secondary" data-action="show-reason" data-value="'+attr(a.reason)+'">ดูเหตุผล</button> <button class="button tiny namkang" data-action="request-an" data-id="'+j.id+'">ส่งใหม่</button>';return '<span class="badge pending">รอ NAMKANG ตรวจ</span>';}
+  function fnActionCell(j,sub){var file=j.currentFiles&&j.currentFiles.FINAL_INVOICE,a=j.approvals&&j.approvals.FN;if(!file)return '<button class="button tiny paint" data-action="upload" data-category="FINAL_INVOICE" data-id="'+j.id+'">อัปโหลด Final Invoice</button>';if(sub==='approve')return '<span class="badge pending">รอ FAH อนุมัติ</span>';if(a&&a.status==='REJECTED')return '<span class="badge rejected">ไม่อนุมัติ</span> <button class="button tiny secondary" data-action="show-reason" data-value="'+attr(a.reason)+'">ดูเหตุผล</button> <button class="button tiny paint" data-action="upload" data-category="FINAL_INVOICE" data-id="'+j.id+'">เปลี่ยนไฟล์</button> <button class="button tiny namkang" data-action="request-fn" data-id="'+j.id+'">ส่งใหม่</button>';return '<span class="badge approved">'+esc(file.fileName)+'</span> <button class="button tiny secondary" data-action="upload" data-category="FINAL_INVOICE" data-id="'+j.id+'">เปลี่ยนไฟล์</button> <button class="button tiny namkang" data-action="request-fn" data-id="'+j.id+'">ส่งอนุมัติ</button>';}
+  function draftActionCell(j,sub){
+    if(sub==='approve')return '<span class="badge pending">รอ FAH ทำใบขน</span>';
+    if(j.draftStatus==='REJECTED')return '<div class="row-actions"><span class="badge rejected">Draft ถูกตีกลับ</span><button class="button tiny secondary" data-action="show-reason" data-value="'+attr(j.draftRejectReason||'')+'">ดูเหตุผล</button><button class="button tiny namkang" data-action="hub-draft" data-id="'+j.id+'">ส่งใหม่</button></div>';
+    if(j.draftStatus==='CREATED')return '<div class="row-actions"><span class="badge approved">Ref: '+esc(j.draftRefNo)+'</span><button class="button tiny namkang" data-action="draft-submit" data-id="'+j.id+'">ส่งตรวจ Draft</button></div>';
+    if(j.draftStatus==='SENT_TO_HUB')return '<span class="badge pending">ส่ง Hub แล้ว รอสร้าง Draft</span>';
+    return '<button class="button tiny namkang" data-action="hub-draft" data-id="'+j.id+'">สร้าง Draft</button>';
+  }
+
+  function renderFinalInvoicePage(){renderUploadQueue('PAINT','Upload Final Invoice','FINAL_INVOICE','อัปโหลด Final Invoice แล้วส่งให้ FAH อนุมัติ',function(j){return approvalStatus(j,'AN')==='APPROVED';});}
+  function renderEofficePage(){renderUploadQueue('PAINT','Upload ชุดตรวจปล่อย (E-Office)','EOFFICE','อัปโหลดชุดตรวจปล่อยหลังได้เลขใบขน',function(j){return j.customsStatus==='FILED';});}
+  function renderUploadQueue(role,title,category,subtitle,filter){setPage(title,subtitle);var list=state.jobs.filter(filter);var rows=list.map(function(j){var f=j.currentFiles&&j.currentFiles[category];return jobTr(j,[masterName('jobTypes',j.jobTypeId),masterName('shippers',j.shipperId),j.blNo,masterName('consignees',j.consigneeId),f?'<span class="badge approved">'+esc(f.fileName)+'</span>':'<span class="badge pending">รอดำเนินการ</span>','<button class="button tiny paint" data-action="upload" data-category="'+category+'" data-id="'+j.id+'">'+(f?'เปลี่ยนไฟล์':'อัปโหลด')+'</button>']);}).join('');byId('routeContent').innerHTML=pageHead(role,title,subtitle)+tableHtml(['Job Type','Shipper','BL No.','Consignee','ไฟล์','จัดการ'],rows,'ไม่มีรายการ');}
+
+  function renderNamApprove(){
+    setPage('ตรวจสอบรายการรออนุมัติ','ตรวจข้อมูล BL จาก PAINT');
+    var list=state.jobs.filter(function(j){return approvalStatus(j,'AN')==='PENDING';});
+    var C=tableCell;
+    var jobType={label:'Job Type',get:function(j){return C(masterName('jobTypes',j.jobTypeId));}};
+    var shipper={label:'Shipper',get:function(j){return C(masterName('shippers',j.shipperId));}};
+    var blNo={label:'BL No.',get:function(j){return C(j.blNo);}};
+    var consignee={label:'Consignee',get:function(j){return C(masterName('consignees',j.consigneeId));}};
+    var columns=[jobType,shipper,blNo,
+      {label:'ETA',get:function(j){return C(formatDate(j.eta)+(asBool(j.etaIsOfficial)?' (OFC)':''));},sortKey:function(j){return j.eta||'';}},
+      consignee,
+      {label:'DEM',get:function(j){return C(j.demDays||0);},sortKey:function(j){return Number(j.demDays)||0;}},
+      {label:'DET',get:function(j){return C(j.detDays||0);},sortKey:function(j){return Number(j.detDays)||0;}},
+      {label:'จัดการ',plain:true,get:function(j){var a=j.approvals&&j.approvals.AN;
+        if(!a)return C('','-');
+        return C('','<div class="row-actions"><button class="button tiny namkang" data-action="decision" data-value="'+attr(a.id)+'|APPROVED">อนุมัติ</button><button class="button tiny red" data-action="decision" data-value="'+attr(a.id)+'|REJECTED">ไม่อนุมัติ</button><button class="button tiny secondary" data-action="edit-job" data-id="'+j.id+'">แก้ไข</button></div>');}}];
+    byId('routeContent').innerHTML=pageHead('NAMKANG','ตรวจสอบรายการรออนุมัติ','อนุมัติ / ไม่อนุมัติ / แก้ไข · ดับเบิลคลิกแถวดูรายละเอียด')+
+      renderDataTable('nam-approve',columns,list,'ไม่มีรายการรออนุมัติ');
+    restoreTableFocus();
+  }
+
+  function renderNamCustomer(){
+    setPage('ข้อมูลลูกค้า / File','Invoice สินค้าและ Surrender BL');
+    var list=state.jobs.filter(function(j){return approvalStatus(j,'AN')==='APPROVED';});
+    var C=tableCell;
+    var jobType={label:'Job Type',get:function(j){return C(masterName('jobTypes',j.jobTypeId));}};
+    var shipper={label:'Shipper',get:function(j){return C(masterName('shippers',j.shipperId));}};
+    var blNo={label:'BL No.',get:function(j){return C(j.blNo);}};
+    var consignee={label:'Consignee',get:function(j){return C(masterName('consignees',j.consigneeId));}};
+    var columns=[jobType,shipper,blNo,
+      {label:'Customer',get:function(j){var name=masterName('consignees',j.consigneeId);
+        return C(name,esc(name)+' <button class="button tiny secondary" data-action="customer" data-id="'+j.id+'">แก้ไข</button>');}},
+      {label:'Invoice สินค้า',plain:true,get:function(j){return C('',invoiceManageCell(j));}},
+      {label:'Surrender BL / สถานะ',plain:true,get:function(j){return C('',surrenderManageCell(j));}}];
+    byId('routeContent').innerHTML=pageHead('NAMKANG','ข้อมูลลูกค้า / File','เปลี่ยน Invoice ต้องระบุเหตุผล และแถวแดงจน PAINT/FAH รับทราบ')+
+      renderDataTable('nam-cust',columns,list,'ยังไม่มีงานที่ผ่าน AN');
+    restoreTableFocus();
+  }
+  function invoiceManageCell(j){var f=j.currentFiles&&j.currentFiles.INVOICE_GOODS;if(!f)return '<button class="button tiny namkang" data-action="upload" data-category="INVOICE_GOODS" data-id="'+j.id+'">อัปโหลด</button>';return '<span class="badge '+(j.hasInvoiceAlert?'rejected':'approved')+'">'+esc(f.fileName)+'</span> <button class="button tiny secondary" data-action="upload" data-category="INVOICE_GOODS" data-id="'+j.id+'">เปลี่ยนไฟล์</button>'+(j.hasInvoiceAlert?'<button class="button tiny secondary" data-action="preview-file" data-id="'+f.id+'">ดูเหตุผล</button>':'');}
+  function fileManageCell(j,category,label){var f=j.currentFiles&&j.currentFiles[category];return f?'<span class="badge approved">'+esc(f.fileName)+'</span> <button class="button tiny secondary" data-action="upload" data-category="'+category+'" data-id="'+j.id+'">เปลี่ยนไฟล์</button>':'<button class="button tiny namkang" data-action="upload" data-category="'+category+'" data-id="'+j.id+'">อัปโหลด '+esc(label)+'</button>';}
+  function surrenderManageCell(j){var fileCell=fileManageCell(j,'SURRENDER','Surrender BL'),status=j.surrenderStatus||'PENDING';return fileCell+' <button class="button tiny '+(status==='CLEARED'?'success':status==='ISSUE'?'red':'secondary')+'" data-action="surrender" data-id="'+j.id+'">'+esc(surrenderLabel(status))+'</button>';}
+
+  function renderFahFn(){
+    setPage('อนุมัติ Final Invoice','ตรวจไฟล์ที่ PAINT ส่งมา');
+    var list=state.jobs.filter(function(j){return approvalStatus(j,'FN')==='PENDING';});
+    var C=tableCell;
+    var jobType={label:'Job Type',get:function(j){return C(masterName('jobTypes',j.jobTypeId));}};
+    var shipper={label:'Shipper',get:function(j){return C(masterName('shippers',j.shipperId));}};
+    var blNo={label:'BL No.',get:function(j){return C(j.blNo);}};
+    var consignee={label:'Consignee',get:function(j){return C(masterName('consignees',j.consigneeId));}};
+    var columns=[jobType,shipper,blNo,consignee,
+      {label:'Final Invoice',plain:true,get:function(j){var f=j.currentFiles&&j.currentFiles.FINAL_INVOICE;
+        return C('',f?'<button class="button tiny paint" data-action="preview-file" data-id="'+attr(f.id)+'">ตรวจไฟล์</button>':'<span class="badge pending">ไม่มีไฟล์</span>');}},
+      {label:'จัดการ',plain:true,get:function(j){var a=j.approvals&&j.approvals.FN;
+        if(!a)return C('','-');
+        return C('','<div class="row-actions"><button class="button tiny namkang" data-action="decision" data-value="'+attr(a.id)+'|APPROVED">อนุมัติ</button><button class="button tiny red" data-action="decision" data-value="'+attr(a.id)+'|REJECTED">ไม่อนุมัติ</button></div>');}}];
+    byId('routeContent').innerHTML=pageHead('FAH','อนุมัติ Final Invoice','ตรวจไฟล์ → อนุมัติให้ PAINT สร้าง Draft หรือ ตีกลับพร้อมเหตุผล')+
+      renderDataTable('fah-fn',columns,list,'ไม่มีรายการรออนุมัติ');
+    restoreTableFocus();
+  }
+
+  /**
+   * แบ่งงานหน้า FAH ตามสถานะจริง
+   * ใช้ customsTaskId เป็นตัวชี้ว่าเคยกดสร้างใบขนไปแล้ว จึงแยกออกจากคิวรอตรวจได้
+   */
+  function fahDraftLists(){
+    return {
+      review: state.jobs.filter(function(j){return j.draftStatus==='SUBMITTED'&&!j.customsTaskId&&j.customsStatus!=='FILED';}),
+      waiting: state.jobs.filter(function(j){return j.customsTaskId&&j.customsStatus!=='FILED';}),
+      done: state.jobs.filter(function(j){return j.customsStatus==='FILED';})
+    };
+  }
+
+  function renderFahDraft(){
+    setPage('ตรวจ Draft / ทำใบขนสินค้า','ตรวจ Draft → สร้างใบขน → รอไฟล์และเลขใบขน');
+    var lists=fahDraftLists();
+    var tab=state.fahDraftTab||'review';
+    if(!lists[tab])tab='review';
+    state.fahDraftTab=tab;
+
+    var C=tableCell;
+    var jobType={label:'Job Type',get:function(j){return C(masterName('jobTypes',j.jobTypeId));}};
+    var shipper={label:'Shipper',get:function(j){return C(masterName('shippers',j.shipperId));}};
+    var blNo={label:'BL No.',get:function(j){return C(j.blNo);}};
+    var consignee={label:'Consignee',get:function(j){return C(masterName('consignees',j.consigneeId));}};
+    var refNo={label:'Ref No.',get:function(j){var v=j.draftRefNo||'-';return C(v,'<span class="badge approved">Ref: '+esc(v)+'</span>');}};
+
+    var columns,empty;
+    if(tab==='review'){
+      empty='ยังไม่มี Draft ส่งมาตรวจ';
+      columns=[jobType,shipper,blNo,refNo,consignee,
+        {label:'จัดการ',plain:true,get:function(j){return C('','<div class="row-actions"><button class="button tiny fah" data-action="hub-customs" data-id="'+j.id+'">สร้างใบขน</button><button class="button tiny danger" data-action="draft-reject" data-id="'+j.id+'">ไม่อนุมัติ</button></div>');}}];
+    }else if(tab==='waiting'){
+      empty='ไม่มีงานรอผลจาก Hub';
+      columns=[jobType,shipper,blNo,refNo,consignee,
+        {label:'สถานะ',plain:true,get:function(j){return C('','<span class="badge pending">รอไฟล์และเลขใบขนสินค้า</span>');}}];
+    }else{
+      empty='ยังไม่มีใบขนที่เสร็จ';
+      columns=[jobType,shipper,blNo,refNo,consignee,
+        {label:'เลขใบขน',get:function(j){var v=j.customsEntry?j.customsEntry.declarationNo:'';return C(v||'-',v?'<b>'+esc(v)+'</b>':'-');}},
+        {label:'ไฟล์ใบขนสินค้า',plain:true,get:function(j){
+          var file=j.currentFiles&&j.currentFiles.CUSTOMS_ENTRY_DOC;
+          return C('',file?'<div class="row-actions"><span class="badge approved">'+esc(file.fileName)+'</span><button class="button tiny secondary" data-action="preview-file" data-id="'+attr(file.id)+'">เปิดดู</button></div>':'<span class="badge pending">ไม่มีไฟล์แนบ</span>');}}];
+    }
+
+    var tabButton=function(key,label,count){
+      return '<button class="stage-tab '+(tab===key?'active':'')+'" data-action="fah-draft-tab" data-value="'+key+'">'+label+' <small>('+count+')</small></button>';
+    };
+
+    byId('routeContent').innerHTML=pageHead('FAH','ตรวจ Draft / ทำใบขนสินค้า','กดสร้างใบขนแล้วงานจะย้ายไปแถบรอผล พอได้ไฟล์และเลขจะย้ายไปแถบเสร็จสิ้น')+
+      '<div class="stage-tabs">'+
+        tabButton('review','ตรวจ Draft',lists.review.length)+
+        tabButton('waiting','รอไฟล์และเลขใบขน',lists.waiting.length)+
+        tabButton('done','ใบขนเสร็จสิ้น',lists.done.length)+
+      '</div>'+
+      '<div class="notice">งานที่ได้เลขใบขนแล้วจะไปแสดงที่ งานคงค้าง → 4. เตรียมเอกสารเดิน E เพื่อสร้างคำร้องและรวมชุด E-Office ต่อ · ดับเบิลคลิกแถวเพื่อดูรายละเอียด</div>'+
+      renderDataTable('fah-draft-'+tab,columns,lists[tab],empty);
+
+    scheduleHubPolling();
+    restoreTableFocus();
+  }
+
+  function renderFahDo(){
+    setPage('จัดการ Invoice DO','ยืนยัน ETA, วันที่ขนย้าย, Port และ Partner');
+    var list=state.jobs.filter(function(j){return approvalStatus(j,'AN')==='APPROVED';});
+    var C=tableCell;
+    var jobType={label:'Job Type',get:function(j){return C(masterName('jobTypes',j.jobTypeId));}};
+    var shipper={label:'Shipper',get:function(j){return C(masterName('shippers',j.shipperId));}};
+    var blNo={label:'BL No.',get:function(j){return C(j.blNo);}};
+    var consignee={label:'Consignee',get:function(j){return C(masterName('consignees',j.consigneeId));}};
+    var columns=[jobType,shipper,blNo,
+      {label:'ETA',get:function(j){return C(formatDate(j.eta)+(asBool(j.etaIsOfficial)?' (OFC)':''));},sortKey:function(j){return j.eta||'';}},
+      {label:'Last Date of DEM',get:function(j){return C(formatDate(addDays(j.eta,j.demDays)));},sortKey:function(j){return addDays(j.eta,j.demDays);}},
+      {label:'Last Date of DET',get:function(j){return C(formatDate(addDays(j.transportDate,j.detDays)));},sortKey:function(j){return addDays(j.transportDate,j.detDays);}},
+      {label:'Port',get:function(j){return C(masterName('ports',j.portId));}},
+      {label:'Terminal',get:function(j){return C(masterName('terminals',j.terminalId));}},
+      {label:'Partner',get:function(j){return C(j.releasePartner||'-');}},
+      {label:'Invoice DO',plain:true,get:function(j){return C('',fileManageCell(j,'INVOICE_DO','Invoice DO'));}},
+      {label:'จัดการ',plain:true,get:function(j){return C('','<button class="button tiny fah" data-action="do-handoff" data-id="'+j.id+'">บันทึก / ส่ง Partner</button>');}}];
+    byId('routeContent').innerHTML=pageHead('FAH','จัดการ Invoice DO','กรอก ยืนยัน ETA · วันที่ขนย้าย · เลือก Port/Terminal · แนบ Invoice DO · ส่ง Partner')+
+      renderDataTable('fah-do',columns,list,'ยังไม่มีงานที่ผ่าน AN');
+    restoreTableFocus();
+  }
+
+  function renderNamRelease(){
+    setPage('ตรวจ & ปล่อยสินค้า','Gate: E-Office + Surrender เคลียร์แล้ว');
+    var list=state.jobs.filter(function(j){return approvalStatus(j,'AN')==='APPROVED';});
+    var C=tableCell;
+    var columns=[
+      {label:'Job No.',get:function(j){return C(j.jobNo);}},
+      {label:'BL No.',get:function(j){return C(j.blNo);}},
+      {label:'Consignee',get:function(j){return C(masterName('consignees',j.consigneeId));}},
+      {label:'E-Office',plain:true,get:function(j){return C('',fileChip(j,'EOFFICE'));}},
+      {label:'Surrender',get:function(j){return C(j.surrenderStatus||'PENDING');}},
+      {label:'จัดการ',plain:true,get:function(j){
+        var ready=Boolean(j.currentFiles&&j.currentFiles.EOFFICE)&&j.surrenderStatus==='CLEARED';
+        if(j.releaseStatus==='RELEASED')return C('','<span class="badge approved">ปล่อยแล้ว</span>');
+        return C('',ready?'<button class="button tiny namkang" data-action="release" data-id="'+j.id+'">แจ้งปล่อยสินค้า</button>':'<span class="badge pending">เอกสารยังไม่ครบ</span>');}}];
+    byId('routeContent').innerHTML=pageHead('NAMKANG','ตรวจ & ปล่อยสินค้า','เดินขนานกับใบขน โดยใช้ E-Office และ Surrender เป็น gate')+
+      renderDataTable('nam-release',columns,list,'ไม่มีรายการ');
+    restoreTableFocus();
+  }
+
+  function renderMaster(){setPage('Master Data','ข้อมูลอ้างอิงกลาง');var types=Object.keys(MASTER_LABELS);var isUsers=state.masterType==='users';var records=isUsers?state.users:(state.masters[state.masterType]||[]);var rows=records.map(function(r){if(isUsers)return '<tr><td>'+esc(r.username)+'</td><td>'+esc(r.displayName)+'</td><td>'+esc(r.role)+'</td><td>'+statusChip(r.isActive?'ACTIVE':'INACTIVE')+'</td><td><button class="button tiny secondary" data-action="reset-password" data-id="'+r.id+'">รีเซ็ตรหัส</button></td></tr>';return '<tr><td>'+esc(r.code||'-')+'</td><td>'+esc(r.name||'-')+'</td><td>'+esc(r.value||r.description||r.country||r.roleName||'-')+'</td><td>'+statusChip(asBool(r.isActive)?'ACTIVE':'INACTIVE')+'</td><td><button class="button tiny secondary" data-action="edit-master" data-id="'+r.id+'">แก้ไข</button> <button class="button tiny ghost" data-action="toggle-master" data-id="'+r.id+'">'+(asBool(r.isActive)?'ปิดใช้':'เปิดใช้')+'</button></td></tr>';}).join('');byId('routeContent').innerHTML=pageHead('','Master Data','Shipper, Consignee, Party, Loading, Port และผู้ใช้งาน')+'<div class="master-layout"><div class="card-panel master-menu">'+types.map(function(t){return '<button class="'+(state.masterType===t?'active':'')+'" data-action="master-type" data-value="'+t+'">'+esc(MASTER_LABELS[t])+'</button>';}).join('')+'</div><div><div class="toolbar"><button class="button primary" data-action="new-master">+ เพิ่ม '+esc(MASTER_LABELS[state.masterType])+'</button></div>'+tableHtml(isUsers?['Username','ชื่อ','Role','สถานะ','จัดการ']:['รหัส','ชื่อ','รายละเอียด','สถานะ','จัดการ'],rows,'ไม่มีข้อมูล')+'</div></div>';}
+
+  function handleRouteInput(event){
+    var input=event.target.closest?event.target.closest('[data-filter-col]'):null;
+    if(!input)return;
+    state.tableFilters=state.tableFilters||{};
+    state.tableFilters[input.dataset.table+'|'+input.dataset.filterCol]=input.value;
+    state.tableFocus=input.dataset.table+'|'+input.dataset.filterCol;
+    rerenderRoute();
+  }
+  /**
+   * เปิด Drawer ด้วยดับเบิลคลิกที่แถว
+   * ข้ามกรณีที่ดับเบิลคลิกโดนปุ่มหรือช่องกรอก เพราะการกดปุ่มรัว ๆ ไม่ควรเปิด Drawer ตามมา
+   */
+  function handleRouteDoubleClick(event){
+    if(event.target.closest('[data-action],button,a,input,select,textarea,label'))return;
+    var row=event.target.closest('[data-open-job]');
+    if(!row)return;
+    openDrawer(row.dataset.openJob);
+  }
+  function handleRouteChange(event){if(event.target.id==='arrivalFile'&&event.target.files[0])readArrival(event.target.files[0]);}
+  async function handleRouteSubmit(event){if(event.target.id!=='intakeForm')return;event.preventDefault();await submitIntake(event.target);}
+  async function submitIntake(form){collectRepeatRows();var bls=state.intakeBls.filter(function(x){return x.blNo;});var containers=state.intakeContainers.filter(function(x){return x.containerNo;});if(!form.fileBlob.files[0])return toast('กรุณาเลือกไฟล์ PDF','error');if(!bls.length)return toast('กรุณาระบุ BL No.','error');if(bls.some(function(x){return !x.shipperId;}))return toast('กรุณาเลือก Shipper จาก Master Data ทุก BL','error');var data=formObject(form);data.sourceType=state.intakeSource;data.bls=bls;data.containers=containers;data.shipperId=bls[0].shipperId;byId('payloadJson').value=JSON.stringify(data);setFormBusy(form,true);try{var result=await uploadFormRpc('createJobFromArrival',form);state.pendingStage='bl';state.pendingSub='wait';state.route='paint-pending';await refreshAll(true);toast('SENT TO DRAFT: '+result.job.jobNo,'success');await openDrawer(result.job.id);}catch(error){handleError(error);}finally{setFormBusy(form,false);}}
+
+  async function handleRouteClick(event){var button=event.target.closest('[data-action]');if(!button)return;var action=button.dataset.action,id=button.dataset.id,value=button.dataset.value,category=button.dataset.category;try{
+    if(action==='add-bl'){collectRepeatRows();state.intakeBls.push({shipperId:'',shipperName:'',blNo:''});return renderRepeatRows();}
+    if(action==='remove-bl'){collectRepeatRows();if(state.intakeBls.length>1)state.intakeBls.splice(+button.dataset.index,1);return renderRepeatRows();}
+    if(action==='add-container'){collectRepeatRows();state.intakeContainers.push({containerNo:'',containerType:'',sealNo:''});return renderRepeatRows();}
+    if(action==='remove-container'){collectRepeatRows();if(state.intakeContainers.length>1)state.intakeContainers.splice(+button.dataset.index,1);return renderRepeatRows();}
+    if(action==='quick-add-shipper'){collectRepeatRows();var blIndex=+button.dataset.index;return openQuickMaster('shippers',function(saved){if(state.intakeBls[blIndex]){state.intakeBls[blIndex].shipperId=saved.id;state.intakeBls[blIndex].shipperName=saved.name;}renderRepeatRows();});}
+    if(action==='create-request')return openEofficeRequest(id);
+    if(action==='merge-eoffice')return mergeEofficeBundle(id);
+    if(action==='print-bundle')return printStoredBundle(id);
+    if(action==='clear-intake')return renderIntake(state.intakeSource);
+    if(action==='fah-draft-tab'){state.fahDraftTab=value;return renderFahDraft();}
+    if(action==='pending-stage'){state.pendingStage=value;state.pendingSub='wait';state.tableFocus=null;return renderPaintPending();}
+    if(action==='pending-sub'){state.pendingSub=value;state.tableFocus=null;return renderPaintPending();}
+    if(action==='table-sort'){
+      var tableKey=button.dataset.table,sortIndex=+button.dataset.index;
+      state.tableSort=state.tableSort||{};
+      var current=state.tableSort[tableKey];
+      state.tableSort[tableKey]=(current&&current.index===sortIndex&&current.dir==='asc')?{index:sortIndex,dir:'desc'}:{index:sortIndex,dir:'asc'};
+      state.tableFocus=null;
+      return rerenderRoute();
+    }
+    if(action==='request-an'||action==='request-fn'){var type=action==='request-an'?'AN':'FN';if(!confirm('ยืนยันส่งอนุมัติ '+type+' ?'))return;await rpc('requestApproval',state.token,id,type);return afterMutation('ส่งอนุมัติ '+type+' แล้ว');}
+    if(action==='decision'){var parts=value.split('|');return openDecision(parts[0],parts[1]);}
+    if(action==='show-reason')return alert('เหตุผล:\n\n'+value);
+    if(action==='upload')return openUpload(findJob(id),category);
+    if(action==='ack')return acknowledgeInvoice(id);
+    if(action==='customer')return openCustomer(findJob(id));
+    if(action==='edit-job')return openEditJob(findJob(id));
+    if(action==='draft-create')return openDraft(findJob(id));
+    if(action==='hub-draft'){
+      if(!confirm('ส่งไฟล์ Final Invoice ไปสร้าง Draft ใบขนที่ Automation Hub?'))return;
+      await rpc('sendDraftToHub',state.token,id);
+      await afterMutation('ส่งไป Hub แล้ว รอผลสร้าง Draft');
+      state.hubPollDisabled=false;
+      return scheduleHubPolling();
+    }
+    if(action==='hub-customs'){
+      if(!confirm('ส่งเลข Ref No. ไปสร้างใบขนสินค้าที่ Automation Hub?'))return;
+      await rpc('sendCustomsToHub',state.token,id);
+      await afterMutation('ส่งไป Hub แล้ว รอผลใบขนสินค้า');
+      state.hubPollDisabled=false;
+      return scheduleHubPolling();
+    }
+    if(action==='draft-reject')return openDraftReject(id);
+    if(action==='draft-submit'){if(!confirm('ส่ง Draft ให้ FAH ตรวจ?'))return;await rpc('submitCustomsDraft',state.token,id);return afterMutation('ส่งตรวจ Draft แล้ว');}
+    if(action==='customs-file')return openCustomsFile(findJob(id));
+    if(action==='do-handoff')return openDo(findJob(id));
+    if(action==='surrender')return openSurrender(findJob(id));
+    if(action==='release')return openRelease(findJob(id));
+    if(action==='preview-file')return previewStoredFile(id);
+    if(action==='master-type'){state.masterType=value;return renderMaster();}
+    if(action==='new-master')return state.masterType==='users'?openUser():openMaster(null);
+    if(action==='edit-master')return openMaster((state.masters[state.masterType]||[]).find(function(x){return x.id===id;}));
+    if(action==='toggle-master'){var rec=(state.masters[state.masterType]||[]).find(function(x){return x.id===id;});await rpc('setMasterRecordActive',state.token,state.masterType,id,!asBool(rec.isActive));return afterMutation('อัปเดต Master Data แล้ว');}
+    if(action==='reset-password'){var reset=await rpc('adminResetPassword',state.token,id);return showTemporaryPassword(reset.temporaryPassword);}
+  }catch(error){handleError(error);}}
+
+  function openDecision(approvalId,decision){var reject=decision==='REJECTED';openModal({title:reject?'ไม่อนุมัติรายการ':'อนุมัติรายการ',submitLabel:reject?'ยืนยันไม่อนุมัติ':'ยืนยันอนุมัติ',submitClass:reject?'danger':'success',body:'<div class="form-stack">'+textareaField(reject?'เหตุผล':'หมายเหตุ','reason','',reject)+'</div>',onSubmit:async function(data){await rpc('decideApproval',state.token,approvalId,decision,data.reason||'');closeModal(true);await afterMutation(reject?'ตีกลับรายการแล้ว':'อนุมัติรายการแล้ว');}});}
+  function openUpload(job,category){if(!job)return;var current=job.currentFiles&&job.currentFiles[category],replaceInvoice=category==='INVOICE_GOODS'&&current;openModal({title:(current?'เปลี่ยนไฟล์ ':'อัปโหลด ')+category,submitLabel:'อัปโหลด',body:'<input type="hidden" name="token" value="'+attr(state.token)+'"><input type="hidden" name="jobId" value="'+attr(job.id)+'"><input type="hidden" name="category" value="'+category+'"><div class="form-stack">'+(replaceInvoice?'<div class="notice">การเปลี่ยน Invoice ต้องระบุเหตุผล และแถวจะแดงจนผู้ทำใบขนรับทราบ</div>':'')+'<label class="field"><span>ไฟล์</span><input name="fileBlob" type="file" required></label>'+(replaceInvoice?textareaField('เหตุผลที่เปลี่ยนไฟล์','changeReason','',true):'')+textareaField('หมายเหตุ','note')+'</div>',onSubmit:async function(data,form){await uploadFormRpc('uploadJobFile',form);closeModal(true);await afterMutation('อัปโหลดไฟล์แล้ว',job.id);}});}
+  function openEditJob(job){openModal({title:'แก้ไขข้อมูล / '+job.jobNo,body:'<div class="form-grid">'+inputField('BL No.','blNo','text',job.blNo,true)+selectField('Shipper','shipperId',masterOptions('shippers',job.shipperId))+selectField('Consignee','consigneeId',masterOptions('consignees',job.consigneeId))+selectField('Notify Party','notifyPartyId',masterOptions('notify',job.notifyPartyId))+selectField('Client in charge','personId',masterOptions('people',job.personId))+selectField('Job Type','jobTypeId',masterOptions('jobTypes',job.jobTypeId))+selectField('Loading Type','loadingTypeId',masterOptions('loadingTypes',job.loadingTypeId))+selectField('Port of Discharge','portId',masterOptions('ports',job.portId))+selectField('Port Terminal','terminalId',masterOptions('terminals',job.terminalId))+inputField('Product','product','text',job.product)+inputField('Vessel','vessel','text',job.vessel,true)+inputField('Voyage','voyage','text',job.voyage)+inputField('ETA','eta','date',dateValue(job.eta))+inputField('Unit','unitAmount','number',job.unitAmount)+inputField('Gross Weight','grossWeight','number',job.grossWeight)+inputField('ราคาของ','goodsValue','number',job.goodsValue)+inputField('สกุลเงิน','goodsCurrency','text',job.goodsCurrency||'USD')+inputField('Shipline','shipline','text',job.shipline)+inputField('DEM Free','demDays','number',job.demDays)+inputField('DET Free','detDays','number',job.detDays)+'</div>',onSubmit:async function(data){var shipper=(state.masters.shippers||[]).find(function(x){return x.id===data.shipperId;});data.shipperName=shipper?shipper.name:'';await rpc('updateJobDetails',state.token,job.id,data);closeModal(true);await afterMutation('บันทึกการแก้ไขแล้ว',job.id);}});}
+  function openCustomer(job){openModal({title:'ข้อมูลลูกค้า / '+job.jobNo,body:'<div class="form-grid">'+selectField('Consignee','consigneeId',masterOptions('consignees',job.consigneeId))+selectField('Notify Party','notifyPartyId',masterOptions('notify',job.notifyPartyId))+textareaField('หมายเหตุ','customerNote',job.customerNote,false,'wide')+'</div>',onSubmit:async function(data){await rpc('saveCustomerInfo',state.token,job.id,data);closeModal(true);await afterMutation('บันทึกข้อมูลลูกค้าแล้ว',job.id);}});}
+  function openDraft(job){openModal({title:'สร้าง Draft ใบขน / '+job.jobNo,body:'<div class="form-grid">'+inputField('Ref No. (เว้นว่างให้ระบบสร้าง)','entryNo')+inputField('ยอดอากร','amount','number')+textareaField('หมายเหตุ','note','',false,'wide')+'</div>',onSubmit:async function(data){await rpc('saveCustomsDraft',state.token,job.id,data);closeModal(true);await afterMutation('สร้าง Draft ใบขนแล้ว',job.id);}});}
+  function openCustomsFile(job){openModal({title:'ยืนยันทำใบขนสินค้า / '+job.jobNo,submitLabel:'ยืนยันทำใบขน',submitClass:'success',body:'<div class="form-stack">'+inputField('เลขที่ใบขน','declarationNo','text','',true)+'</div>',onSubmit:async function(data){await rpc('fileCustomsEntry',state.token,job.id,data);closeModal(true);await afterMutation('บันทึกเลขใบขนแล้ว',job.id);}});}
+  function openDo(job){openModal({title:'Invoice DO / '+job.jobNo,body:'<div class="form-grid">'+inputField('ETA (ยืนยัน)','etaOfficial','date',dateValue(job.eta),true)+inputField('วันที่ขนย้าย (Transport Date)','transportDate','date',dateValue(job.transportDate))+selectField('Port of Discharge','portId',masterOptions('ports',job.portId))+selectField('Port Terminal','terminalId',masterOptions('terminals',job.terminalId))+inputField('Port Release Partner','partnerName','text',job.releasePartner,true)+textareaField('หมายเหตุ','note','',false,'wide')+'</div><div class="notice" style="margin-top:12px">อัปโหลด Invoice DO จากตารางก่อนกดส่ง Partner</div>',onSubmit:async function(data){if(!(job.currentFiles&&job.currentFiles.INVOICE_DO))throw new Error('FILE_REQUIRED|กรุณาอัปโหลด Invoice DO ก่อน');await rpc('saveDoHandoff',state.token,job.id,data);closeModal(true);await afterMutation('ส่งข้อมูลให้ Port Release Partner แล้ว',job.id);}});}
+  function openSurrender(job){var selected=job.surrenderStatus||'PENDING';openModal({title:'ตรวจ Surrender BL / '+job.jobNo,submitLabel:'บันทึกสถานะ',body:'<div class="form-stack">'+selectField('Surrender Status','surrenderStatus','<option value="PENDING" '+(selected==='PENDING'?'selected':'')+'>รอดำเนินการ</option><option value="CLEARED" '+(selected==='CLEARED'?'selected':'')+'>เคลียร์แล้ว</option><option value="ISSUE" '+(selected==='ISSUE'?'selected':'')+'>มีปัญหา</option>')+textareaField('หมายเหตุ / ปัญหา','surrenderNote')+'</div>',onSubmit:async function(data){await rpc('updateSurrenderStatus',state.token,job.id,data.surrenderStatus,data.surrenderNote||'');closeModal(true);await afterMutation('อัปเดต Surrender แล้ว',job.id);}});}
+  function openRelease(job){openModal({title:'ตรวจ & ปล่อยสินค้า / '+job.jobNo,submitLabel:'แจ้งปล่อยสินค้า',submitClass:'success',body:'<div class="form-stack"><div class="notice">E-Office ครบและ Surrender BL เคลียร์แล้ว</div>'+textareaField('หมายเหตุ Release','releaseNote')+'</div>',onSubmit:async function(data){await rpc('releaseJob',state.token,job.id,{releaseNote:data.releaseNote||''});closeModal(true);await afterMutation('แจ้งปล่อยสินค้าแล้ว',job.id);}});}
+
+  async function openDrawer(jobId,silent){state.selectedJobId=jobId;byId('drawerBackdrop').classList.remove('hidden');byId('jobDrawer').classList.add('open');byId('drawerContent').innerHTML='<div class="empty-state">กำลังโหลด...</div>';try{state.selectedDetail=await rpc('getJobDetail',state.token,jobId);renderDrawer();}catch(error){if(!silent)handleError(error);closeDrawer();}}
+  function renderDrawer(){var d=state.selectedDetail,j=d.job,index=state.jobs.findIndex(function(x){return x.id===j.id;});byId('drawerTitle').textContent=j.jobNo;var bls=(d.bls||[]),containers=(d.containers||[]),files=(d.files||[]).filter(function(f){return f.isCurrent;});var shipperNames=bls.map(function(bl){return bl.shipperName||masterName('shippers',bl.shipperId);}).filter(Boolean).join('<br>');var blNos=bls.map(function(bl){return esc(bl.blNo);}).join('<br>');var currentInvoice=j.currentFiles&&j.currentFiles.INVOICE_GOODS;var alert=j.hasInvoiceAlert&&currentInvoice?'<div class="warning-box"><strong>Invoice สินค้าถูกเปลี่ยน</strong><span>เหตุผล: '+esc(currentInvoice.changeReason||'-')+'</span>'+(can('PAINT')||can('FAH')?'<button class="button tiny red" style="margin-top:8px" data-drawer-action="ack" data-id="'+currentInvoice.id+'">รับทราบ Invoice ใหม่</button>':'')+'</div>':'';var history=(d.history||[]).map(function(h){return '<div class="timeline-item"><b>'+esc(statusLabel(h.toStatus))+'</b><span>'+esc(h.note||'')+' · '+formatDateTime(h.createdAt)+'</span></div>';}).join('');byId('drawerContent').innerHTML='<div class="drawer-nav"><button class="button tiny" data-drawer-action="prev">◀</button><span>'+(index+1)+' / '+state.jobs.length+'</span><button class="button tiny" data-drawer-action="next">▶</button></div>'+alert+'<div style="margin:10px 0">'+statusBadge(j.status)+'</div>'+drawerSection('ข้อมูลงาน (Job Detail)','<div class="drawer-kv">'+kv('Shipper name',shipperNames||'-',true)+kv('Consignee name',masterName('consignees',j.consigneeId))+kv('Notify party',masterName('notify',j.notifyPartyId))+kv('Client in charge',masterName('people',j.personId))+kv('Job type',masterName('jobTypes',j.jobTypeId))+kv('Loading type',masterName('loadingTypes',j.loadingTypeId))+kv('Description of Goods',j.product||'-')+kv('ETA Date',formatDate(j.eta)+(asBool(j.etaIsOfficial)?' (OFC)':''))+kv('Last Date of DEM',formatDate(addDays(j.eta,j.demDays)))+kv('Last Date of DET',formatDate(addDays(j.transportDate,j.detDays)))+kv('Invoice',currentInvoice?currentInvoice.fileName:'รอดำเนินการ')+kv('Surrender',j.surrenderStatus||'PENDING')+kv('Bill of Lading No.',blNos||j.blNo,true)+kv('Unit amount',j.unitAmount||'-')+kv('Gross weight',j.grossWeight?Number(j.grossWeight).toLocaleString()+' kg':'-')+kv('Ship line',j.shipline||'-')+kv('Vessel',j.vessel||'-')+kv('Voyage name',j.voyage||'-')+kv('Port of Discharge',masterName('ports',j.portId))+kv('Port Terminal',masterName('terminals',j.terminalId))+kv('DEM / DET',(j.demDays||0)+' / '+(j.detDays||0)+' วัน')+kv('Draft Ref',j.draftRefNo||'-')+kv('Im-Dcrl No.',d.customsEntry?d.customsEntry.declarationNo:'-')+kv('Port Release Partner',j.releasePartner||'-')+'</div>')+drawerSection('Container no. [ '+containers.length+' ]','<div class="container-box">'+(containers.length?containers.map(function(c){return '<div class="container-line">'+esc(c.containerNo)+' ('+esc(c.jobNo||j.jobNo)+') '+esc(c.containerType||'')+'</div>';}).join(''):'รอดำเนินการ')+'</div>')+drawerSection('File / เอกสาร',files.length?files.map(function(f){return '<div class="document-line"><span class="label">'+esc(fileLabel(f.category))+'</span><span class="badge approved">'+esc(f.fileName)+' · v'+f.version+'</span><button class="button tiny secondary" data-drawer-action="preview" data-id="'+f.id+'">ดูไฟล์</button></div>';}).join(''):'รอดำเนินการ')+drawerSection('ไทม์ไลน์สถานะ','<div class="timeline-list">'+(history||'<div class="timeline-item"><b>'+esc(statusLabel(j.status))+'</b></div>')+'</div>');}
+  function handleDrawerClick(event){var b=event.target.closest('[data-drawer-action]');if(!b)return;var a=b.dataset.drawerAction;if(a==='prev')return navigateDrawer(-1);if(a==='next')return navigateDrawer(1);if(a==='preview')return previewStoredFile(b.dataset.id);if(a==='ack')return acknowledgeInvoice(b.dataset.id);}
+  function navigateDrawer(direction){var i=state.jobs.findIndex(function(j){return j.id===state.selectedJobId;});if(i<0||!state.jobs.length)return;var n=(i+direction+state.jobs.length)%state.jobs.length;openDrawer(state.jobs[n].id,true);}
+  async function acknowledgeInvoice(fileId){try{await rpc('acknowledgeInvoiceFile',state.token,fileId);await afterMutation('รับทราบ Invoice ใหม่แล้ว',state.selectedJobId);}catch(error){handleError(error);}}
+  function closeDrawer(){byId('drawerBackdrop').classList.add('hidden');byId('jobDrawer').classList.remove('open');state.selectedJobId='';state.selectedDetail=null;}
+
+  async function previewStoredFile(fileId){try{var result=await rpc('downloadJobFile',state.token,fileId);var binary=atob(result.base64),bytes=new Uint8Array(binary.length);for(var i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i);if((result.mimeType||'').indexOf('pdf')>=0||/\.pdf$/i.test(result.fileName)){var pdf=await pdfjsLib.getDocument({data:bytes}).promise;await renderPdfDocument(pdf,result.fileName);}else if((result.mimeType||'').indexOf('image/')===0){byId('previewTitle').textContent=result.fileName;byId('previewBody').innerHTML='<img src="data:'+attr(result.mimeType)+';base64,'+result.base64+'" style="max-width:100%;display:block;margin:auto">';openPreview();}else{downloadResult(result);}}catch(error){handleError(error);}}
+  async function renderPdfDocument(pdf,title,forPrint){var body=byId('previewBody');body.innerHTML='';byId('previewTitle').textContent=title;openPreview();var width=forPrint?1240:Math.max(300,Math.floor(window.innerWidth*.4)-40);for(var p=1;p<=pdf.numPages;p+=1){var page=await pdf.getPage(p),base=page.getViewport({scale:1}),viewport=page.getViewport({scale:width/base.width}),label=document.createElement('div'),canvas=document.createElement('canvas');label.className='preview-page-label';label.textContent='หน้า '+p+' / '+pdf.numPages;canvas.width=viewport.width;canvas.height=viewport.height;body.appendChild(label);body.appendChild(canvas);await page.render({canvasContext:canvas.getContext('2d'),viewport:viewport}).promise;}}
+  function resetBundlePreview(){
+    var printButton=byId('printPreviewButton');
+    if(printButton){printButton.classList.add('hidden');printButton.onclick=null;}
+  }
+  function openPreview(){byId('documentPreview').classList.add('open');byId('documentPreview').setAttribute('aria-hidden','false');}
+  function closePreview(){resetBundlePreview();byId('documentPreview').classList.remove('open');byId('documentPreview').setAttribute('aria-hidden','true');}
+  function downloadResult(result){var binary=atob(result.base64),bytes=new Uint8Array(binary.length);for(var i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i);var url=URL.createObjectURL(new Blob([bytes],{type:result.mimeType||'application/octet-stream'})),a=document.createElement('a');a.href=url;a.download=result.fileName;a.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);}
+
+  function openMaster(record){record=record||{};openModal({title:(record.id?'แก้ไข ':'เพิ่ม ')+MASTER_LABELS[state.masterType],body:'<div class="form-grid">'+inputField('รหัส (เว้นว่าง = สร้างอัตโนมัติ)','code','text',record.code||'')+inputField('ชื่อ','name','text',record.name||'',true)+(state.masterType==='settings'?inputField('ค่า','value','text',record.value||'',true):'')+textareaField('รายละเอียด','description',record.description||'',false,'wide')+'</div>',onSubmit:async function(data){if(record.id)data.id=record.id;await rpc('saveMasterRecord',state.token,state.masterType,data);closeModal(true);await afterMutation('บันทึก Master Data แล้ว');}});}
+  /**
+   * เพิ่ม Master Data จากหน้าอื่นโดยไม่ล้างฟอร์มที่กำลังกรอก
+   * ต่างจาก openMaster() ตรงที่ไม่เรียก afterMutation() ซึ่งจะโหลด bootstrap ใหม่และ render ทั้งหน้า
+   */
+  function openQuickMaster(type,onSaved){openModal({title:'เพิ่ม '+(MASTER_LABELS[type]||type),body:'<div class="form-grid">'+inputField('รหัส (เว้นว่าง = สร้างอัตโนมัติ)','code','text','')+inputField('ชื่อ','name','text','',true)+textareaField('รายละเอียด','description','',false,'wide')+'</div>',onSubmit:async function(data){var saved=await rpc('saveMasterRecord',state.token,type,data);state.masters=await rpc('getMasterData',state.token);closeModal(true);if(onSaved)onSaved(saved);toast('เพิ่ม '+(MASTER_LABELS[type]||type)+' แล้ว','success');}});}
+  async function openEofficeRequest(jobId){
+    var job=findJob(jobId); if(!job)return;
+    try{
+      var d=await rpc('getEofficeRequestDefaults',state.token,jobId);
+      openModal({
+        title:'สร้างคำร้อง / '+job.jobNo,
+        submitLabel:d.alreadyIssued?'ออกคำร้องใหม่':'สร้างคำร้อง',
+        body:(d.alreadyIssued
+            ?'<div class="notice">งานนี้เคยออกคำร้องเลขที่ <b>'+esc(d.requestNo)+'</b> แล้ว การสร้างใหม่จะ<b>ใช้เลขเดิม</b> ไม่กินเลขใหม่ และเก็บเป็นไฟล์เวอร์ชันถัดไป</div>'
+            :'<div class="notice">ระบบจะรันเลขที่คำร้องต่อจากเลขล่าสุดให้อัตโนมัติ</div>')+
+          '<div class="form-grid">'+
+          inputField('วันที่คำร้อง','requestDate','date',d.requestDate,true)+
+          inputField('ใบขนสินค้าขาเข้า เลขที่','entryNo','text',d.entryNo,true)+
+          inputField('จำนวนหีบห่อ','packageCount','text',d.packageCount,true)+
+          inputField('น้ำหนักสุทธิ','netWeight','text',d.netWeight,true)+
+          inputField('ราคาของ','goodsValue','text',d.goodsValue,true)+
+          textareaField('ชนิดของ','goodsType',d.goodsType,true,'wide')+
+          '</div>',
+        onSubmit:async function(data){
+          var result=await rpc('createEofficeRequest',state.token,jobId,data);
+          closeModal(true);
+          await afterMutation('สร้างคำร้องเลขที่ '+result.request.requestNo+' แล้ว',jobId);
+        }
+      });
+    }catch(error){handleError(error);}
+  }
+  function openDraftReject(jobId){
+    var job=findJob(jobId); if(!job)return;
+    openModal({title:'ไม่อนุมัติ Draft / '+job.jobNo,submitLabel:'ยืนยันไม่อนุมัติ',submitClass:'danger',
+      body:'<div class="form-stack">'+textareaField('เหตุผลที่ตีกลับ','reason','',true)+'</div>',
+      onSubmit:async function(data){
+        await rpc('rejectCustomsDraft',state.token,jobId,data.reason);
+        closeModal(true);
+        await afterMutation('ตีกลับ Draft แล้ว',jobId);
+      }});
+  }
+  function base64ToBytes(base64){var binary=atob(base64),bytes=new Uint8Array(binary.length);for(var i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i);return bytes;}
+  function bytesToBase64(bytes){var chunk=0x8000,parts=[];for(var i=0;i<bytes.length;i+=chunk)parts.push(String.fromCharCode.apply(null,bytes.subarray(i,i+chunk)));return btoa(parts.join(''));}
+
+  /**
+   * รวมชุด E-Office
+   *
+   * ฝั่งเซิร์ฟเวอร์แปลงทุกชิ้นเป็น PDF ให้แล้ว (รวมถึงดึงเฉพาะขอบเขตการพิมพ์ของ Final Invoice ที่เป็น Excel)
+   * ส่วนการต่อไฟล์ทำที่นี่เพราะ Apps Script ไม่มี API รวม PDF
+   */
+  async function mergeEofficeBundle(jobId){
+    if(typeof PDFLib==='undefined')return toast('โหลดตัวรวมไฟล์ไม่สำเร็จ กรุณารีเฟรชหน้าเว็บ','error');
+    var job=findJob(jobId); if(!job)return;
+    toast('กำลังเตรียมไฟล์...','');
+    try{
+      var bundle=await rpc('getEofficeBundle',state.token,jobId);
+      if(!bundle.parts.length)return toast('ไม่มีไฟล์ให้รวมเลย','error');
+
+      var merged=await PDFLib.PDFDocument.create();
+      for(var i=0;i<bundle.parts.length;i+=1){
+        var source=await PDFLib.PDFDocument.load(base64ToBytes(bundle.parts[i].base64));
+        var pages=await merged.copyPages(source,source.getPageIndices());
+        pages.forEach(function(page){merged.addPage(page);});
+      }
+      var bytes=await merged.save();
+
+      // เก็บกลับเข้า Drive ของงาน แล้วค่อยเปิดดู
+      await rpc('saveEofficeBundle',state.token,jobId,bytesToBase64(bytes));
+      await showBundlePreview(bytes,bundle);
+      if(bundle.missing.length)toast('รวมแล้ว แต่ขาด: '+bundle.missing.join(', '),'error');
+      else toast('รวมชุด E-Office แล้ว ('+bundle.parts.length+' ไฟล์)','success');
+      await refreshAll(true);
+    }catch(error){handleError(error);}
+  }
+
+  /** เปิดชุดที่เคยรวมไว้แล้วจาก Drive ไม่ต้องรวมใหม่ทุกครั้งที่อยากพิมพ์ */
+  async function printStoredBundle(fileId){
+    try{
+      toast('กำลังเปิดไฟล์ชุด...','');
+      var result=await rpc('downloadJobFile',state.token,fileId);
+      await showBundlePreview(base64ToBytes(result.base64),{suggestedName:result.fileName,parts:[]});
+    }catch(error){handleError(error);}
+  }
+  /**
+   * แสดงชุดที่รวมแล้ว
+   *
+   * เดิมใช้ iframe ชี้ไป blob: URL แต่ Apps Script เสิร์ฟหน้าเว็บอยู่ใน iframe ที่ถูก sandbox
+   * Chrome จึงบล็อก blob: ที่ซ้อนเข้าไปอีกชั้น ("หน้านี้ถูกบล็อกโดย Chrome")
+   * จึงเปลี่ยนมาเรนเดอร์ทุกหน้าเป็น canvas ด้วย pdf.js แทน ซึ่งเป็น DOM ธรรมดา ไม่ติด sandbox
+   * และสั่งพิมพ์ได้ตรง ๆ ด้วย @media print
+   */
+  async function showBundlePreview(bytes,bundle){
+    var partLabels=(bundle.parts||[]).map(function(p){return p.label;}).join(' + ');
+    var title=bundle.suggestedName+(partLabels?' · '+partLabels:'');
+    var pdf=await pdfjsLib.getDocument({data:bytes}).promise;
+    await renderPdfDocument(pdf,title,true);
+    var printButton=byId('printPreviewButton');
+    printButton.classList.remove('hidden');
+    printButton.onclick=function(){window.print();};
+  }
+  function openUser(){openModal({title:'เพิ่มผู้ใช้งาน',body:'<div class="form-grid">'+inputField('Username','username','text','',true)+inputField('ชื่อที่แสดง','displayName','text','',true)+selectField('Role','role','<option>PAINT</option><option>FAH</option><option>NAMKANG</option><option>ADMIN</option>')+'</div>',onSubmit:async function(data){var result=await rpc('adminCreateUser',state.token,data);closeModal(true);await afterMutation('สร้างผู้ใช้แล้ว');showTemporaryPassword(result.temporaryPassword);}});}
+  function showTemporaryPassword(password){openModal({title:'รหัสผ่านชั่วคราว',submitLabel:'ปิด',body:'<div class="notice">ผู้ใช้ต้องเปลี่ยนรหัสนี้เมื่อเข้าสู่ระบบครั้งแรก</div><label class="field"><span>Temporary password</span><input value="'+attr(password)+'" readonly></label>',onSubmit:function(){closeModal(true);}});}
+  function openPassword(locked){openModal({title:'เปลี่ยนรหัสผ่าน',locked:locked,body:'<div class="form-stack">'+inputField('รหัสผ่านปัจจุบัน','currentPassword','password','',true)+inputField('รหัสผ่านใหม่','newPassword','password','',true)+inputField('ยืนยันรหัสผ่านใหม่','confirmPassword','password','',true)+'</div>',onSubmit:async function(data){if(data.newPassword!==data.confirmPassword)throw new Error('VALIDATION|รหัสผ่านใหม่ไม่ตรงกัน');await rpc('authChangePassword',state.token,data.currentPassword,data.newPassword);closeModal(true);await refreshAll(true);toast('เปลี่ยนรหัสผ่านแล้ว','success');}});}
+  function openModal(config){state.modalSubmit=config.onSubmit;state.modalLocked=Boolean(config.locked);byId('modalTitle').textContent=config.title||'บันทึกข้อมูล';byId('modalBody').innerHTML=config.body||'';byId('submitModalButton').textContent=config.submitLabel||'บันทึก';byId('submitModalButton').className='button '+(config.submitClass||'primary');byId('closeModalButton').classList.toggle('hidden',state.modalLocked);byId('cancelModalButton').classList.toggle('hidden',state.modalLocked);byId('modalBackdrop').classList.remove('hidden');}
+  function closeModal(force){if(state.modalLocked&&!force)return;byId('modalBackdrop').classList.add('hidden');byId('modalBody').innerHTML='';state.modalSubmit=null;state.modalLocked=false;byId('closeModalButton').classList.remove('hidden');byId('cancelModalButton').classList.remove('hidden');}
+  async function submitModal(event){event.preventDefault();if(!state.modalSubmit||state.busy)return;var form=event.currentTarget,data=formObject(form);state.busy=true;setFormBusy(form,true);try{await state.modalSubmit(data,form);}catch(error){handleError(error);}finally{state.busy=false;setFormBusy(form,false);}}
+
+  async function afterMutation(message,jobId){var selected=jobId||state.selectedJobId;var data=await rpc('getBootstrapData',state.token);applyBootstrap(data);toast(message,'success');if(selected)await openDrawer(selected,true);}
+  function rpc(name){var args=Array.prototype.slice.call(arguments,1);return new Promise(function(resolve,reject){var runner=google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);runner[name].apply(runner,args);});}
+  function uploadFormRpc(name,form){return new Promise(function(resolve,reject){var runner=google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);runner[name](form);});}
+  function handleError(error){var raw=String(error&&error.message?error.message:error||'เกิดข้อผิดพลาด');if(/UNAUTHENTICATED|SESSION_EXPIRED|ACCOUNT_DISABLED/.test(raw)){state.token='';sessionStorage.removeItem('kolaSession');showLogin();}toast(errorMessage(error),'error');}
+  function errorMessage(error){var raw=String(error&&error.message?error.message:error||'เกิดข้อผิดพลาด'),i=raw.indexOf('|');return (i>=0?raw.slice(i+1):raw.replace(/^Exception:\s*/,''));}
+  function showLoading(){byId('loadingScreen').classList.remove('hidden');byId('loginView').classList.add('hidden');byId('appShell').classList.add('hidden');}
+  function showLogin(){stopHubPolling();closeModal(true);closeDrawer();byId('loadingScreen').classList.add('hidden');byId('appShell').classList.add('hidden');byId('loginView').classList.remove('hidden');}
+  function showApp(){byId('loadingScreen').classList.add('hidden');byId('loginView').classList.add('hidden');byId('appShell').classList.remove('hidden');}
+  function toast(message,type){var el=document.createElement('div');el.className='toast '+(type||'');el.textContent=message;byId('toastRegion').appendChild(el);setTimeout(function(){el.remove();},4300);}
+
+  function tableHtml(headers,rows,empty){return '<div class="table-wrap"><table class="data-table queue-table"><thead><tr>'+headers.map(function(h){return '<th>'+esc(h)+'</th>';}).join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+headers.length+'" class="empty-state">'+esc(empty||'ไม่มีรายการ')+'</td></tr>')+'</tbody></table></div>';}
+  function jobTr(job,cells){return '<tr class="'+(job.hasInvoiceAlert?'invoice-alert':'')+'" data-open-job="'+attr(job.id)+'">'+cells.map(function(c){var value=String(c===undefined||c===null?'-':c);var trusted=/<(?:span|button|div)\b[^>]*(?:class|data-action)=/i.test(value);return '<td>'+(trusted?value:esc(value))+'</td>';}).join('')+'</tr>';}
+  function statusBadge(status){var cls=/REJECTED/.test(status)?'rejected':/WAITING|DRAFTED/.test(status)?'pending':/APPROVED|FILED|RELEASED|SENT/.test(status)?'approved':'';return '<span class="badge '+cls+'">'+esc(statusLabel(status))+'</span>';}
+  function statusChip(value){return '<span class="badge '+(value==='ACTIVE'?'approved':'rejected')+'">'+esc(value)+'</span>';}
+  function statusLabel(status){return STATUS_LABELS[status]||status||'-';}
+  function surrenderLabel(status){return {PENDING:'รอตรวจ Surrender',CLEARED:'Surrender เคลียร์แล้ว',ISSUE:'Surrender มีปัญหา'}[status]||status||'รอตรวจ Surrender';}
+  function approvalStatus(job,type){var a=job.approvals&&job.approvals[type];return a?a.status:'';}
+  function fileChip(job,category){var f=job.currentFiles&&job.currentFiles[category];return f?'<span class="badge approved">'+esc(f.fileName)+'</span>':'<span class="badge pending">รอดำเนินการ</span>';}
+  function invoiceAlertCell(job){var f=job.currentFiles&&job.currentFiles.INVOICE_GOODS;if(!f)return '<span class="badge pending">รอ NAMKANG</span>';if(job.hasInvoiceAlert)return '<span class="badge rejected">เปลี่ยนใหม่</span> <button class="button tiny secondary" data-action="preview-file" data-id="'+f.id+'">Review</button> <button class="button tiny namkang" data-action="ack" data-id="'+f.id+'">รับทราบ</button>';return '<span class="badge approved">'+esc(f.fileName)+'</span>';}
+  function fileCount(job){return Object.keys(job.currentFiles||{}).length;}
+  function fileLabel(category){return {ARRIVAL_NOTICE:'Arrival Notice',BL:'Bill of Lading',INVOICE_DO:'DO Invoice',INVOICE_GOODS:'OG Invoice & Packing list',SURRENDER:'Surrender BL',FINAL_INVOICE:'FN Invoice & Packing list',EOFFICE:'ชุดตรวจปล่อย (E-Office)'}[category]||category;}
+  function drawerSection(title,content){return '<section class="drawer-section"><div class="drawer-section-title">'+esc(title)+'</div>'+content+'</section>';}
+  function kv(key,value,html){return '<div class="key">'+esc(key)+'</div><div>'+(html?value:esc(value||'-'))+'</div>';}
+  function masterName(type,id){if(!id)return '-';var row=(state.masters[type]||[]).find(function(x){return String(x.id)===String(id);});return row?row.name:'-';}
+  function masterIdByName(type,name){var n=normalize(name),rows=state.masters[type]||[],row=rows.find(function(x){return normalize(x.name)===n;});return row?row.id:'';}
+  function setMasterSelect(id,type,name){var el=byId(id),match=masterIdByName(type,name);if(el&&match)el.value=match;}
+  function masterOptions(type,selected){return '<option value="">— เลือกจาก Master Data —</option>'+(state.masters[type]||[]).filter(function(x){return asBool(x.isActive);}).map(function(x){return '<option value="'+attr(x.id)+'"'+(String(x.id)===String(selected||'')?' selected':'')+'>'+esc((x.code?x.code+' · ':'')+x.name)+'</option>';}).join('');}
+  function masterList(type){return (state.masters[type]||[]).filter(function(x){return asBool(x.isActive);});}
+  function masterByCode(type,code){var want=String(code||'').toUpperCase();return masterList(type).filter(function(x){return String(x.code||'').toUpperCase()===want;})[0]||null;}
+  function masterIdByCode(type,code){var m=masterByCode(type,code);return m?m.id:'';}
+  // dropdown ปกติ (ค่าเป็น id) พร้อมค่าตั้งต้นอ้างอิงด้วยรหัส ไม่ผูกกับ id ที่เปลี่ยนได้
+  function masterOptionsDefault(type,selected,defaultCode){return masterOptions(type,selected||masterIdByCode(type,defaultCode));}
+  // dropdown ที่เก็บ "ชื่อ" เป็นค่า ใช้กับ Container Type / Package ที่บันทึกลงชีตเป็นข้อความ
+  function masterNameOptions(type,selected,defaultCode){var fallback=masterByCode(type,defaultCode);var value=selected||(fallback?fallback.name:'');return masterList(type).map(function(x){return '<option value="'+attr(x.name)+'"'+(String(x.name)===String(value)?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');}
+  // ค่าตั้งต้นที่ผู้ดูแลแก้ได้จากหน้า Master Data
+  function settingValue(code,fallback){var m=masterByCode('settings',code);var v=m?String(m.value===undefined||m.value===null?'':m.value).trim():'';return v===''?fallback:v;}
+  function findJob(id){return state.jobs.find(function(j){return j.id===id;});}
+  function extractField(label,control,wide){return '<div class="extract-field '+(wide?'wide':'')+'"><div class="extract-label">'+esc(label)+'</div><div class="extract-control">'+control+'</div></div>';}
+  function inputHtml(name,id,type,strong,value){return '<input id="'+id+'" name="'+name+'" type="'+(type||'text')+'" '+(strong?'style="font-weight:700"':'')+(value===undefined||value===''?'':' value="'+attr(value)+'"')+'>';}
+  function selectHtml(name,options,id){return '<select id="'+id+'" name="'+name+'">'+options+'</select>';}
+  function inputField(label,name,type,value,required){return '<label class="field"><span>'+esc(label)+'</span><input name="'+attr(name)+'" type="'+(type||'text')+'" value="'+attr(value||'')+'"'+(required?' required':'')+'></label>';}
+  function textareaField(label,name,value,required,className){return '<label class="field '+(className||'')+'"><span>'+esc(label)+'</span><textarea name="'+attr(name)+'"'+(required?' required':'')+'>'+esc(value||'')+'</textarea></label>';}
+  function selectField(label,name,options){return '<label class="field"><span>'+esc(label)+'</span><select name="'+attr(name)+'">'+options+'</select></label>';}
+  function setValue(id,value){var el=byId(id);if(el&&value!==undefined&&value!==null&&String(value).trim())el.value=value;}
+  function formObject(form){var out={};new FormData(form).forEach(function(value,key){if(!(value instanceof File))out[key]=value;});return out;}
+  function setFormBusy(form,busy){form.setAttribute('aria-busy',busy?'true':'false');Array.prototype.forEach.call(form.querySelectorAll('button'),function(b){b.disabled=busy;});}
+  function formatDate(value){if(!value)return '-';var d=new Date(value);return isNaN(d)?String(value):new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}).format(d);}
+  function formatDateTime(value){if(!value)return '-';var d=new Date(value);return isNaN(d)?String(value):new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);}
+  function addDays(iso,days){if(!iso)return '';var d=new Date(iso);if(isNaN(d.getTime()))return '';d.setDate(d.getDate()+(Number(days)||0));return d.toISOString().slice(0,10);}
+  function dateValue(value){if(!value)return '';var d=new Date(value);return isNaN(d)?String(value).slice(0,10):d.toISOString().slice(0,10);}
+  function normalize(value){return String(value||'').toLowerCase().replace(/[^a-z0-9\u0E00-\u0E7F]/g,'');}
+  function asBool(value){return value===true||value==='true'||value===1||value==='1';}
+  function byId(id){return document.getElementById(id);}
+  function esc(value){return String(value===undefined||value===null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function attr(value){return esc(value);}
+}());
+</script>

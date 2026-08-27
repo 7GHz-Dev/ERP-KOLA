@@ -1,0 +1,164 @@
+<style>
+  :root {
+    --navy: #5645d4;
+    --navy-2: #4534b3;
+    --sidebar: #0a1530;
+    --canvas: #f6f5f4;
+    --surface: #ffffff;
+    --line: #e5e3df;
+    --muted: #787671;
+    --paint: #0075de;
+    --nam: #1aae39;
+    --fah: #dd5b00;
+    --red: #e03131;
+  }
+  .app-shell { grid-template-columns: 256px minmax(0, 1fr); }
+  .sidebar { width: 256px; background: var(--sidebar); }
+  .app-body { grid-column: 2; }
+  .sidebar-brand { height: 66px; }
+  .sidebar-brand .brand-mark { color: var(--navy); background: #fff; border-radius: 8px; }
+  .main-nav { gap: 1px; padding: 8px; overflow-y: auto; }
+  .nav-group-title {
+    display: flex; align-items: center; gap: 7px; padding: 12px 8px 5px;
+    color: #a4a097; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  }
+  .nav-group-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .nav-button { min-height: 36px; margin: 1px 0; padding: 6px 10px; font-size: 12px; }
+  .nav-button.active { border-left: 0; background: var(--navy); }
+  .nav-count { margin-left: auto; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.15); font-size: 10px; }
+  .topbar { height: 66px; }
+  .content { max-width: 1400px; padding: 24px; }
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+  .page-head h2 { margin: 0; font-size: 22px; font-weight: 650; }
+  .page-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+  .dept-tag { display: inline-flex; padding: 3px 9px; margin-right: 7px; border-radius: 6px; color: #fff; font-size: 10px; vertical-align: 3px; }
+  .dept-tag.paint { background: var(--paint); }
+  .dept-tag.fah { background: var(--fah); }
+  .dept-tag.namkang { background: var(--nam); }
+  .card-panel { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(15,15,15,.05); }
+  .section-title { display: flex; align-items: center; gap: 7px; margin: 0 0 12px; font-size: 14px; font-weight: 700; }
+  .notice { padding: 10px 13px; margin-bottom: 12px; border-radius: 7px; color: #523410; background: #fef7d6; font-size: 12px; }
+  .intake-layout { width: min(780px, 100%); }
+  .drop-zone {
+    display: block; padding: 14px; margin-bottom: 8px; border: 1px dashed #aaa69f;
+    border-radius: 8px; color: var(--muted); background: #fafaf9; text-align: center; cursor: pointer;
+  }
+  .drop-zone.dragging { border-color: var(--navy); background: #f0eefc; }
+  .drop-zone strong { color: var(--navy); }
+  .read-status { min-height: 20px; margin-bottom: 12px; color: var(--muted); font-size: 11px; font-weight: 700; }
+  .read-status.ok { color: #168535; }
+  .read-status.error { color: var(--red); }
+  .extract-grid { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
+  .extract-field { display: grid; grid-template-columns: 126px minmax(0, 1fr); min-height: 43px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .extract-field.wide { grid-column: 1 / -1; }
+  .extract-label { display: flex; align-items: center; padding: 7px 9px; border-right: 1px solid var(--line); color: #5d5b54; background: #f6f5f4; font-size: 10px; font-weight: 700; }
+  .extract-control { min-width: 0; padding: 4px 8px; background: #fff; }
+  .extract-control input, .extract-control select { min-height: 33px; padding: 5px 7px; border-radius: 6px; font-size: 12px; }
+  .extract-control.inline { display: flex; align-items: center; gap: 6px; }
+  .repeat-list { display: grid; gap: 5px; }
+  .repeat-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(140px, 1fr) 32px; gap: 5px; }
+  .repeat-row.container { grid-template-columns: minmax(180px, 1fr) minmax(90px, .5fr) minmax(100px, .6fr) 32px; }
+  .repeat-row .icon-button { width: 32px; height: 32px; color: #fff; background: var(--red); font-size: 16px; }
+  /* แถว BL มีปุ่ม + เพิ่ม Shipper แทรกหลัง dropdown จึงเป็น 4 คอลัมน์ */
+  .repeat-row { grid-template-columns: minmax(150px, 1fr) 32px minmax(140px, 1fr) 32px; }
+  .repeat-row .icon-button.add-master { background: var(--blue); }
+  .repeat-row .icon-button.add-master:hover { background: var(--navy); }
+  /* QUANTITY = ช่องตัวเลข + dropdown หน่วยนับ */
+  .qty-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(88px, .7fr); gap: 5px; }
+  /* ตารางงานคงค้าง: หัวคอลัมน์กดเรียงลำดับได้ + แถวช่องค้นหา */
+  .pending-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  .pending-table th.sortable:hover { background: var(--navy-2); }
+  .pending-table th.col-no { width: 44px; text-align: center; }
+  .pending-table tbody td:first-child { text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pending-table tr.filter-row th { padding: 3px 4px; background: var(--canvas); }
+  .pending-table .col-filter { width: 100%; min-height: 26px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; font-size: 11px; background: #fff; color: var(--ink); }
+  .pending-table .col-filter:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+  .small-add { min-height: 30px; padding: 4px 9px; margin-top: 5px; font-size: 11px; }
+  .form-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .stage-tabs, .sub-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+  .stage-tab { min-height: 36px; padding: 7px 12px; border: 1px solid #c8c4be; border-radius: 7px; color: #444; background: #fff; }
+  .stage-tab.active { color: #fff; border-color: var(--navy); background: var(--navy); }
+  .stage-tab small { opacity: .7; }
+  .queue-table { min-width: 1050px; }
+  .queue-table th { cursor: default; letter-spacing: .7px; }
+  .queue-table td { height: 52px; }
+  .queue-table tr.invoice-alert { background: #fdebec; box-shadow: inset 4px 0 #e03131; }
+  .row-actions { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .button.paint { color: #fff; background: var(--paint); }
+  .button.namkang { color: #fff; background: var(--nam); }
+  .button.fah { color: #fff; background: var(--fah); }
+  .button.red { color: #fff; background: var(--red); }
+  .button.tiny { min-height: 30px; padding: 4px 9px; font-size: 11px; }
+  .source-badge { display: inline-flex; padding: 3px 8px; border-radius: 999px; color: #4d3ea8; background: #ebe8fb; font-size: 10px; font-weight: 700; }
+  .metrics.mockup-metrics { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+  .document-preview {
+    position: fixed; inset: 0 0 0 auto; z-index: 80; width: 40vw; min-width: 430px;
+    display: flex; flex-direction: column; background: #37352f; box-shadow: -20px 0 44px rgba(0,0,0,.28);
+    transform: translateX(105%); transition: transform .2s ease;
+  }
+  .document-preview.open { transform: translateX(0); }
+  .preview-header { min-height: 48px; display: flex; align-items: center; padding: 8px 12px; color: #fff; background: var(--sidebar); font-weight: 700; }
+  .preview-header .icon-button { margin-left: auto; color: #fff; }
+  .preview-body { flex: 1; overflow: auto; padding: 12px; }
+  /* ปุ่มพิมพ์ต้องชิดขวาคู่กับปุ่มปิด ไม่ติดกับชื่อไฟล์ */
+  .preview-header #printPreviewButton { margin-left: auto; }
+  .preview-header #printPreviewButton + .icon-button { margin-left: 8px; }
+  /* iframe ต้องกำหนดความสูงเอง เพราะ height:100% ใน flex child จะยุบ */
+  .preview-body iframe { width: 100%; height: 100%; min-height: 72vh; border: 0; background: #fff; }
+  .preview-body canvas { display: block; width: 100%; height: auto; margin: 0 auto 12px; border-radius: 3px; background: #fff; box-shadow: 0 10px 28px rgba(0,0,0,.34); }
+  .preview-page-label { margin: 5px 0; color: #ccc; font-size: 10px; text-align: center; }
+
+  /* สั่งพิมพ์: ซ่อนทั้งแอป เหลือเฉพาะหน้ากระดาษในแผงตัวอย่าง */
+  @media print {
+    @page { size: A4; margin: 8mm; }
+    body * { visibility: hidden !important; }
+    #documentPreview, #documentPreview * { visibility: visible !important; }
+    #documentPreview {
+      position: static !important; transform: none !important;
+      width: 100% !important; min-width: 0 !important;
+      background: #fff !important; box-shadow: none !important; display: block !important;
+    }
+    .preview-header { display: none !important; }
+    .preview-body { overflow: visible !important; height: auto !important; padding: 0 !important; }
+    .preview-page-label { display: none !important; }
+    .preview-body canvas {
+      width: 100% !important; height: auto !important;
+      margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+      break-after: page; page-break-after: always;
+    }
+    .preview-body canvas:last-child { break-after: auto; page-break-after: auto; }
+  }
+  .preview-empty { padding: 35px; color: #aaa; text-align: center; }
+  .job-drawer { width: 38vw; min-width: 520px; max-width: 98vw; }
+  .drawer-header { color: #fff; background: var(--sidebar); border-bottom: 0; }
+  .drawer-header small { color: #aab5ca; }
+  .drawer-header .icon-button { color: #fff; }
+  .drawer-nav { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+  .drawer-nav .button { min-width: 34px; color: #fff; border-color: rgba(255,255,255,.24); background: rgba(255,255,255,.1); }
+  .drawer-section { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .drawer-section-title { margin-bottom: 9px; padding-bottom: 5px; border-bottom: 1px solid var(--line); font-weight: 750; }
+  .drawer-kv { display: grid; grid-template-columns: 155px minmax(0, 1fr); gap: 8px 12px; font-size: 13px; line-height: 1.55; }
+  .drawer-kv .key { color: var(--muted); font-weight: 600; }
+  .container-box { padding: 8px 11px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+  .container-line { padding: 4px 0; font-family: Consolas, monospace; font-weight: 700; }
+  .document-line { display: grid; grid-template-columns: 175px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #efedea; }
+  .document-line:last-child { border-bottom: 0; }
+  .document-line .label { color: var(--muted); font-size: 11px; font-weight: 700; }
+  .timeline-list { padding-left: 16px; border-left: 2px solid var(--line); }
+  .timeline-item { position: relative; padding: 0 0 14px 7px; }
+  .timeline-item::before { content: ''; position: absolute; top: 3px; left: -23px; width: 11px; height: 11px; border: 2px solid #fff; border-radius: 50%; background: var(--nam); }
+  .timeline-item span { display: block; color: var(--muted); font-size: 10px; }
+  .master-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 14px; }
+  .master-menu { display: grid; align-content: start; gap: 4px; }
+  .master-menu button { min-height: 38px; border: 0; border-radius: 5px; padding: 7px 10px; background: transparent; text-align: left; }
+  .master-menu button.active { color: #fff; background: var(--navy); }
+  @media (max-width: 900px) {
+    .app-shell { display: block; }
+    .extract-grid { grid-template-columns: 1fr; }
+    .extract-field.wide { grid-column: auto; }
+    .metrics.mockup-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .document-preview { width: 100vw; min-width: 0; }
+    .job-drawer { width: 100vw; min-width: 0; }
+    .master-layout { grid-template-columns: 1fr; }
+  }
+</style>

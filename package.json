@@ -1,0 +1,26 @@
+{
+  "name": "kola-import-erp",
+  "version": "1.1.0",
+  "private": true,
+  "description": "KOLA Import ERP - Google Apps Script backend + Sheets DB + Drive storage",
+  "scripts": {
+    "test": "node test/gas-core.test.js",
+    "build:preview": "node test/build-preview.js",
+    "dev": "node scripts/dev-server.js",
+    "clasp:login": "clasp login",
+    "clasp:push": "clasp push",
+    "clasp:pull": "clasp pull",
+    "clasp:open": "clasp open",
+    "clasp:deploy:prod": "clasp deploy -i AKfycby_OwHSG0ibSa0-eYgMes2ncywxBmzmzSHVU9602WjUfFZosV8z7IdbC7MA3ZxkcLeD -d \"ERP KOLA V.2\"",
+    "clasp:deploy:dev": "clasp deploy -i AKfycbyiY3sI_TkzITZ4Wai5CPek29BOjtPz6vaklrTpv-oCvxyqhZu79O7UeSjbhxVCgLuE -d \"local dev JSON API bridge\"",
+    "release": "clasp push -f && npm run clasp:deploy:prod && npm run clasp:deploy:dev",
+    "clasp:deployments": "clasp deployments",
+    "hub:push": "cd hub && clasp push -f",
+    "hub:deploy": "cd hub && clasp deploy -i AKfycbx_V286F8WtJssO5po0DKtZTZ3uJi7Q4siSf9ize4YWJd-siCx53I8zRL9Exhsiow61 -d \"KOLA Automation Hub\"",
+    "hub:open": "cd hub && clasp open",
+    "hub:release": "npm run hub:push && npm run hub:deploy"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}

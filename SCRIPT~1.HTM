@@ -1,0 +1,1017 @@
+<script>
+  (function () {
+    'use strict';
+
+    var state = {
+      token: sessionStorage.getItem('kolaSession') || '',
+      user: null,
+      jobs: [],
+      masters: {},
+      users: [],
+      dashboard: {},
+      view: 'overview',
+      masterType: 'shippers',
+      selectedJobId: '',
+      selectedDetail: null,
+      modalSubmit: null,
+      modalLocked: false,
+      busy: false
+    };
+
+    var STATUS_LABELS = {
+      BL_ENTERED: 'บันทึก BL แล้ว',
+      WAITING_AN_APPROVAL: 'รออนุมัติ AN',
+      AN_APPROVED: 'AN อนุมัติแล้ว',
+      AN_REJECTED: 'AN ไม่อนุมัติ',
+      WAITING_FN_APPROVAL: 'รออนุมัติ FN',
+      FN_APPROVED: 'FN อนุมัติแล้ว',
+      FN_REJECTED: 'FN ไม่อนุมัติ',
+      CUSTOMS_FILED: 'ยื่นใบขนแล้ว',
+      RELEASED: 'ปล่อยงานแล้ว'
+    };
+
+    var MASTER_CONFIG = {
+      shippers: { label: 'Shipper' },
+      people: { label: 'ผู้รับผิดชอบ' },
+      consignees: { label: 'Consignee' },
+      notify: { label: 'Notify Party' },
+      loadingTypes: { label: 'Loading Type' },
+      ports: { label: 'Port of Discharge' },
+      terminals: { label: 'Port Terminal' },
+      jobTypes: { label: 'Job Type' },
+      users: { label: 'ผู้ใช้งาน' }
+    };
+
+    document.addEventListener('DOMContentLoaded', init);
+
+    function init() {
+      bindStaticEvents();
+      if (state.token) {
+        loadApplication().catch(function () { showLogin(); });
+      } else {
+        showLogin();
+      }
+    }
+
+    function bindStaticEvents() {
+      byId('loginForm').addEventListener('submit', handleLogin);
+      byId('logoutButton').addEventListener('click', handleLogout);
+      byId('passwordButton').addEventListener('click', function () { openPasswordModal(false); });
+      byId('refreshButton').addEventListener('click', refreshAll);
+      byId('menuButton').addEventListener('click', function () {
+        byId('appShell').classList.toggle('menu-open');
+      });
+      byId('mainNav').addEventListener('click', handleNavigation);
+      byId('jobSearch').addEventListener('input', renderJobs);
+      byId('statusFilter').addEventListener('change', renderJobs);
+      byId('newJobButton').addEventListener('click', openNewJobModal);
+      byId('jobsTableBody').addEventListener('click', handleJobTableClick);
+      byId('closeDrawerButton').addEventListener('click', closeDrawer);
+      byId('drawerBackdrop').addEventListener('click', closeDrawer);
+      byId('drawerContent').addEventListener('click', handleDrawerAction);
+      byId('closeModalButton').addEventListener('click', closeModal);
+      byId('cancelModalButton').addEventListener('click', closeModal);
+      byId('modalForm').addEventListener('submit', handleModalSubmit);
+      byId('masterTabs').addEventListener('click', handleMasterTab);
+      byId('masterSearch').addEventListener('input', renderMasterTable);
+      byId('newMasterButton').addEventListener('click', openNewMasterModal);
+      byId('masterTableBody').addEventListener('click', handleMasterAction);
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          if (!state.modalLocked) closeModal();
+          else closeDrawer();
+        }
+      });
+    }
+
+    async function handleLogin(event) {
+      event.preventDefault();
+      var form = event.currentTarget;
+      var error = byId('loginError');
+      error.classList.add('hidden');
+      setFormBusy(form, true);
+      try {
+        var result = await rpc('authLogin', form.username.value, form.password.value);
+        state.token = result.token;
+        sessionStorage.setItem('kolaSession', state.token);
+        form.reset();
+        await loadApplication();
+      } catch (exception) {
+        error.textContent = messageFromError(exception);
+        error.classList.remove('hidden');
+      } finally {
+        setFormBusy(form, false);
+      }
+    }
+
+    async function loadApplication() {
+      showLoading();
+      try {
+        var data = await rpc('getBootstrapData', state.token);
+        applyBootstrap(data);
+        showApp();
+        if (state.user.mustChangePassword) openPasswordModal(true);
+      } catch (error) {
+        clearSession();
+        throw error;
+      }
+    }
+
+    function applyBootstrap(data) {
+      state.user = data.user;
+      state.jobs = data.jobs || [];
+      state.masters = data.masters || {};
+      state.users = data.users || [];
+      state.dashboard = data.dashboard || {};
+      renderNavigation();
+      renderCurrentView();
+      byId('sidebarUserName').textContent = state.user.displayName;
+      byId('sidebarUserRole').textContent = state.user.role;
+    }
+
+    async function refreshAll() {
+      if (state.busy) return;
+      setBusy(true);
+      try {
+        var data = await rpc('getBootstrapData', state.token);
+        applyBootstrap(data);
+        if (state.selectedJobId) await openJobDrawer(state.selectedJobId, true);
+        toast('อัปเดตข้อมูลแล้ว', 'success');
+      } catch (error) {
+        handleRpcError(error);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function handleLogout() {
+      try { await rpc('authLogout', state.token); } catch (ignore) {}
+      clearSession();
+      showLogin();
+    }
+
+    function clearSession() {
+      state.token = '';
+      state.user = null;
+      state.selectedJobId = '';
+      state.selectedDetail = null;
+      sessionStorage.removeItem('kolaSession');
+    }
+
+    function showLoading() {
+      byId('loadingScreen').classList.remove('hidden');
+      byId('loginView').classList.add('hidden');
+      byId('appShell').classList.add('hidden');
+    }
+
+    function showLogin() {
+      closeDrawer();
+      closeModal(true);
+      byId('loadingScreen').classList.add('hidden');
+      byId('appShell').classList.add('hidden');
+      byId('loginView').classList.remove('hidden');
+    }
+
+    function showApp() {
+      byId('loadingScreen').classList.add('hidden');
+      byId('loginView').classList.add('hidden');
+      byId('appShell').classList.remove('hidden');
+    }
+
+    function renderNavigation() {
+      var navItems = [
+        { id: 'overview', label: 'ภาพรวมงาน', roles: null },
+        { id: 'paint', label: 'PAINT', roles: ['PAINT'] },
+        { id: 'fah', label: 'FAH', roles: ['FAH'] },
+        { id: 'namkang', label: 'NAMKANG', roles: ['NAMKANG'] },
+        { id: 'master', label: 'Master Data', roles: ['ADMIN'] }
+      ];
+      var available = navItems.filter(function (item) {
+        return !item.roles || item.roles.some(can);
+      });
+      if (!available.some(function (item) { return item.id === state.view; })) state.view = 'overview';
+      byId('mainNav').innerHTML = available.map(function (item) {
+        return '<button class="nav-button ' + (state.view === item.id ? 'active' : '') +
+          '" type="button" data-view="' + item.id + '">' + escapeHtml(item.label) + '</button>';
+      }).join('');
+    }
+
+    function handleNavigation(event) {
+      var button = event.target.closest('[data-view]');
+      if (!button) return;
+      state.view = button.dataset.view;
+      byId('appShell').classList.remove('menu-open');
+      renderNavigation();
+      renderCurrentView();
+    }
+
+    function renderCurrentView() {
+      var isMaster = state.view === 'master';
+      byId('jobWorkspace').classList.toggle('hidden', isMaster);
+      byId('masterWorkspace').classList.toggle('hidden', !isMaster);
+      if (isMaster) {
+        byId('pageTitle').textContent = 'Master Data';
+        byId('pageSubtitle').textContent = 'ข้อมูลอ้างอิงและสิทธิ์ผู้ใช้งาน';
+        renderMasterTabs();
+        renderMasterTable();
+        return;
+      }
+
+      var labels = {
+        overview: ['ภาพรวมงาน', 'รายการนำเข้าทั้งหมด'],
+        paint: ['PAINT', 'BL, AN/FN และเอกสารงาน'],
+        fah: ['FAH', 'DO, FN และใบขนสินค้า'],
+        namkang: ['NAMKANG', 'ข้อมูลลูกค้า, Invoice และ Release']
+      };
+      var current = labels[state.view] || labels.overview;
+      byId('pageTitle').textContent = current[0];
+      byId('pageSubtitle').textContent = current[1];
+      byId('newJobButton').classList.toggle('hidden', !can('PAINT'));
+      renderMetrics();
+      renderStatusOptions();
+      renderJobs();
+    }
+
+    function renderMetrics() {
+      var d = state.dashboard;
+      var items = [
+        ['งานทั้งหมด', d.total || 0, ''],
+        ['Invoice เปลี่ยน', d.invoiceAlerts || 0, 'alert'],
+        ['รอ AN', d.waitingAN || 0, 'pending'],
+        ['รอ FN', d.waitingFN || 0, 'pending'],
+        ['Draft ใบขน', d.customsDraft || 0, ''],
+        ['ปล่อยงานแล้ว', d.released || 0, 'done']
+      ];
+      byId('metrics').innerHTML = items.map(function (item) {
+        return '<div class="metric ' + item[2] + '"><span>' + escapeHtml(item[0]) +
+          '</span><strong>' + item[1] + '</strong></div>';
+      }).join('');
+    }
+
+    function renderStatusOptions() {
+      var select = byId('statusFilter');
+      var current = select.value;
+      var statuses = [];
+      state.jobs.forEach(function (job) {
+        if (statuses.indexOf(job.status) === -1) statuses.push(job.status);
+      });
+      select.innerHTML = '<option value="">ทุกสถานะ</option>' + statuses.map(function (status) {
+        return '<option value="' + escapeAttr(status) + '">' + escapeHtml(statusLabel(status)) + '</option>';
+      }).join('');
+      select.value = statuses.indexOf(current) !== -1 ? current : '';
+    }
+
+    function renderJobs() {
+      var query = normalize(byId('jobSearch').value);
+      var status = byId('statusFilter').value;
+      var jobs = state.jobs.filter(function (job) {
+        if (status && job.status !== status) return false;
+        if (!query) return true;
+        return normalize([job.jobNo, job.blNo, job.vessel, job.voyage].join(' ')).indexOf(query) !== -1;
+      });
+
+      if (state.view === 'fah') {
+        jobs.sort(function (a, b) { return jobPriorityForFah(b) - jobPriorityForFah(a); });
+      } else if (state.view === 'namkang') {
+        jobs.sort(function (a, b) { return jobPriorityForNamkang(b) - jobPriorityForNamkang(a); });
+      }
+
+      byId('jobsTableBody').innerHTML = jobs.map(jobRowHtml).join('');
+      byId('emptyJobs').classList.toggle('hidden', jobs.length > 0);
+      byId('jobsTableBody').closest('.table-wrap').classList.toggle('hidden', jobs.length === 0);
+    }
+
+    function jobRowHtml(job) {
+      var currentFiles = job.currentFiles || {};
+      var fileCount = Object.keys(currentFiles).length;
+      var documentText = job.hasInvoiceAlert ? 'Invoice เปลี่ยนแล้ว' : fileCount + ' ไฟล์';
+      var documentClass = job.hasInvoiceAlert ? 'alert' : '';
+      return '<tr class="' + (job.hasInvoiceAlert ? 'invoice-alert' : '') + '">' +
+        '<td><span class="job-link">' + escapeHtml(job.jobNo) + '</span>' +
+          (job.hasInvoiceAlert ? '<span class="cell-sub">ต้องรับทราบ Invoice ใหม่</span>' : '') + '</td>' +
+        '<td><strong>' + escapeHtml(job.blNo || '-') + '</strong><span class="cell-sub">' +
+          escapeHtml((job.vessel || '-') + (job.voyage ? ' / ' + job.voyage : '')) + '</span></td>' +
+        '<td>' + escapeHtml(formatDate(job.eta)) + '</td>' +
+        '<td>' + approvalBadge(job.approvals && job.approvals.AN) + '</td>' +
+        '<td>' + approvalBadge(job.approvals && job.approvals.FN) + '</td>' +
+        '<td><span class="badge ' + statusClass(job.status) + '">' + escapeHtml(statusLabel(job.status)) + '</span></td>' +
+        '<td><span class="badge ' + documentClass + '">' + escapeHtml(documentText) + '</span></td>' +
+        '<td class="align-right"><button class="button secondary compact" type="button" data-action="open" data-id="' +
+          escapeAttr(job.id) + '">เปิดงาน</button></td></tr>';
+    }
+
+    function handleJobTableClick(event) {
+      var button = event.target.closest('[data-action="open"]');
+      if (button) openJobDrawer(button.dataset.id);
+    }
+
+    async function openJobDrawer(jobId, silent) {
+      state.selectedJobId = jobId;
+      byId('drawerBackdrop').classList.remove('hidden');
+      byId('jobDrawer').classList.add('open');
+      byId('jobDrawer').setAttribute('aria-hidden', 'false');
+      byId('drawerTitle').textContent = findJob(jobId) ? findJob(jobId).jobNo : 'กำลังโหลด';
+      byId('drawerContent').innerHTML = '<div class="empty-state">กำลังโหลดข้อมูล...</div>';
+      try {
+        state.selectedDetail = await rpc('getJobDetail', state.token, jobId);
+        renderDrawer();
+      } catch (error) {
+        if (!silent) handleRpcError(error);
+        closeDrawer();
+      }
+    }
+
+    function closeDrawer() {
+      byId('drawerBackdrop').classList.add('hidden');
+      byId('jobDrawer').classList.remove('open');
+      byId('jobDrawer').setAttribute('aria-hidden', 'true');
+      state.selectedJobId = '';
+      state.selectedDetail = null;
+    }
+
+    function renderDrawer() {
+      var detail = state.selectedDetail;
+      if (!detail) return;
+      var job = detail.job;
+      byId('drawerTitle').textContent = job.jobNo;
+      var invoice = job.currentFiles && job.currentFiles.INVOICE_GOODS;
+      var warning = job.hasInvoiceAlert && invoice
+        ? '<div class="warning-box"><strong>Invoice Goods ถูกเปลี่ยนเป็นเวอร์ชัน ' + invoice.version + '</strong>' +
+          '<span>เหตุผล: ' + escapeHtml(invoice.changeReason || '-') + '</span></div>' : '';
+      var actions = drawerActionsHtml(detail);
+      var files = (detail.files || []).filter(function (file) { return file.isCurrent; });
+      var filesHtml = files.length ? files.map(function (file) {
+        return '<div class="file-row"><div><strong>' + escapeHtml(file.fileName) + '</strong><span>' +
+          escapeHtml(file.category + ' · v' + file.version + ' · ' + formatDateTime(file.uploadedAt)) +
+          '</span></div><button class="button secondary compact" type="button" data-drawer-action="download" data-id="' +
+          escapeAttr(file.id) + '">ดาวน์โหลด</button></div>';
+      }).join('') : '<span class="cell-sub">ยังไม่มีไฟล์</span>';
+
+      byId('drawerContent').innerHTML = warning +
+        '<section class="detail-section"><h3>ข้อมูลงาน</h3><div class="detail-grid">' +
+          detailItem('BL No.', job.blNo) + detailItem('Vessel / Voyage', (job.vessel || '-') + (job.voyage ? ' / ' + job.voyage : '')) +
+          detailItem('ETA', formatDate(job.eta)) + detailItem('สถานะ', statusLabel(job.status)) +
+          detailItem('Shipper', masterName('shippers', job.shipperId)) + detailItem('Consignee', masterName('consignees', job.consigneeId)) +
+          detailItem('Surrender', job.surrenderStatus || '-') + detailItem('Customs', job.customsStatus || '-') +
+        '</div></section>' +
+        '<section class="detail-section"><h3>ดำเนินการ</h3><div class="action-row">' + actions + '</div></section>' +
+        '<section class="detail-section"><h3>เอกสารปัจจุบัน</h3><div class="file-list">' + filesHtml + '</div></section>' +
+        '<section class="detail-section"><h3>หมายเหตุลูกค้า</h3><div>' + escapeHtml(job.customerNote || '-') + '</div></section>';
+    }
+
+    function drawerActionsHtml(detail) {
+      var job = detail.job;
+      var actions = [];
+      var invoice = job.currentFiles && job.currentFiles.INVOICE_GOODS;
+      var an = job.approvals && job.approvals.AN;
+      var fn = job.approvals && job.approvals.FN;
+
+      if (can('PAINT')) {
+        actions.push(actionButton('ส่งอนุมัติ AN', 'request-an', '', 'primary'));
+        actions.push(actionButton('Final Invoice', 'upload', 'FINAL_INVOICE'));
+        actions.push(actionButton('ส่งอนุมัติ FN', 'request-fn', '', 'primary'));
+        actions.push(actionButton('E-Office', 'upload', 'EOFFICE'));
+        actions.push(actionButton('แก้ไข Job', 'edit-job'));
+      }
+      if (can('NAMKANG')) {
+        if (an && an.status === 'PENDING') {
+          actions.push(actionButton('อนุมัติ AN', 'decision', an.id + '|APPROVED', 'success'));
+          actions.push(actionButton('ไม่อนุมัติ AN', 'decision', an.id + '|REJECTED', 'danger'));
+        }
+        actions.push(actionButton(invoice ? 'เปลี่ยน Invoice Goods' : 'Invoice Goods', 'upload', 'INVOICE_GOODS'));
+        actions.push(actionButton('Surrender', 'upload', 'SURRENDER'));
+        actions.push(actionButton('ข้อมูลลูกค้า', 'customer'));
+        actions.push(actionButton('สถานะ Surrender', 'surrender'));
+        actions.push(actionButton('Release', 'release', '', 'success'));
+      }
+      if (can('FAH')) {
+        if (fn && fn.status === 'PENDING') {
+          actions.push(actionButton('อนุมัติ FN', 'decision', fn.id + '|APPROVED', 'success'));
+          actions.push(actionButton('ไม่อนุมัติ FN', 'decision', fn.id + '|REJECTED', 'danger'));
+        }
+        actions.push(actionButton('Invoice DO', 'upload', 'INVOICE_DO'));
+        actions.push(actionButton('DO Handoff', 'do-handoff'));
+        actions.push(actionButton('Draft ใบขน', 'customs-draft'));
+        actions.push(actionButton('ยื่นใบขน', 'customs-file', '', 'primary'));
+      }
+      if (job.hasInvoiceAlert && invoice && (can('PAINT') || can('FAH'))) {
+        actions.unshift(actionButton('รับทราบ Invoice ใหม่', 'ack', invoice.id, 'danger'));
+      }
+      return actions.join('');
+    }
+
+    function actionButton(label, action, value, style) {
+      return '<button class="button ' + (style || 'secondary') + ' compact" type="button" data-drawer-action="' +
+        escapeAttr(action) + '"' + (value ? ' data-value="' + escapeAttr(value) + '"' : '') + '>' + escapeHtml(label) + '</button>';
+    }
+
+    async function handleDrawerAction(event) {
+      var button = event.target.closest('[data-drawer-action]');
+      if (!button || state.busy || !state.selectedDetail) return;
+      var action = button.dataset.drawerAction;
+      var value = button.dataset.value || button.dataset.id || '';
+      var job = state.selectedDetail.job;
+      try {
+        if (action === 'download') return downloadFile(value);
+        if (action === 'upload') return openUploadModal(job, value);
+        if (action === 'edit-job') return openEditJobModal(job);
+        if (action === 'customer') return openCustomerModal(job);
+        if (action === 'do-handoff') return openDoHandoffModal(state.selectedDetail);
+        if (action === 'customs-draft') return openCustomsDraftModal(state.selectedDetail);
+        if (action === 'customs-file') return openCustomsFileModal(state.selectedDetail);
+        if (action === 'surrender') return openSurrenderModal(job);
+        if (action === 'release') return openReleaseModal(job);
+        if (action === 'decision') {
+          var parts = value.split('|');
+          return openDecisionModal(parts[0], parts[1]);
+        }
+        if (action === 'request-an' || action === 'request-fn') {
+          var type = action === 'request-an' ? 'AN' : 'FN';
+          if (!window.confirm('ยืนยันส่งอนุมัติ ' + type + ' ?')) return;
+          await rpc('requestApproval', state.token, job.id, type);
+          await afterMutation('ส่งอนุมัติ ' + type + ' แล้ว');
+          return;
+        }
+        if (action === 'ack') {
+          if (!window.confirm('ยืนยันว่ารับทราบการเปลี่ยน Invoice แล้ว?')) return;
+          await rpc('acknowledgeInvoiceFile', state.token, value);
+          await afterMutation('รับทราบ Invoice ใหม่แล้ว');
+        }
+      } catch (error) {
+        handleRpcError(error);
+      }
+    }
+
+    function openNewJobModal() {
+      openModal({
+        title: 'สร้าง Job ใหม่',
+        submitLabel: 'สร้าง Job',
+        body: '<div class="form-grid">' +
+          fieldInput('BL No.', 'blNo', '', true) + fieldInput('Vessel', 'vessel', '', true) +
+          fieldInput('Voyage', 'voyage') + fieldInput('ETA', 'eta', '', false, 'date') +
+          fieldInput('ETD', 'etd', '', false, 'date') + fieldSelect('Shipper', 'shipperId', optionsFor('shippers')) +
+          fieldSelect('Loading Type', 'loadingTypeId', optionsFor('loadingTypes')) + fieldSelect('Port', 'portId', optionsFor('ports')) +
+          fieldSelect('Terminal', 'terminalId', optionsFor('terminals')) + fieldSelect('ผู้รับผิดชอบ', 'personId', optionsFor('people')) +
+          fieldSelect('Job Type', 'jobTypeId', optionsFor('jobTypes')) + fieldInput('Container No.', 'containerNo') +
+          fieldInput('Container Type', 'containerType') + fieldInput('Seal No.', 'sealNo') +
+          fieldTextarea('หมายเหตุ', 'customerNote', '', 'wide') + '</div>',
+        onSubmit: async function (data) {
+          data.containers = data.containerNo ? [{
+            containerNo: data.containerNo,
+            containerType: data.containerType,
+            sealNo: data.sealNo
+          }] : [];
+          var job = await rpc('createJob', state.token, data);
+          closeModal(true);
+          await afterMutation('สร้าง ' + job.jobNo + ' แล้ว', job.id);
+        }
+      });
+    }
+
+    function openEditJobModal(job) {
+      openModal({
+        title: 'แก้ไข ' + job.jobNo,
+        body: '<div class="form-grid">' +
+          fieldInput('BL No.', 'blNo', job.blNo, true) + fieldInput('Vessel', 'vessel', job.vessel, true) +
+          fieldInput('Voyage', 'voyage', job.voyage) + fieldInput('ETA', 'eta', dateInputValue(job.eta), false, 'date') +
+          fieldInput('ETD', 'etd', dateInputValue(job.etd), false, 'date') + fieldSelect('Shipper', 'shipperId', optionsFor('shippers', job.shipperId)) +
+          fieldSelect('Loading Type', 'loadingTypeId', optionsFor('loadingTypes', job.loadingTypeId)) +
+          fieldSelect('Port', 'portId', optionsFor('ports', job.portId)) + fieldSelect('Terminal', 'terminalId', optionsFor('terminals', job.terminalId)) +
+          fieldSelect('ผู้รับผิดชอบ', 'personId', optionsFor('people', job.personId)) + fieldSelect('Job Type', 'jobTypeId', optionsFor('jobTypes', job.jobTypeId)) +
+          '</div>',
+        onSubmit: async function (data) {
+          await rpc('updateJobDetails', state.token, job.id, data);
+          closeModal(true);
+          await afterMutation('บันทึก Job แล้ว', job.id);
+        }
+      });
+    }
+
+    function openUploadModal(job, category) {
+      var current = job.currentFiles && job.currentFiles[category];
+      var replacingInvoice = category === 'INVOICE_GOODS' && current;
+      var categoryLabels = {
+        INVOICE_GOODS: 'Invoice Goods', SURRENDER: 'Surrender', FINAL_INVOICE: 'Final Invoice',
+        EOFFICE: 'E-Office', INVOICE_DO: 'Invoice DO'
+      };
+      openModal({
+        title: (current ? 'เปลี่ยนไฟล์ ' : 'อัปโหลด ') + (categoryLabels[category] || category),
+        submitLabel: 'อัปโหลด',
+        body: '<input type="hidden" name="token" value="' + escapeAttr(state.token) + '">' +
+          '<input type="hidden" name="jobId" value="' + escapeAttr(job.id) + '">' +
+          '<input type="hidden" name="category" value="' + escapeAttr(category) + '">' +
+          '<div class="form-stack">' +
+          (replacingInvoice ? '<div class="inline-note">Invoice เวอร์ชันปัจจุบันคือ v' + current.version + ' ระบบจะแจ้งเตือนแถวงานจนกว่าจะมีผู้รับทราบ</div>' : '') +
+          '<label class="field"><span>ไฟล์</span><input type="file" name="fileBlob" required></label>' +
+          (replacingInvoice ? fieldTextarea('เหตุผลที่เปลี่ยนไฟล์', 'changeReason', '', '', true) : '') +
+          fieldTextarea('หมายเหตุ', 'note') + '</div>',
+        onSubmit: async function (data, form) {
+          await uploadForm(form);
+          closeModal(true);
+          await afterMutation('อัปโหลดไฟล์แล้ว', job.id);
+        }
+      });
+    }
+
+    function openDecisionModal(approvalId, decision) {
+      var rejected = decision === 'REJECTED';
+      openModal({
+        title: rejected ? 'ไม่อนุมัติรายการ' : 'อนุมัติรายการ',
+        submitLabel: rejected ? 'ยืนยันไม่อนุมัติ' : 'ยืนยันอนุมัติ',
+        submitClass: rejected ? 'danger' : 'success',
+        body: '<div class="form-stack">' + fieldTextarea(rejected ? 'เหตุผล' : 'หมายเหตุ', 'reason', '', '', rejected) + '</div>',
+        onSubmit: async function (data) {
+          await rpc('decideApproval', state.token, approvalId, decision, data.reason || '');
+          closeModal(true);
+          await afterMutation(rejected ? 'บันทึกไม่อนุมัติแล้ว' : 'อนุมัติแล้ว');
+        }
+      });
+    }
+
+    function openCustomerModal(job) {
+      openModal({
+        title: 'ข้อมูลลูกค้า',
+        body: '<div class="form-grid">' +
+          fieldSelect('Consignee', 'consigneeId', optionsFor('consignees', job.consigneeId)) +
+          fieldSelect('Notify Party', 'notifyPartyId', optionsFor('notify', job.notifyPartyId)) +
+          fieldTextarea('หมายเหตุ', 'customerNote', job.customerNote, 'wide') + '</div>',
+        onSubmit: async function (data) {
+          await rpc('saveCustomerInfo', state.token, job.id, data);
+          closeModal(true);
+          await afterMutation('บันทึกข้อมูลลูกค้าแล้ว', job.id);
+        }
+      });
+    }
+
+    function openDoHandoffModal(detail) {
+      var item = detail.doHandoff || {};
+      var job = detail.job;
+      openModal({
+        title: 'DO Handoff',
+        body: '<div class="form-grid">' +
+          fieldInput('ETA Official', 'etaOfficial', dateInputValue(item.etaOfficial || job.eta), false, 'date') +
+          fieldSelect('Port', 'portId', optionsFor('ports', item.portId || job.portId)) +
+          fieldSelect('Terminal', 'terminalId', optionsFor('terminals', item.terminalId || job.terminalId)) +
+          fieldInput('Partner', 'partnerName', item.partnerName) + fieldTextarea('หมายเหตุ', 'note', item.note, 'wide') + '</div>',
+        onSubmit: async function (data) {
+          await rpc('saveDoHandoff', state.token, job.id, data);
+          closeModal(true);
+          await afterMutation('บันทึก DO Handoff แล้ว', job.id);
+        }
+      });
+    }
+
+    function openCustomsDraftModal(detail) {
+      var entry = detail.customsEntry || {};
+      var job = detail.job;
+      openModal({
+        title: 'Draft ใบขน',
+        body: '<div class="form-grid">' + fieldInput('Entry No.', 'entryNo', entry.entryNo) +
+          fieldInput('Declaration No.', 'declarationNo', entry.declarationNo) +
+          fieldInput('ยอดอากร', 'amount', entry.amount || '', false, 'number') +
+          fieldTextarea('หมายเหตุ', 'note', entry.note, 'wide') + '</div>',
+        onSubmit: async function (data) {
+          await rpc('saveCustomsDraft', state.token, job.id, data);
+          closeModal(true);
+          await afterMutation('บันทึก Draft ใบขนแล้ว', job.id);
+        }
+      });
+    }
+
+    function openCustomsFileModal(detail) {
+      var entry = detail.customsEntry || {};
+      openModal({
+        title: 'ยื่นใบขน',
+        submitLabel: 'ยืนยันยื่นใบขน',
+        body: '<div class="form-stack">' + fieldInput('เลขที่ใบขน', 'declarationNo', entry.declarationNo, true) + '</div>',
+        onSubmit: async function (data) {
+          await rpc('fileCustomsEntry', state.token, detail.job.id, data);
+          closeModal(true);
+          await afterMutation('บันทึกการยื่นใบขนแล้ว', detail.job.id);
+        }
+      });
+    }
+
+    function openSurrenderModal(job) {
+      var options = '<option value="PENDING">รอตรวจ</option><option value="CLEARED">ผ่าน</option><option value="ISSUE">มีปัญหา</option>';
+      openModal({
+        title: 'สถานะ Surrender',
+        body: '<div class="form-stack">' + fieldSelect('สถานะ', 'status', selectValue(options, job.surrenderStatus)) +
+          fieldTextarea('หมายเหตุ / ปัญหา', 'note', job.customerNote) + '</div>',
+        onSubmit: async function (data) {
+          await rpc('updateSurrenderStatus', state.token, job.id, data.status, data.note || '');
+          closeModal(true);
+          await afterMutation('อัปเดต Surrender แล้ว', job.id);
+        }
+      });
+    }
+
+    function openReleaseModal(job) {
+      openModal({
+        title: 'Release Job',
+        submitLabel: 'ยืนยัน Release',
+        submitClass: 'success',
+        body: '<div class="form-stack"><label class="checkbox-field"><input type="checkbox" name="inspectionRequired"><span>ต้องตรวจปล่อย</span></label>' +
+          fieldTextarea('ผลการตรวจ', 'inspectionResult') + fieldTextarea('หมายเหตุ Release', 'releaseNote') + '</div>',
+        onSubmit: async function (data) {
+          data.inspectionRequired = data.inspectionRequired === 'on';
+          await rpc('releaseJob', state.token, job.id, data);
+          closeModal(true);
+          await afterMutation('Release งานแล้ว', job.id);
+        }
+      });
+    }
+
+    function openPasswordModal(locked) {
+      openModal({
+        title: locked ? 'ตั้งรหัสผ่านใหม่' : 'เปลี่ยนรหัสผ่าน',
+        submitLabel: 'เปลี่ยนรหัสผ่าน',
+        locked: Boolean(locked),
+        body: '<div class="form-stack">' +
+          (locked ? '<div class="inline-note">บัญชีนี้ต้องเปลี่ยนรหัสผ่านก่อนใช้งานต่อ</div>' : '') +
+          fieldInput('รหัสผ่านปัจจุบัน', 'currentPassword', '', true, 'password') +
+          fieldInput('รหัสผ่านใหม่', 'newPassword', '', true, 'password', 'อย่างน้อย 10 ตัวอักษร และมีตัวเลข') +
+          fieldInput('ยืนยันรหัสผ่านใหม่', 'confirmPassword', '', true, 'password') + '</div>',
+        onSubmit: async function (data) {
+          if (data.newPassword !== data.confirmPassword) throw new Error('VALIDATION|รหัสผ่านใหม่ไม่ตรงกัน');
+          await rpc('authChangePassword', state.token, data.currentPassword, data.newPassword);
+          var bootstrap = await rpc('getBootstrapData', state.token);
+          applyBootstrap(bootstrap);
+          closeModal(true);
+          toast('เปลี่ยนรหัสผ่านแล้ว', 'success');
+        }
+      });
+    }
+
+    function renderMasterTabs() {
+      byId('masterTabs').innerHTML = Object.keys(MASTER_CONFIG).map(function (type) {
+        return '<button class="tab-button ' + (state.masterType === type ? 'active' : '') +
+          '" type="button" data-master-type="' + type + '">' + escapeHtml(MASTER_CONFIG[type].label) + '</button>';
+      }).join('');
+    }
+
+    function handleMasterTab(event) {
+      var button = event.target.closest('[data-master-type]');
+      if (!button) return;
+      state.masterType = button.dataset.masterType;
+      byId('masterSearch').value = '';
+      renderMasterTabs();
+      renderMasterTable();
+    }
+
+    function renderMasterTable() {
+      var isUsers = state.masterType === 'users';
+      byId('newMasterButton').textContent = isUsers ? '+ เพิ่มผู้ใช้' : '+ เพิ่มข้อมูล';
+      byId('masterTableHead').innerHTML = isUsers
+        ? '<tr><th>Username</th><th>ชื่อ</th><th>Role</th><th>เข้าใช้ล่าสุด</th><th>สถานะ</th><th class="align-right">ดำเนินการ</th></tr>'
+        : '<tr><th>รหัส</th><th>ชื่อ</th><th>รายละเอียด</th><th>สถานะ</th><th>แก้ไขล่าสุด</th><th class="align-right">ดำเนินการ</th></tr>';
+      var query = normalize(byId('masterSearch').value);
+      var rows = isUsers ? state.users : (state.masters[state.masterType] || []);
+      rows = rows.filter(function (row) {
+        return !query || normalize([row.code, row.name, row.username, row.displayName, row.role].join(' ')).indexOf(query) !== -1;
+      });
+      byId('masterTableBody').innerHTML = rows.map(isUsers ? userRowHtml : masterRowHtml).join('');
+      byId('emptyMaster').classList.toggle('hidden', rows.length > 0);
+      byId('masterTableBody').closest('.table-wrap').classList.toggle('hidden', rows.length === 0);
+    }
+
+    function masterRowHtml(row) {
+      var detail = row.description || row.country || row.address || row.roleName || '-';
+      return '<tr><td><strong>' + escapeHtml(row.code || '-') + '</strong></td><td>' + escapeHtml(row.name || '-') +
+        '</td><td>' + escapeHtml(detail) + '</td><td><span class="badge ' + (asBool(row.isActive) ? 'approved' : 'rejected') + '">' +
+        (asBool(row.isActive) ? 'ใช้งาน' : 'ปิดใช้งาน') + '</span></td><td>' + escapeHtml(formatDateTime(row.updatedAt)) +
+        '</td><td class="align-right"><button class="button secondary compact" type="button" data-master-action="edit" data-id="' +
+        escapeAttr(row.id) + '">แก้ไข</button> <button class="button ghost compact" type="button" data-master-action="toggle" data-id="' +
+        escapeAttr(row.id) + '">' + (asBool(row.isActive) ? 'ปิดใช้' : 'เปิดใช้') + '</button></td></tr>';
+    }
+
+    function userRowHtml(row) {
+      return '<tr><td><strong>' + escapeHtml(row.username) + '</strong></td><td>' + escapeHtml(row.displayName) +
+        '</td><td><span class="badge">' + escapeHtml(row.role) + '</span></td><td>' + escapeHtml(formatDateTime(row.lastLoginAt)) +
+        '</td><td><span class="badge ' + (row.isActive ? 'approved' : 'rejected') + '">' + (row.isActive ? 'ใช้งาน' : 'ปิดใช้งาน') +
+        '</span></td><td class="align-right"><button class="button secondary compact" type="button" data-master-action="edit-user" data-id="' +
+        escapeAttr(row.id) + '">แก้ไข</button> <button class="button ghost compact" type="button" data-master-action="reset-password" data-id="' +
+        escapeAttr(row.id) + '">รีเซ็ตรหัส</button></td></tr>';
+    }
+
+    function openNewMasterModal() {
+      if (state.masterType === 'users') return openUserModal(null);
+      openMasterModal(null);
+    }
+
+    function handleMasterAction(event) {
+      var button = event.target.closest('[data-master-action]');
+      if (!button) return;
+      var action = button.dataset.masterAction;
+      var id = button.dataset.id;
+      if (action === 'edit') return openMasterModal(findMasterRecord(state.masterType, id));
+      if (action === 'edit-user') return openUserModal(state.users.find(function (row) { return row.id === id; }));
+      if (action === 'toggle') return toggleMaster(id);
+      if (action === 'reset-password') return resetPassword(id);
+    }
+
+    function openMasterModal(record) {
+      record = record || {};
+      var type = state.masterType;
+      var extra = '';
+      if (['shippers', 'consignees'].indexOf(type) !== -1) {
+        extra = fieldInput('Tax ID', 'taxId', record.taxId) + fieldInput('ผู้ติดต่อ', 'contactName', record.contactName) +
+          fieldInput('โทรศัพท์', 'phone', record.phone) + fieldInput('Email', 'email', record.email, false, 'email') +
+          fieldTextarea('ที่อยู่', 'address', record.address, 'wide');
+      } else if (type === 'people') {
+        extra = fieldInput('หน้าที่', 'roleName', record.roleName) + fieldInput('โทรศัพท์', 'phone', record.phone) +
+          fieldInput('Email', 'email', record.email, false, 'email');
+      } else if (type === 'notify') {
+        extra = fieldInput('ผู้ติดต่อ', 'contactName', record.contactName) + fieldInput('โทรศัพท์', 'phone', record.phone) +
+          fieldInput('Email', 'email', record.email, false, 'email') + fieldTextarea('ที่อยู่', 'address', record.address, 'wide');
+      } else if (type === 'ports') {
+        extra = fieldInput('ประเทศ', 'country', record.country);
+      } else if (type === 'terminals') {
+        extra = fieldSelect('Port', 'portId', optionsFor('ports', record.portId)) + fieldTextarea('รายละเอียด', 'description', record.description, 'wide');
+      } else {
+        extra = fieldTextarea('รายละเอียด', 'description', record.description, 'wide');
+      }
+      openModal({
+        title: (record.id ? 'แก้ไข ' : 'เพิ่ม ') + MASTER_CONFIG[type].label,
+        body: '<div class="form-grid">' + fieldInput('รหัส', 'code', record.code) +
+          fieldInput('ชื่อ', 'name', record.name, true) + extra + '</div>',
+        onSubmit: async function (data) {
+          if (record.id) data.id = record.id;
+          await rpc('saveMasterRecord', state.token, type, data);
+          closeModal(true);
+          await afterMutation('บันทึก Master Data แล้ว');
+        }
+      });
+    }
+
+    function openUserModal(user) {
+      user = user || {};
+      var roles = ['ADMIN', 'PAINT', 'FAH', 'NAMKANG'].map(function (role) {
+        return '<option value="' + role + '"' + (user.role === role ? ' selected' : '') + '>' + role + '</option>';
+      }).join('');
+      openModal({
+        title: user.id ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้',
+        body: '<div class="form-grid">' +
+          (user.id ? '' : fieldInput('Username', 'username', '', true)) +
+          fieldInput('ชื่อที่แสดง', 'displayName', user.displayName, true) + fieldSelect('Role', 'role', roles) +
+          (user.id ? '<label class="checkbox-field"><input type="checkbox" name="isActive" ' + (user.isActive ? 'checked' : '') + '><span>เปิดใช้งาน</span></label>' : '') +
+          '</div>',
+        onSubmit: async function (data) {
+          if (user.id) {
+            data.isActive = data.isActive === 'on';
+            await rpc('adminUpdateUser', state.token, user.id, data);
+            closeModal(true);
+            await afterMutation('อัปเดตผู้ใช้แล้ว');
+          } else {
+            var result = await rpc('adminCreateUser', state.token, data);
+            closeModal(true);
+            await afterMutation('สร้างผู้ใช้แล้ว');
+            showTemporaryPassword(result.temporaryPassword);
+          }
+        }
+      });
+    }
+
+    async function toggleMaster(id) {
+      var record = findMasterRecord(state.masterType, id);
+      if (!record) return;
+      try {
+        await rpc('setMasterRecordActive', state.token, state.masterType, id, !asBool(record.isActive));
+        await afterMutation('อัปเดตสถานะแล้ว');
+      } catch (error) { handleRpcError(error); }
+    }
+
+    async function resetPassword(id) {
+      if (!window.confirm('ยืนยันรีเซ็ตรหัสผ่านผู้ใช้นี้?')) return;
+      try {
+        var result = await rpc('adminResetPassword', state.token, id);
+        showTemporaryPassword(result.temporaryPassword);
+      } catch (error) { handleRpcError(error); }
+    }
+
+    function showTemporaryPassword(password) {
+      openModal({
+        title: 'รหัสผ่านชั่วคราว',
+        submitLabel: 'ปิด',
+        body: '<div class="form-stack"><div class="inline-note">แจ้งรหัสนี้ให้ผู้ใช้ผ่านช่องทางที่ปลอดภัย ระบบจะบังคับเปลี่ยนเมื่อเข้าสู่ระบบ</div>' +
+          '<label class="field"><span>Temporary password</span><input value="' + escapeAttr(password) + '" readonly></label></div>',
+        onSubmit: function () { closeModal(true); }
+      });
+      byId('cancelModalButton').classList.add('hidden');
+    }
+
+    function openModal(config) {
+      state.modalSubmit = config.onSubmit;
+      state.modalLocked = Boolean(config.locked);
+      byId('modalTitle').textContent = config.title || 'บันทึกข้อมูล';
+      byId('modalBody').innerHTML = config.body || '';
+      byId('submitModalButton').textContent = config.submitLabel || 'บันทึก';
+      byId('submitModalButton').className = 'button ' + (config.submitClass || 'primary');
+      byId('closeModalButton').classList.toggle('hidden', state.modalLocked);
+      byId('cancelModalButton').classList.toggle('hidden', state.modalLocked);
+      byId('modalBackdrop').classList.remove('hidden');
+      var first = byId('modalForm').querySelector('input:not([type="hidden"]), select, textarea');
+      if (first) setTimeout(function () { first.focus(); }, 30);
+    }
+
+    function closeModal(force) {
+      if (state.modalLocked && !force) return;
+      byId('modalBackdrop').classList.add('hidden');
+      byId('modalBody').innerHTML = '';
+      byId('modalForm').reset();
+      byId('cancelModalButton').classList.remove('hidden');
+      state.modalSubmit = null;
+      state.modalLocked = false;
+    }
+
+    async function handleModalSubmit(event) {
+      event.preventDefault();
+      if (!state.modalSubmit || state.busy) return;
+      var form = event.currentTarget;
+      var data = {};
+      new FormData(form).forEach(function (value, key) {
+        if (!(value instanceof File)) data[key] = value;
+      });
+      setFormBusy(form, true);
+      state.busy = true;
+      try {
+        await state.modalSubmit(data, form);
+      } catch (error) {
+        handleRpcError(error);
+      } finally {
+        state.busy = false;
+        setFormBusy(form, false);
+      }
+    }
+
+    async function afterMutation(message, jobId) {
+      var data = await rpc('getBootstrapData', state.token);
+      applyBootstrap(data);
+      toast(message, 'success');
+      var targetId = jobId || state.selectedJobId;
+      if (targetId) await openJobDrawer(targetId, true);
+    }
+
+    function rpc(functionName) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        var runner = google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject);
+        runner[functionName].apply(runner, args);
+      });
+    }
+
+    function uploadForm(form) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .uploadJobFile(form);
+      });
+    }
+
+    async function downloadFile(fileId) {
+      setBusy(true);
+      try {
+        var result = await rpc('downloadJobFile', state.token, fileId);
+        var binary = atob(result.base64);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        var url = URL.createObjectURL(new Blob([bytes], { type: result.mimeType || 'application/octet-stream' }));
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = result.fileName || 'document';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      } catch (error) {
+        handleRpcError(error);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function handleRpcError(error) {
+      var message = messageFromError(error);
+      if (/UNAUTHENTICATED|SESSION_EXPIRED|ACCOUNT_DISABLED/.test(String(error && error.message))) {
+        clearSession();
+        showLogin();
+      }
+      toast(message, 'error');
+    }
+
+    function messageFromError(error) {
+      var raw = String(error && error.message ? error.message : error || 'เกิดข้อผิดพลาด');
+      var separator = raw.indexOf('|');
+      if (separator !== -1) return raw.slice(separator + 1).replace(/^\s*/, '');
+      return raw.replace(/^Exception:\s*/, '');
+    }
+
+    function setBusy(busy) {
+      state.busy = busy;
+      byId('refreshButton').disabled = busy;
+    }
+
+    function setFormBusy(form, busy) {
+      form.setAttribute('aria-busy', busy ? 'true' : 'false');
+      Array.prototype.forEach.call(form.querySelectorAll('button'), function (element) {
+        element.disabled = busy;
+      });
+    }
+
+    function toast(message, type) {
+      var element = document.createElement('div');
+      element.className = 'toast ' + (type || '');
+      element.textContent = message;
+      byId('toastRegion').appendChild(element);
+      setTimeout(function () { element.remove(); }, 4200);
+    }
+
+    function fieldInput(label, name, value, required, type, hint) {
+      return '<label class="field"><span>' + escapeHtml(label) + '</span><input name="' + escapeAttr(name) +
+        '" type="' + escapeAttr(type || 'text') + '" value="' + escapeAttr(value || '') + '"' + (required ? ' required' : '') +
+        '>' + (hint ? '<small>' + escapeHtml(hint) + '</small>' : '') + '</label>';
+    }
+
+    function fieldTextarea(label, name, value, className, required) {
+      return '<label class="field ' + escapeAttr(className || '') + '"><span>' + escapeHtml(label) + '</span><textarea name="' +
+        escapeAttr(name) + '"' + (required ? ' required' : '') + '>' + escapeHtml(value || '') + '</textarea></label>';
+    }
+
+    function fieldSelect(label, name, options) {
+      return '<label class="field"><span>' + escapeHtml(label) + '</span><select name="' + escapeAttr(name) + '">' + options + '</select></label>';
+    }
+
+    function optionsFor(type, selectedId) {
+      var rows = (state.masters[type] || []).filter(function (row) { return asBool(row.isActive); });
+      return '<option value="">-- เลือก --</option>' + rows.map(function (row) {
+        return '<option value="' + escapeAttr(row.id) + '"' + (String(row.id) === String(selectedId || '') ? ' selected' : '') + '>' +
+          escapeHtml((row.code ? row.code + ' · ' : '') + row.name) + '</option>';
+      }).join('');
+    }
+
+    function selectValue(optionsHtml, selectedValue) {
+      if (!selectedValue) return optionsHtml;
+      return optionsHtml.replace('value="' + escapeAttr(selectedValue) + '"', 'value="' + escapeAttr(selectedValue) + '" selected');
+    }
+
+    function approvalBadge(approval) {
+      if (!approval) return '<span class="badge">ยังไม่ส่ง</span>';
+      var labels = { PENDING: 'รออนุมัติ', APPROVED: 'อนุมัติ', REJECTED: 'ไม่อนุมัติ' };
+      return '<span class="badge ' + approval.status.toLowerCase() + '">' + escapeHtml(labels[approval.status] || approval.status) + '</span>';
+    }
+
+    function detailItem(label, value) {
+      return '<div class="detail-item"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value || '-') + '</strong></div>';
+    }
+
+    function statusLabel(status) { return STATUS_LABELS[status] || status || '-'; }
+    function statusClass(status) {
+      if (/REJECTED/.test(status)) return 'rejected';
+      if (/WAITING/.test(status)) return 'pending';
+      if (/APPROVED|FILED|RELEASED/.test(status)) return 'approved';
+      return '';
+    }
+    function can(role) { return state.user && (state.user.role === 'ADMIN' || state.user.role === role); }
+    function findJob(id) { return state.jobs.find(function (job) { return job.id === id; }); }
+    function findMasterRecord(type, id) { return (state.masters[type] || []).find(function (row) { return row.id === id; }); }
+    function masterName(type, id) { var row = findMasterRecord(type, id); return row ? row.name : '-'; }
+    function normalize(value) { return String(value || '').toLocaleLowerCase().replace(/\s+/g, ' ').trim(); }
+    function asBool(value) { return value === true || value === 'true' || value === 1 || value === '1'; }
+    function byId(id) { return document.getElementById(id); }
+    function formatDate(value) {
+      if (!value) return '-';
+      var date = new Date(value);
+      if (isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat('th-TH', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+    }
+    function formatDateTime(value) {
+      if (!value) return '-';
+      var date = new Date(value);
+      if (isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat('th-TH', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
+    }
+    function dateInputValue(value) {
+      if (!value) return '';
+      var date = new Date(value);
+      if (isNaN(date.getTime())) return String(value).slice(0, 10);
+      return date.toISOString().slice(0, 10);
+    }
+    function jobPriorityForFah(job) {
+      return (job.hasInvoiceAlert ? 20 : 0) + (job.approvals && job.approvals.FN && job.approvals.FN.status === 'PENDING' ? 15 : 0) +
+        (job.customsStatus === 'DRAFT' ? 10 : 0);
+    }
+    function jobPriorityForNamkang(job) {
+      return (job.hasInvoiceAlert ? 5 : 0) + (job.approvals && job.approvals.AN && job.approvals.AN.status === 'PENDING' ? 20 : 0) +
+        (job.customsStatus === 'FILED' && job.releaseStatus !== 'RELEASED' ? 10 : 0);
+    }
+    function escapeHtml(value) {
+      return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, function (character) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character];
+      });
+    }
+    function escapeAttr(value) { return escapeHtml(value); }
+  }());
+</script>

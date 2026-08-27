@@ -1,0 +1,16 @@
+node_modules/
+.clasp.json
+.clasprc.json
+test/preview.html
+*.log
+dev-config.json
+
+# เอกสารลูกค้าจริงที่ใช้ทดสอบ — repo นี้เป็นสาธารณะ จึงไม่เอาขึ้น
+# ไฟล์ยังอยู่ในเครื่อง npm run test:parser จึงยังรันได้ตามปกติ
+test/BL/
+test/E/
+
+# ผลลัพธ์ build และค่าลับ
+v2/.next/
+v2/.env.local
+.env.local

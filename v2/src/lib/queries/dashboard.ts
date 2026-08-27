@@ -1,0 +1,99 @@
+import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { db } from '@/db';
+import { doHandoffs, jobs } from '@/db/schema';
+import { latestApproval } from './jobs';
+
+/** ตัวเลขสรุปทั้งหมดใน query เดียว แทนการนับทีละอย่างแบบระบบเดิม */
+export async function dashboardSummary() {
+  const an = latestApproval('AN');
+  const fn = latestApproval('FN');
+  const [row] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      invoiceAlerts: sql<number>`count(*) filter (where ${jobs.hasInvoiceAlert})::int`,
+      waitingAn: sql<number>`count(*) filter (where ${an.status} = 'PENDING')::int`,
+      waitingFn: sql<number>`count(*) filter (where ${fn.status} = 'PENDING')::int`,
+      customsDraft: sql<number>`count(*) filter (where ${jobs.customsStatus} = 'DRAFT')::int`,
+      customsFiled: sql<number>`count(*) filter (where ${jobs.customsStatus} = 'FILED')::int`,
+      released: sql<number>`count(*) filter (where ${jobs.releaseStatus} = 'RELEASED')::int`,
+      surrenderIssue: sql<number>`count(*) filter (where ${jobs.surrenderStatus} = 'ISSUE')::int`,
+    })
+    .from(jobs)
+    .leftJoin(an, eq(an.jobId, jobs.id))
+    .leftJoin(fn, eq(fn.jobId, jobs.id))
+    .where(eq(jobs.isArchived, false));
+  return row;
+}
+
+/**
+ * ตัวเลขที่ขึ้นข้างเมนูซ้าย — ยกเกณฑ์มาจาก navCount() ของระบบเดิมทั้งหมด
+ *
+ * รวมเป็น query เดียวและให้ layout เรียก ซึ่งเรนเดอร์พร้อมกับตัวหน้าอยู่แล้ว
+ * เวลาที่เพิ่มจึงทับซ้อนกับ query ของหน้า ไม่ได้บวกเข้าไปตรง ๆ
+ */
+export async function navCounts() {
+  const an = latestApproval('AN');
+  const fn = latestApproval('FN');
+  const [row] = await db
+    .select({
+      pendingAn: sql<number>`count(*) filter (where ${an.status} = 'PENDING')::int`,
+      pendingFn: sql<number>`count(*) filter (where ${fn.status} = 'PENDING')::int`,
+      draftReview: sql<number>`count(*) filter (where ${jobs.draftStatus} = 'SUBMITTED')::int`,
+      openJobs: sql<number>`count(*) filter (where ${jobs.releaseStatus} <> 'RELEASED')::int`,
+      edoc: sql<number>`count(*) filter (where ${jobs.customsStatus} = 'FILED')::int`,
+      queue: sql<number>`(select count(*) from automation_tasks
+                          where status in ('QUEUED', 'PROCESSING'))::int`,
+    })
+    .from(jobs)
+    .leftJoin(an, eq(an.jobId, jobs.id))
+    .leftJoin(fn, eq(fn.jobId, jobs.id))
+    .where(eq(jobs.isArchived, false));
+  return row;
+}
+
+/**
+ * ตัวเลขเตือนบนแท็บของหน้างานคงค้าง
+ *
+ * แท็บ 1-3 นับ "รายการที่รอให้กดส่งอนุมัติ" ส่วนแท็บ 4 นับงานที่ยังไม่ได้รวมชุด E-Office
+ * เงื่อนไขต้องตรงกับ QUEUE ในไฟล์ jobs.ts ไม่งั้นตัวเลขจะไม่ตรงกับจำนวนแถวที่เห็น
+ */
+export async function pendingTabCounts() {
+  const an = latestApproval('AN');
+  const fn = latestApproval('FN');
+  const [row] = await db
+    .select({
+      bl: sql<number>`count(*) filter (
+        where ${an.status} is null or ${an.status} = 'REJECTED')::int`,
+      fn: sql<number>`count(*) filter (
+        where ${an.status} = 'APPROVED'
+          and (${fn.status} is null or ${fn.status} = 'REJECTED'))::int`,
+      draft: sql<number>`count(*) filter (
+        where ${fn.status} = 'APPROVED'
+          and (${jobs.draftStatus} is null
+               or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))::int`,
+      edoc: sql<number>`count(*) filter (
+        where ${jobs.customsStatus} = 'FILED' and merged.job_id is null)::int`,
+    })
+    .from(jobs)
+    .leftJoin(an, eq(an.jobId, jobs.id))
+    .leftJoin(fn, eq(fn.jobId, jobs.id))
+    .leftJoin(
+      sql`(select distinct job_id from files
+             where category = 'EOFFICE_MERGED' and is_current = true) as merged`,
+      sql`merged.job_id = ${jobs.id}`,
+    )
+    .where(eq(jobs.isArchived, false));
+  return row;
+}
+
+/** เวลาที่ส่ง DO ให้ Partner ของแต่ละงาน — ใช้บอกว่าแถวไหนส่งไปแล้ว */
+export async function doHandoffSentAt(jobIds: string[]) {
+  const map = new Map<string, string>();
+  if (!jobIds.length) return map;
+  const rows = await db
+    .select({ jobId: doHandoffs.jobId, sentAt: doHandoffs.sentAt })
+    .from(doHandoffs)
+    .where(and(inArray(doHandoffs.jobId, jobIds), isNotNull(doHandoffs.sentAt)));
+  rows.forEach((r) => { if (r.sentAt) map.set(r.jobId, r.sentAt.toISOString()); });
+  return map;
+}

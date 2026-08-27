@@ -1,0 +1,54 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: KOLA preview server",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "pattern": [
+          {
+            "regexp": "^..dev-server.. build failed: (.*)$",
+            "message": 1
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "dev-server. rebuilt preview",
+          "endsPattern": "dev-server. KOLA ERP preview running at"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "test: gas-core",
+      "type": "npm",
+      "script": "test",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "build: preview.html",
+      "type": "npm",
+      "script": "build:preview",
+      "problemMatcher": []
+    },
+    {
+      "label": "clasp: push",
+      "type": "npm",
+      "script": "clasp:push",
+      "problemMatcher": []
+    }
+  ]
+}

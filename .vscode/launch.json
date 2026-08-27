@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug dev server",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/dev-server.js",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Debug gas-core tests",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/test/gas-core.test.js",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+}

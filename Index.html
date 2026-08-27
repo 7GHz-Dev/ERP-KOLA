@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <?!= include_('Styles'); ?>
+  <?!= include_('MockupStyles'); ?>
+</head>
+<body>
+  <div id="loadingScreen" class="loading-screen">
+    <div class="brand-mark">K</div>
+    <div class="loading-line"><span></span></div>
+  </div>
+
+  <main id="loginView" class="login-view hidden">
+    <section class="login-panel" aria-labelledby="loginTitle">
+      <div class="login-brand">
+        <div class="brand-mark">K</div>
+        <div>
+          <h1 id="loginTitle"><?= appName ?></h1>
+          <p>Import Operations</p>
+        </div>
+      </div>
+      <form id="loginForm" class="form-stack" autocomplete="on">
+        <label class="field">
+          <span>ชื่อผู้ใช้</span>
+          <input name="username" type="text" autocomplete="username" required autofocus>
+        </label>
+        <label class="field">
+          <span>รหัสผ่าน</span>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="loginError" class="form-error hidden" role="alert"></p>
+        <button class="button primary full" type="submit">เข้าสู่ระบบ</button>
+      </form>
+      <p class="version">Version <?= appVersion ?></p>
+    </section>
+  </main>
+
+  <div id="appShell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark small">K</div>
+        <div>
+          <strong>KOLA ERP</strong>
+          <span>Import Operations</span>
+        </div>
+      </div>
+      <nav id="mainNav" class="main-nav" aria-label="เมนูหลัก"></nav>
+      <div class="sidebar-user">
+        <span id="sidebarUserName"></span>
+        <small id="sidebarUserRole"></small>
+      </div>
+    </aside>
+
+    <div class="app-body">
+      <header class="topbar">
+        <button id="menuButton" class="icon-button menu-button" type="button" title="เมนู" aria-label="เมนู">☰</button>
+        <div>
+          <h1 id="pageTitle">ภาพรวมงาน</h1>
+          <p id="pageSubtitle">รายการนำเข้าทั้งหมด</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="refreshButton" class="icon-button" type="button" title="รีเฟรช" aria-label="รีเฟรช">↻</button>
+          <button id="passwordButton" class="button secondary compact" type="button">เปลี่ยนรหัสผ่าน</button>
+          <button id="logoutButton" class="button ghost compact" type="button">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <main class="content"><div id="routeContent"></div></main>
+    </div>
+  </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
+  <aside id="jobDrawer" class="job-drawer" aria-hidden="true">
+    <header class="drawer-header">
+      <div>
+        <small>JOB DETAIL</small>
+        <h2 id="drawerTitle"></h2>
+      </div>
+      <button id="closeDrawerButton" class="icon-button" type="button" title="ปิด" aria-label="ปิด">×</button>
+    </header>
+    <div id="drawerContent" class="drawer-content"></div>
+  </aside>
+
+  <aside id="documentPreview" class="document-preview" aria-hidden="true">
+    <header class="preview-header">
+      <span id="previewTitle">ตัวอย่างเอกสาร</span>
+      <button id="printPreviewButton" class="button tiny secondary hidden" type="button">พิมพ์</button>
+      <button id="closePreviewButton" class="icon-button" type="button" title="ปิด" aria-label="ปิด">×</button>
+    </header>
+    <div id="previewBody" class="preview-body"><div class="preview-empty">ยังไม่มีไฟล์</div></div>
+  </aside>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden" role="presentation">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header">
+        <h2 id="modalTitle"></h2>
+        <button id="closeModalButton" class="icon-button" type="button" title="ปิด" aria-label="ปิด">×</button>
+      </header>
+      <form id="modalForm">
+        <div id="modalBody" class="modal-body"></div>
+        <footer class="modal-footer">
+          <button id="cancelModalButton" class="button secondary" type="button">ยกเลิก</button>
+          <button id="submitModalButton" class="button primary" type="submit">บันทึก</button>
+        </footer>
+      </form>
+    </section>
+  </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <?!= include_('AppScripts'); ?>
+</body>
+</html>

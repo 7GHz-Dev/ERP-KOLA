@@ -1,0 +1,49 @@
+{
+  "name": "kola-erp-v2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "KOLA Import ERP — Next.js + Postgres (Supabase)",
+  "scripts": {
+    "dev": "next dev --turbo",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "migrate:sheets": "tsx scripts/migrate-from-sheets.ts",
+    "db:check": "tsx scripts/check-db.ts",
+    "db:tables": "tsx scripts/list-tables.ts",
+    "db:counts": "tsx scripts/db-counts.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "migrate:files": "tsx scripts/migrate-files.ts",
+    "test:actions": "tsx scripts/test-actions.ts",
+    "test:files": "tsx scripts/test-files.ts",
+    "test:session": "tsx scripts/test-session-security.ts",
+    "test:worker": "tsx scripts/test-worker.ts",
+    "test:parser": "tsx scripts/test-parser.ts",
+    "test:all": "npm run smoke && npm run test:actions && npm run test:flow && npm run test:files && npm run test:session && npm run test:worker && npm run test:parser",
+    "test:flow": "tsx scripts/test-flow.ts"
+  },
+  "dependencies": {
+    "@cantoo/pdf-lib": "^2.9.1",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "@supabase/supabase-js": "^2.47.10",
+    "drizzle-orm": "^0.38.3",
+    "exceljs": "^4.4.0",
+    "next": "^15.1.6",
+    "pdfjs-dist": "^4.10.38",
+    "postgres": "^3.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<base target="_blank">
+<meta charset="utf-8">
+<style>
+  :root { --navy:#183247; --ink:#1d2935; --muted:#697784; --line:#d8e0e6; --canvas:#f2f5f7;
+          --blue:#1870a7; --green:#277a55; --amber:#9a6500; --red:#b22f38; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Segoe UI",Tahoma,sans-serif; background:var(--canvas); color:var(--ink); font-size:13px; }
+  header { background:var(--navy); color:#fff; padding:14px 20px; display:flex; align-items:center; gap:14px; }
+  header h1 { margin:0; font-size:16px; flex:1; }
+  header small { opacity:.75; display:block; font-weight:normal; }
+  main { padding:16px 20px 40px; }
+  .tabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .tab { border:1px solid var(--line); background:#fff; color:var(--ink); padding:9px 16px;
+         border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; }
+  .tab.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .tab .count { opacity:.7; font-weight:normal; }
+  .notice { background:#fff; border:1px solid var(--line); border-left:3px solid var(--amber);
+            padding:12px 14px; border-radius:6px; margin-bottom:14px; }
+  .wrap { overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:8px; }
+  table { border-collapse:collapse; width:100%; min-width:960px; }
+  th, td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle; }
+  th { background:var(--navy); color:#fff; font-weight:600; }
+  tbody tr:hover { background:#f7fafc; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:11px; font-size:11px; font-weight:700; }
+  .QUEUED { background:#fff4d6; color:var(--amber); }
+  .PROCESSING { background:#eaf4fa; color:var(--blue); }
+  .DONE { background:#e9f5ee; color:var(--green); }
+  .ERROR { background:#fdeaec; color:var(--red); }
+  .muted { color:var(--muted); }
+  .empty { padding:26px; text-align:center; color:var(--muted); }
+  button.start { background:var(--green); color:#fff; border:none; padding:6px 14px; border-radius:6px;
+                 cursor:pointer; font-size:12px; font-weight:700; }
+  button.start:disabled { background:#9fb0bd; cursor:not-allowed; }
+  button.refresh { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.5);
+                   padding:6px 13px; border-radius:6px; cursor:pointer; font-size:12px; }
+  a.file { color:var(--blue); text-decoration:none; }
+  a.file:hover { text-decoration:underline; }
+  .hidden { display:none; }
+  .spin { display:inline-block; width:11px; height:11px; border:2px solid rgba(255,255,255,.4);
+          border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-1px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>KOLA Automation Hub<small>เว็บพักข้อมูลระหว่าง KOLA ERP กับโปรแกรม automate</small></h1>
+  <button class="refresh" onclick="load()">รีเฟรช</button>
+</header>
+<main>
+  <div id="setupNotice" class="notice hidden">
+    <b>ยังไม่ได้ตั้งค่า</b> — เปิด Apps Script editor แล้วรัน <code>hubSetup()</code> หนึ่งครั้ง
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="draft" onclick="switchTab('draft')">
+      รอสร้าง Draft ใบขน <span class="count" id="countDraft"></span></button>
+    <button class="tab" data-tab="customs" onclick="switchTab('customs')">
+      รอสร้างใบขน <span class="count" id="countCustoms"></span></button>
+  </div>
+
+  <div class="wrap"><table>
+    <thead><tr id="head"></tr></thead>
+    <tbody id="body"><tr><td class="empty">กำลังโหลด...</td></tr></tbody>
+  </table></div>
+</main>
+
+<script>
+  var CACHE = { draft: [], customs: [] };
+  var TAB = 'draft';
+
+  var HEADERS = {
+    draft:   ['เวลา', 'Job No.', 'ไฟล์ Final Invoice', 'สถานะ', 'Ref No.', 'ครั้งที่', 'ข้อผิดพลาด', 'จัดการ'],
+    customs: ['เวลา', 'Job No.', 'Ref No. ที่ส่งมา', 'สถานะ', 'เลขใบขน', 'ไฟล์ใบขน', 'ครั้งที่', 'ข้อผิดพลาด', 'จัดการ']
+  };
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  // ให้ตรงกับ KOLA ERP: dd/mm/yyyy ค.ศ.
+  function when(v) {
+    if (!v) return '-';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return String(v);
+    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+  }
+  function badge(s) { return '<span class="badge ' + esc(s) + '">' + esc(s) + '</span>'; }
+  function fileLink(url, name) {
+    if (!url) return '<span class="muted">-</span>';
+    return '<a class="file" href="' + esc(url) + '">' + esc(name || 'เปิดไฟล์') + '</a>';
+  }
+  function startButton(t) {
+    if (!t.canStart) return '<span class="muted">-</span>';
+    return '<button class="start" data-id="' + esc(t.id) + '" onclick="startTask(this)">เริ่มสร้าง</button>';
+  }
+
+  function rowHtml(t) {
+    if (TAB === 'draft') {
+      return '<tr><td class="muted">' + when(t.createdAt) + '</td>' +
+        '<td>' + esc(t.jobNo || '-') + '</td>' +
+        '<td>' + fileLink(t.inputFileUrl, t.inputFileName) + '</td>' +
+        '<td>' + badge(t.status) + '</td>' +
+        '<td><b>' + esc(t.refNo || '-') + '</b></td>' +
+        '<td>' + esc(t.attempts) + '</td>' +
+        '<td class="muted">' + esc(t.error || '') + '</td>' +
+        '<td>' + startButton(t) + '</td></tr>';
+    }
+    return '<tr><td class="muted">' + when(t.createdAt) + '</td>' +
+      '<td>' + esc(t.jobNo || '-') + '</td>' +
+      '<td>' + esc((t.data && t.data.refNo) || '-') + '</td>' +
+      '<td>' + badge(t.status) + '</td>' +
+      '<td><b>' + esc(t.entryNo || '-') + '</b></td>' +
+      '<td>' + fileLink(t.resultFileUrl, t.resultFileName) + '</td>' +
+      '<td>' + esc(t.attempts) + '</td>' +
+      '<td class="muted">' + esc(t.error || '') + '</td>' +
+      '<td>' + startButton(t) + '</td></tr>';
+  }
+
+  function render() {
+    document.getElementById('head').innerHTML =
+      HEADERS[TAB].map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('');
+    var rows = CACHE[TAB] || [];
+    document.getElementById('body').innerHTML = rows.length
+      ? rows.map(rowHtml).join('')
+      : '<tr><td class="empty" colspan="' + HEADERS[TAB].length + '">ยังไม่มีงานในแถบนี้</td></tr>';
+
+    var pending = function (list) {
+      return (list || []).filter(function (t) { return t.status === 'QUEUED' || t.status === 'PROCESSING'; }).length;
+    };
+    document.getElementById('countDraft').textContent = '(' + pending(CACHE.draft) + ')';
+    document.getElementById('countCustoms').textContent = '(' + pending(CACHE.customs) + ')';
+  }
+
+  function switchTab(name) {
+    TAB = name;
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+      b.classList.toggle('active', b.dataset.tab === name);
+    });
+    render();
+  }
+
+  function load() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        document.getElementById('setupNotice').classList.toggle('hidden', data.configured !== false);
+        CACHE.draft = data.draft || [];
+        CACHE.customs = data.customs || [];
+        render();
+      })
+      .withFailureHandler(function (error) {
+        document.getElementById('body').innerHTML =
+          '<tr><td class="empty">โหลดข้อมูลไม่สำเร็จ: ' + esc(error && error.message ? error.message : error) + '</td></tr>';
+      })
+      .hubDashboardData();
+  }
+
+  function startTask(button) {
+    var id = button.dataset.id;
+    button.disabled = true;
+    button.innerHTML = '<span class="spin"></span> กำลังสร้าง...';
+    google.script.run
+      .withSuccessHandler(function () { load(); })
+      .withFailureHandler(function (error) {
+        button.disabled = false;
+        button.textContent = 'เริ่มสร้าง';
+        alert('สร้างไม่สำเร็จ: ' + (error && error.message ? error.message : error));
+        load();
+      })
+      .hubStartTask(id);
+  }
+
+  load();
+</script>
+</body>
+</html>
