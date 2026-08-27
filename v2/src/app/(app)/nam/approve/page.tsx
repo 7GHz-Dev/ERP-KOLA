@@ -17,7 +17,7 @@ export default async function NamApprovePage({
   return (
     <>
       <div className="page-head">
-        <h1>ตรวจสอบรายการรออนุมัติ</h1>
+        <h1>อนุมัติข้อมูล BL เข้าตารางหลัก</h1>
         <p>ตรวจข้อมูล BL ที่ PAINT ส่งมา</p>
       </div>
       <JobTable

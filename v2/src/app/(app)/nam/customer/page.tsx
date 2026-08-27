@@ -17,7 +17,7 @@ export default async function NamCustomerPage({
   return (
     <>
       <div className="page-head">
-        <h1>ข้อมูลลูกค้า / File</h1>
+        <h1>ใส่ Client in Charge / Surrender File</h1>
         <p>Invoice สินค้าและ Surrender BL · แถวแดงคือมี Invoice ใหม่ที่ยังไม่มีใครรับทราบ</p>
       </div>
       <JobTable

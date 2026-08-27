@@ -464,9 +464,9 @@ label.mini span { font-size: 12px; }
 
 .sidebar a.nav-button {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px;
-  margin: 1px 0; padding: 6px 10px; border-radius: 4px;
+  margin: 1px 0; padding: 7px 10px; border-radius: 4px;
   color: #d7e2e9; background: transparent; text-decoration: none;
-  font-size: 12px; font-weight: 600;
+  font-size: 12px; font-weight: 600; line-height: 1.45;
 }
 .sidebar a.nav-button > span:first-child { flex: 1; min-width: 0; }
 .sidebar a.nav-button:hover { background: rgba(255, 255, 255, .08); color: #fff; }

@@ -67,7 +67,7 @@ export default async function FahDoPage({
   return (
     <>
       <div className="page-head">
-        <h1>จัดการ Invoice DO</h1>
+        <h1>Upload InvDO / ETA Official / Terminal / Send Partner</h1>
         <p>ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port · Terminal · Partner แล้วจึงส่ง Partner</p>
       </div>
       <JobTable

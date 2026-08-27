@@ -154,6 +154,27 @@ async function main() {
   };
 
   try {
+    /* ================= 0. ชื่อเมนู ================= */
+    console.log('\n0. ชื่อหัวข้อเมนู');
+
+    const menuPage = await get('/jobs');
+    for (const [label, gone] of [
+      ['Upload InvDO / ETA Official / Terminal / Send Partner', 'จัดการ Invoice DO'],
+      ['อนุมัติข้อมูล BL เข้าตารางหลัก', 'ตรวจรายการรออนุมัติ'],
+      ['ใส่ Client in Charge / Surrender File', 'ข้อมูลลูกค้า / File'],
+    ] as const) {
+      check(menuPage.includes(label) && !menuPage.includes(gone),
+        `เมนูซ้ายใช้ชื่อ "${label}" แล้ว`);
+    }
+    for (const [path, heading] of [
+      ['/fah/do', 'Upload InvDO / ETA Official / Terminal / Send Partner'],
+      ['/nam/approve', 'อนุมัติข้อมูล BL เข้าตารางหลัก'],
+      ['/nam/customer', 'ใส่ Client in Charge / Surrender File'],
+    ] as const) {
+      check((await get(path)).includes(`<h1>${heading}</h1>`),
+        `หัวข้อบนหน้า ${path} ตรงกับชื่อเมนู`);
+    }
+
     /* ================= 1. ช่องค้นหา ================= */
     console.log('\n1. ช่องค้นหาบนหัวคอลัมน์');
 
@@ -227,7 +248,31 @@ async function main() {
     /* ================= 3. รวมชุด E-Office ================= */
     console.log('\n3. รวมชุด E-Office');
 
+    // ส่งตรวจแล้วแต่ยังไม่ได้เลขใบขน ต้องอยู่ฝั่ง "รออนุมัติรายการ" ของแท็บ Draft
+    const beforeFiled = await get('/pending?tab=draft&sub=approve');
+    check(beforeFiled.includes(jobNo), 'ส่งตรวจแล้วงานอยู่ใน "รออนุมัติรายการ"');
+    const navCount = (html: string) =>
+      Number((html.match(/ทำใบขน<\/span><span class="nav-count">(\d+)/) ?? [])[1] ?? 0);
+    const navBefore = navCount(beforeFiled);
+
     await sql`update jobs set customs_status = 'FILED' where id = ${jobId}`;
+
+    /*
+     * FAH ทำใบขนเสร็จแล้ว งานต้องหลุดจากคิวรออนุมัติ ไม่ค้างอยู่ตลอดไป
+     * ตอนออกเลขใบขนระบบตั้งแค่ customs_status = 'FILED' ส่วน draft_status ยังเป็น SUBMITTED
+     */
+    const afterFiled = await get('/pending?tab=draft&sub=approve');
+    check(!afterFiled.includes(jobNo), 'ทำใบขนเสร็จแล้ว งานหายจาก "รออนุมัติรายการ"');
+
+    const edocTab = await get('/pending?tab=edoc');
+    check(edocTab.includes(jobNo), 'งานที่ได้เลขใบขนแล้วไปโผล่แท็บ 4 เตรียมเอกสารเดิน E');
+
+    const fahReview = await get('/fah/draft');
+    check(!fahReview.includes(jobNo), 'คิว "ตรวจ Draft" ของ FAH ก็ไม่แสดงงานที่เสร็จแล้ว');
+
+    check(navBefore - navCount(afterFiled) === 1,
+      `เลขข้างเมนู "ตรวจ Draft" ลดลง 1 ตามจริง (${navBefore} → ${navCount(afterFiled)})`);
+
     await ensureBucket();
 
     // สร้าง PDF จริงสองใบ ใบละหนึ่งหน้า เอาไว้ตรวจว่าหน้ารวมกันครบ

@@ -38,7 +38,11 @@ export async function navCounts() {
     .select({
       pendingAn: sql<number>`count(*) filter (where ${an.status} = 'PENDING')::int`,
       pendingFn: sql<number>`count(*) filter (where ${fn.status} = 'PENDING')::int`,
-      draftReview: sql<number>`count(*) filter (where ${jobs.draftStatus} = 'SUBMITTED')::int`,
+      // ต้องตรงกับ QUEUE.fahDraftReview ไม่งั้นเลขข้างเมนูจะนับงานที่ทำใบขนเสร็จแล้วด้วย
+      draftReview: sql<number>`count(*) filter (
+        where ${jobs.draftStatus} = 'SUBMITTED'
+          and ${jobs.customsTaskId} is null
+          and ${jobs.customsStatus} <> 'FILED')::int`,
       openJobs: sql<number>`count(*) filter (where ${jobs.releaseStatus} <> 'RELEASED')::int`,
       edoc: sql<number>`count(*) filter (where ${jobs.customsStatus} = 'FILED')::int`,
       queue: sql<number>`(select count(*) from automation_tasks

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { db } from '@/db';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
@@ -191,11 +191,18 @@ export const QUEUE = {
       ? or(isNull(fn.status), eq(fn.status, 'REJECTED'))
       : eq(fn.status, 'PENDING'),
   ],
+  /*
+   * แท็บ 3 Draft ใบขน — ฝั่ง "รออนุมัติรายการ" ต้องตัดงานที่ FAH ทำใบขนเสร็จแล้วออก
+   *
+   * ตอนออกเลขใบขน ระบบตั้งแค่ customs_status = 'FILED' ส่วน draft_status ยังค้าง
+   * เป็น SUBMITTED อยู่ ถ้าดูแค่ค่านั้น งานที่เสร็จแล้วจะค้างในคิวนี้ตลอดไป
+   * งานที่ได้เลขใบขนแล้วจะไปโผล่ที่แท็บ 4 เตรียมเอกสารเดิน E แทน
+   */
   pendingDraft: (sub: 'wait' | 'approve') => ({ fn }: JoinContext) => [
     eq(fn.status, 'APPROVED'),
     sub === 'wait'
       ? or(isNull(jobs.draftStatus), sql`${jobs.draftStatus} not in ('SUBMITTED','FILED')`)
-      : eq(jobs.draftStatus, 'SUBMITTED'),
+      : and(eq(jobs.draftStatus, 'SUBMITTED'), ne(jobs.customsStatus, 'FILED')),
   ],
   pendingEdoc: () => () => [eq(jobs.customsStatus, 'FILED')],
 

@@ -38,7 +38,7 @@ const NAV: NavGroup[] = [
   {
     label: 'FAH', color: '#dd5b00', roles: ['FAH'],
     items: [
-      { href: '/fah/do', label: 'จัดการ Invoice DO' },
+      { href: '/fah/do', label: 'Upload InvDO / ETA Official / Terminal / Send Partner' },
       { href: '/fah/fn', label: 'อนุมัติ Final Invoice', count: 'pendingFn' },
       { href: '/fah/draft', label: 'ตรวจ Draft / ทำใบขน', count: 'draftReview' },
     ],
@@ -46,8 +46,8 @@ const NAV: NavGroup[] = [
   {
     label: 'NAMKANG', color: '#1aae39', roles: ['NAMKANG'],
     items: [
-      { href: '/nam/approve', label: 'ตรวจรายการรออนุมัติ', count: 'pendingAn' },
-      { href: '/nam/customer', label: 'ข้อมูลลูกค้า / File' },
+      { href: '/nam/approve', label: 'อนุมัติข้อมูล BL เข้าตารางหลัก', count: 'pendingAn' },
+      { href: '/nam/customer', label: 'ใส่ Client in Charge / Surrender File' },
       { href: '/nam/release', label: 'ตรวจ & ปล่อยสินค้า' },
     ],
   },
