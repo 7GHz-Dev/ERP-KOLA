@@ -117,6 +117,7 @@ export async function listJobs(filter: JobFilter = {}) {
       terminalName: sql<string | null>`terminal.name`,
       declarationNo: sql<string | null>`entry.declaration_no`,
       eofficeRequestNo: sql<string | null>`eof.request_no`,
+      eofficeAttention: sql<string | null>`eof.attention_name`,
       anStatus: an.status,
       anId: an.id,
       anReason: an.reason,

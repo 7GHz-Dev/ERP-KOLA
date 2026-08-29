@@ -1,19 +1,47 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  loadEofficeForm, OVERLAY_SLOTS, TEMPLATE_KEY, type EofficeForm,
+} from '@/lib/eoffice-form';
+import { downloadFile } from '@/lib/storage';
 
 /**
- * ออกไฟล์ PDF ของคำร้องขอนำของเข้าเขตปลอดอากร
+ * ออกไฟล์ PDF ของคำร้องขอนำของเข้าเขตปลอดอากร (ปะหน้าชุด E-Office)
  *
  * เดิมต้องให้ผู้ใช้เปิดหน้าเว็บ กด Ctrl+P เป็น PDF แล้วอัปโหลดกลับเข้ามา
  * ชุดรวม E-Office ถึงจะมีคำร้องอยู่ด้วย ตรงนี้วาดเองที่เซิร์ฟเวอร์เลย
- * ทั้งข้อความและตำแหน่งยกมาจากหน้า /eoffice/[jobId] ให้ตรงกันทุกบรรทัด
+ *
+ * ทำงานสองโหมด เลือกจากว่ามีแบบฟอร์มพื้นหลังอัปโหลดไว้หรือยัง
+ *   1. มีแบบฟอร์มพื้นหลัง — ใช้ไฟล์ PDF ที่ผู้ดูแลอัปโหลด แล้วเติมเฉพาะค่าลงตามพิกัดที่ตั้งไว้
+ *   2. ไม่มี — วาดทั้งใบเองตามข้อความและระยะที่ตั้งไว้
+ *
+ * ทั้งสองโหมดอ่านค่าจากหน้า /master/eoffice ดู src/lib/eoffice-form.ts
  *
  * ต้องมีฟอนต์ไทยจริง ๆ ฟอนต์มาตรฐานของ PDF ไม่มีตัวอักษรไทยเลย
  */
 
 const A4 = { width: 595.28, height: 841.89 };
-const MARGIN_X = 45;
 const FONT_DIR = path.join(process.cwd(), 'assets', 'fonts');
+
+/**
+ * แบบฟอร์มของด่านใช้ Angsana New
+ *
+ * ไฟล์ที่ Windows ให้มา (angsana.ttc) เป็น font collection คือมีหลายฟอนต์อยู่ไฟล์เดียว
+ * ยัดทั้งก้อนลง /FontFile2 ไม่ได้ โปรแกรมอ่าน PDF จะหาฟอนต์ในนั้นไม่เจอแล้วถอยไปใช้
+ * ฟอนต์แทน ตัวอักษรไทยจึงเพี้ยน ไฟล์ในโฟลเดอร์นี้จึงแยกออกมาเป็นฟอนต์เดี่ยวแล้ว
+ * ด้วย scripts/extract-ttc.ts
+ */
+const ANGSANA = { regular: 'AngsanaNew-Regular.ttf', bold: 'AngsanaNew-Bold.ttf' };
+
+/**
+ * Sarabun กว้างกว่า Angsana New ราว 1.5 เท่าที่พอยต์เท่ากัน
+ * ขนาดในหน้าตั้งค่าเป็นพอยต์ของ Angsana New ตอนถอยไปใช้ Sarabun จึงต้องหดตามอัตรานี้
+ * ไม่งั้นทุกบรรทัดจะใหญ่จนล้นออกนอกหน้ากระดาษ
+ */
+const SARABUN_SIZE_RATIO = 1 / 1.5;
+
+/** ตัวอักษรไทยหนึ่งตัวขึ้นไป ใช้เลือกว่าจะวาดด้วยฟอนต์สำเนาไหน */
+const HAS_THAI = /[\u0E00-\u0E7F]/;
 
 const THAI_MONTHS = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -42,35 +70,175 @@ export type EofficeRequestData = {
   netWeight: string | null;
   goodsValue: string | null;
   goodsType: string | null;
+  attentionName?: string | null;
 };
 
 export class MissingThaiFontError extends Error {
   constructor() {
     super(
-      'ยังไม่มีฟอนต์ไทยสำหรับออกคำร้อง — วางไฟล์ Sarabun-Regular.ttf ไว้ที่ v2/assets/fonts/',
+      'ยังไม่มีฟอนต์ไทยสำหรับออกคำร้อง — วางไฟล์ AngsanaNew-Regular.ttf '
+      + '(หรือ Sarabun-Regular.ttf) ไว้ที่ v2/assets/fonts/',
     );
   }
 }
 
-async function loadFonts() {
+type LoadedFonts = { regular: Buffer; bold: Buffer; sizeRatio: number };
+
+/** คู่ regular/bold ของฟอนต์หนึ่งชุด ไม่มีตัวหนาก็ใช้ตัวธรรมดาแทน */
+async function loadPair(regular: string, bold: string) {
+  const regularBytes = await readFile(path.join(FONT_DIR, regular));
+  const boldBytes = await readFile(path.join(FONT_DIR, bold)).catch(() => regularBytes);
+  return { regular: regularBytes, bold: boldBytes };
+}
+
+async function loadFonts(): Promise<LoadedFonts> {
   try {
-    const [regular, bold] = await Promise.all([
-      readFile(path.join(FONT_DIR, 'Sarabun-Regular.ttf')),
-      readFile(path.join(FONT_DIR, 'Sarabun-Bold.ttf')).catch(() =>
-        readFile(path.join(FONT_DIR, 'Sarabun-Regular.ttf'))),
-    ]);
-    return { regular, bold };
+    return { ...await loadPair(ANGSANA.regular, ANGSANA.bold), sizeRatio: 1 };
+  } catch {
+    // ไม่มี Angsana New ในเครื่องที่รันอยู่ ใช้ Sarabun แทนเพื่อให้ยังออกคำร้องได้
+  }
+
+  try {
+    return {
+      ...await loadPair('Sarabun-Regular.ttf', 'Sarabun-Bold.ttf'),
+      sizeRatio: SARABUN_SIZE_RATIO,
+    };
   } catch {
     throw new MissingThaiFontError();
   }
 }
 
 export function thaiFontAvailable() {
-  return readFile(path.join(FONT_DIR, 'Sarabun-Regular.ttf')).then(() => true, () => false);
+  return loadFonts().then(() => true, () => false);
 }
+
+export type RenderOptions = {
+  /** วาดเส้นตารางพิกัดทับลงไปด้วย ใช้ตอนตั้งตำแหน่งค่าบนแบบฟอร์มพื้นหลัง */
+  grid?: boolean;
+};
 
 export async function renderEofficeRequestPdf(
   req: EofficeRequestData,
+  form?: EofficeForm,
+  options: RenderOptions = {},
+): Promise<Buffer> {
+  const f = form ?? await loadEofficeForm();
+  return f.hasTemplate ? renderOnTemplate(req, f, options) : renderDrawn(req, f);
+}
+
+/** ค่าที่ต้องเติมลงกระดาษ ใช้ร่วมกันทั้งสองโหมด */
+function overlayValues(req: EofficeRequestData) {
+  const [book, running] = (req.requestNo ?? '/').split('/');
+  const date = thaiDate(req.requestDate);
+  return {
+    requestNo: `${book} / ${running}`,
+    day: date.day,
+    month: date.month,
+    year: date.year,
+    entryNo: req.entryNo ?? '',
+    packageCount: req.packageCount ?? '',
+    netWeight: req.netWeight ?? '',
+    goodsValue: req.goodsValue ?? '',
+    goodsType: req.goodsType ?? '',
+    attentionName: req.attentionName ?? '',
+  } as Record<string, string>;
+}
+
+/**
+ * โหมดใช้แบบฟอร์มพื้นหลัง — เปิดไฟล์ที่อัปโหลดไว้แล้วเขียนเฉพาะค่าทับลงไป
+ *
+ * ตัวกระดาษจึงเหมือนไฟล์ Word ต้นฉบับทุกเส้นทุกตัวอักษร เพราะไม่ได้วาดใหม่
+ * เหลือแค่ต้องบอกพิกัดว่าค่าแต่ละตัวไปลงตรงไหน ซึ่งตั้งได้ที่หน้า /master/eoffice
+ */
+async function renderOnTemplate(
+  req: EofficeRequestData,
+  f: EofficeForm,
+  options: RenderOptions,
+): Promise<Buffer> {
+  const { PDFDocument, rgb } = await import('@cantoo/pdf-lib');
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+  const fonts = await loadFonts();
+
+  const { body } = await downloadFile(f.raw(TEMPLATE_KEY));
+  // ไฟล์ที่ export จาก Word บางตัวใส่รหัสผ่านผู้อ่านเป็นค่าว่างไว้ ต้องถอดจริง ไม่ใช่ข้าม
+  const doc = await PDFDocument.load(body, { password: '' });
+  if (doc.getPageCount() === 0) throw new Error('ไฟล์แบบฟอร์มพื้นหลังไม่มีหน้าเลย');
+  doc.registerFontkit(fontkit);
+
+  // เหตุผลที่ต้องแยกสำเนาไทย/ละติน ดูที่ renderDrawn
+  const embed = (bytes: Buffer) => doc.embedFont(bytes, { subset: false });
+  const thai = await embed(fonts.regular);
+  const latin = await embed(fonts.regular);
+  const fontFor = (text: string) => (HAS_THAI.test(text) ? thai : latin);
+
+  const page = doc.getPage(0);
+  const { width: pageW, height: pageH } = page.getSize();
+  const black = rgb(0, 0, 0);
+  const baseSize = f.n('overlaySize') * fonts.sizeRatio;
+  const values = overlayValues(req);
+
+  for (const base of OVERLAY_SLOTS) {
+    const text = values[base.key] ?? '';
+    if (!text) continue;
+
+    const slot = f.slot(base.key);
+    const font = fontFor(text);
+    let size = baseSize;
+    // ความกว้าง 0 คือไม่จำกัด ปล่อยให้ล้นได้เหมือนพิมพ์ทับด้วยเครื่องพิมพ์ดีด
+    if (slot.w > 0) {
+      const floor = baseSize * 0.5;
+      while (size > floor && font.widthOfTextAtSize(text, size) > slot.w) size -= 0.5;
+    }
+    const textW = font.widthOfTextAtSize(text, size);
+    const x = slot.align === 'center' && slot.w > 0 ? slot.x + (slot.w - textW) / 2 : slot.x;
+    // พิกัดที่ตั้งไว้นับจากขอบบน ส่วน PDF นับจากขอบล่าง
+    page.drawText(text, { x, y: pageH - slot.y, size, font, color: black });
+  }
+
+  if (options.grid) drawCoordinateGrid(page, latin, pageW, pageH, rgb);
+
+  return Buffer.from(await doc.save());
+}
+
+/**
+ * เส้นตารางพิกัดสำหรับหน้าดูตัวอย่าง
+ *
+ * ตั้งตำแหน่งด้วยการเดาตัวเลขแล้วกดดูใหม่ไปเรื่อย ๆ ช้ามาก
+ * มีเส้นกับตัวเลขกำกับให้อ่านพิกัดจากกระดาษได้ตรง ๆ จะจบในรอบสองรอบ
+ */
+function drawCoordinateGrid(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  page: any, font: any, pageW: number, pageH: number, rgb: (r: number, g: number, b: number) => any,
+) {
+  const faint = rgb(0.62, 0.78, 0.9);
+  const strong = rgb(0.15, 0.45, 0.72);
+
+  for (let x = 0; x <= pageW; x += 20) {
+    const major = x % 100 === 0;
+    page.drawLine({
+      start: { x, y: 0 }, end: { x, y: pageH },
+      thickness: major ? 0.5 : 0.25, color: major ? strong : faint, opacity: major ? 0.55 : 0.3,
+    });
+    if (major && x > 0) {
+      page.drawText(String(x), { x: x + 2, y: pageH - 10, size: 7, font, color: strong });
+    }
+  }
+  for (let y = 0; y <= pageH; y += 20) {
+    const major = y % 100 === 0;
+    page.drawLine({
+      start: { x: 0, y: pageH - y }, end: { x: pageW, y: pageH - y },
+      thickness: major ? 0.5 : 0.25, color: major ? strong : faint, opacity: major ? 0.55 : 0.3,
+    });
+    if (major && y > 0) {
+      page.drawText(String(y), { x: 2, y: pageH - y + 2, size: 7, font, color: strong });
+    }
+  }
+}
+
+/** โหมดวาดเองทั้งใบ ใช้เมื่อยังไม่ได้อัปโหลดแบบฟอร์มพื้นหลัง */
+async function renderDrawn(
+  req: EofficeRequestData,
+  f: EofficeForm,
 ): Promise<Buffer> {
   const { PDFDocument, rgb } = await import('@cantoo/pdf-lib');
   const fontkit = (await import('@pdf-lib/fontkit')).default;
@@ -78,52 +246,79 @@ export async function renderEofficeRequestPdf(
 
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  // ไม่ตัด subset — ตัวตัดของ fontkit พังกับตาราง glyph ของฟอนต์ไทยตัวนี้
-  // ฝังทั้งไฟล์แทน ใหญ่ขึ้นราว 160 KB ต่อฉบับ ซึ่งรับได้
-  const regular = await doc.embedFont(fonts.regular, { subset: false });
-  const bold = await doc.embedFont(fonts.bold, { subset: false });
+  // ไม่ตัด subset — ตัวตัดของ fontkit พังกับตาราง glyph ของฟอนต์ไทย ฝังทั้งไฟล์แทน
+  const embed = (bytes: Buffer) => doc.embedFont(bytes, { subset: false });
+
+  /*
+   * ฝังฟอนต์ชุดละสองสำเนา สำเนาหนึ่งไว้ใช้กับข้อความไทย อีกสำเนาไว้ใช้กับตัวเลขและอักษรละติน
+   *
+   * fontkit จำสคริปต์ของข้อความแรกที่จัดวางให้ฟอนต์แต่ละตัว พอจัดข้อความไทยไปแล้ว
+   * ตัวเลขในข้อความถัด ๆ มาจะถูกสลับเป็นเลขอีกรูปแบบหนึ่งของ Angsana New (glyph 344 ขึ้นไป)
+   * ซึ่งหน้าตาไม่เหมือนเลขปกติ แถมยังไม่มีในตารางแปลงกลับเป็นตัวอักษร
+   * ทำให้เลขใบขนกับปี พ.ศ. ในคำร้องค้นหาและคัดลอกออกมาไม่ได้
+   *
+   * แยกสำเนากันแบบนี้ สำเนาละตินจึงไม่เคยเห็นอักษรไทยเลย ตัวเลขจึงออกมาเป็นเลขปกติเสมอ
+   */
+  const thai = { regular: await embed(fonts.regular), bold: await embed(fonts.bold) };
+  const latin = { regular: await embed(fonts.regular), bold: await embed(fonts.bold) };
+  const fontFor = (text: string, useBold = false) =>
+    (HAS_THAI.test(text) ? thai : latin)[useBold ? 'bold' : 'regular'];
+
   const page = doc.addPage([A4.width, A4.height]);
 
   const black = rgb(0, 0, 0);
-  let y = A4.height - 55;
+
+  /* ---------- ค่าจากหน้าตั้งค่า ---------- */
+  const marginX = f.n('marginX');
+  const indent = f.n('indent');
+  const lineGap = f.n('lineGap');
+  /** ขนาดที่ตั้งไว้เป็นพอยต์ของ Angsana New แปลงเป็นพอยต์ของฟอนต์ที่ใช้จริง */
+  const pt = (size: number) => size * fonts.sizeRatio;
+  const bodySize = pt(f.n('bodySize'));
+  const tableSize = pt(f.n('tableSize'));
+
+  let y = A4.height - f.n('topY');
 
   const width = (text: string, size: number, useBold = false) =>
-    (useBold ? bold : regular).widthOfTextAtSize(text, size);
+    fontFor(text, useBold).widthOfTextAtSize(text, size);
 
   /**
    * ขนาดอักษรที่ใส่ในความกว้างที่มีได้พอดี
    * ภาษาไทยไม่มีช่องว่างระหว่างคำ ตัดขึ้นบรรทัดใหม่เองไม่ได้ จึงย่อขนาดแทน
    * ดีกว่าปล่อยให้ล้นออกนอกกระดาษหรือตัดข้อความทิ้งจนอ่านไม่รู้เรื่อง
    */
-  const fit = (text: string, room: number, size: number, useBold = false) => {
+  const fitBy = (measure: (size: number) => number, room: number, size: number) => {
+    const floor = size * 0.5;
     let s = size;
-    while (s > 7 && width(text, s, useBold) > room) s -= 0.5;
+    while (s > floor && measure(s) > room) s -= 0.5;
     return s;
   };
+  const fit = (text: string, room: number, size: number, useBold = false) =>
+    fitBy((s) => width(text, s, useBold), room, size);
 
   const draw = (
     text: string,
-    opts: { x?: number; size?: number; bold?: boolean; center?: boolean; right?: boolean } = {},
+    opts: { x?: number; size?: number; bold?: boolean; center?: boolean } = {},
   ) => {
-    const font = opts.bold ? bold : regular;
-    let x = opts.x ?? MARGIN_X;
-    const size = fit(text, A4.width - MARGIN_X - x, opts.size ?? 15, opts.bold);
+    let x = opts.x ?? marginX;
+    const size = fit(text, A4.width - marginX - x, opts.size ?? bodySize, opts.bold);
     if (opts.center) x = (A4.width - width(text, size, opts.bold)) / 2;
-    if (opts.right) x = A4.width - MARGIN_X - width(text, size, opts.bold);
-    page.drawText(text, { x, y, size, font, color: black });
+    page.drawText(text, { x, y, size, font: fontFor(text, opts.bold), color: black });
   };
 
   /** ข้อความที่มีขีดเส้นใต้เฉพาะค่าที่กรอก ไล่วาดทีละท่อนบนบรรทัดเดียว */
   const line = (
     parts: Array<{ text: string; underline?: boolean; bold?: boolean }>,
-    opts: { size?: number; indent?: number } = {},
+    opts: { size?: number; indent?: number; startX?: number } = {},
   ) => {
-    const start = MARGIN_X + (opts.indent ?? 0);
-    const whole = parts.map((p) => p.text).join('');
-    const size = fit(whole, A4.width - MARGIN_X - start, opts.size ?? 15);
+    const start = opts.startX ?? marginX + (opts.indent ?? 0);
+    // วัดทีละท่อนแบบเดียวกับตอนวาด เพราะแต่ละท่อนอาจใช้คนละสำเนาฟอนต์
+    const measure = (size: number) =>
+      parts.reduce((sum, p) => sum + width(p.text, size, p.bold), 0);
+    const size = fitBy(measure, A4.width - marginX - start, opts.size ?? bodySize);
     let x = start;
     for (const part of parts) {
-      const font = part.bold ? bold : regular;
+      const font = fontFor(part.text, part.bold);
       page.drawText(part.text, { x, y, size, font, color: black });
       const w = width(part.text, size, part.bold);
       if (part.underline) {
@@ -141,176 +336,169 @@ export async function renderEofficeRequestPdf(
   const gap = (n: number) => { y -= n; };
 
   /* ---------- หัวเอกสาร ---------- */
-  draw('คำร้องขอนำของที่นำเข้ามาในราชอาณาจักรเข้าไปในเขตปลอดอากร', {
-    size: 18, bold: true, center: true,
-  });
-  gap(30);
+  draw(f.t('title'), { size: pt(f.n('titleSize')), bold: true, center: true });
+  gap(lineGap * 1.25);
 
   const [book, running] = (req.requestNo ?? '/').split('/');
   const date = thaiDate(req.requestDate);
 
   const noText = 'เลขที่ ';
   const noValue = `${book}  /  ${running}`;
-  const noWidth = width(noText, 15) + width(noValue, 15);
-  page.drawText(noText, { x: A4.width - MARGIN_X - noWidth, y, size: 15, font: regular });
-  page.drawText(noValue, {
-    x: A4.width - MARGIN_X - width(noValue, 15), y, size: 15, font: regular,
+  const noWidth = width(noText, bodySize) + width(noValue, bodySize);
+  page.drawText(noText, {
+    x: A4.width - marginX - noWidth, y, size: bodySize, font: fontFor(noText),
   });
-  gap(22);
+  page.drawText(noValue, {
+    x: A4.width - marginX - width(noValue, bodySize), y, size: bodySize, font: fontFor(noValue),
+  });
+  gap(lineGap * 0.92);
 
   const dateParts = [
     { text: 'วันที่ ' }, { text: ` ${date.day} `, underline: true },
     { text: ' เดือน ' }, { text: ` ${date.month} `, underline: true },
     { text: ' พ.ศ. ' }, { text: ` ${date.year} `, underline: true },
   ];
-  const dateWidth = dateParts.reduce((sum, p) => sum + width(p.text, 15), 0);
-  {
-    let x = A4.width - MARGIN_X - dateWidth;
-    for (const p of dateParts) {
-      page.drawText(p.text, { x, y, size: 15, font: regular });
-      const w = width(p.text, 15);
-      if (p.underline) {
-        page.drawLine({
-          start: { x, y: y - 2.5 }, end: { x: x + w, y: y - 2.5 },
-          thickness: 0.6, color: black,
-        });
-      }
-      x += w;
-    }
-  }
-  gap(30);
+  const dateWidth = dateParts.reduce((sum, p) => sum + width(p.text, bodySize), 0);
+  line(dateParts, { startX: A4.width - marginX - dateWidth });
+  gap(lineGap * 1.25);
 
   /* ---------- เรื่อง / เรียน ---------- */
+  // คอลัมน์ค่าเริ่มหลังคำว่า เรื่อง / เรียน ที่ยาวที่สุด ขยับตามขนาดตัวอักษรเอง
+  const labelX = marginX
+    + Math.max(width('เรื่อง', bodySize, true), width('เรียน', bodySize, true)) + lineGap;
   draw('เรื่อง', { bold: true });
-  draw('ขอนำของที่นำเข้ามาในราชอาณาจักรเข้าเขตปลอดอากร', { x: MARGIN_X + 55 });
-  gap(22);
+  draw(f.t('subject'), { x: labelX });
+  gap(lineGap * 0.92);
   draw('เรียน', { bold: true });
-  draw('นายด่านศุลกากรแม่สอด', { x: MARGIN_X + 55 });
-  gap(30);
+  draw(f.t('attention'), { x: labelX });
+  gap(lineGap * 1.25);
 
   /* ---------- เนื้อความ ---------- */
   line([
     { text: 'ด้วยข้าพเจ้า บริษัท ' },
-    { text: ' แม่สอดฟรีโซน จำกัด ', underline: true },
-  ], { indent: 45 });
-  gap(24);
+    { text: ` ${f.t('companyName')} `, underline: true },
+  ], { indent });
+  gap(lineGap);
 
   line([
     { text: 'ถือใบรับรองเป็นผู้ประกอบกิจการในเขตปลอดอากร ' },
-    { text: ' 97-2567 ', underline: true },
+    { text: ` ${f.t('licenseNo')} `, underline: true },
     { text: ' ตั้งอยู่เลขที่ ' },
-    { text: ' 888/2 ', underline: true },
+    { text: ` ${f.t('addressNo')} `, underline: true },
     { text: ' หมู่ที่ ' },
-    { text: ' 7 ', underline: true },
+    { text: ` ${f.t('moo')} `, underline: true },
   ]);
-  gap(24);
+  gap(lineGap);
 
   line([
     { text: 'ตำบล' },
-    { text: ' ท่าสายลวด ', underline: true },
+    { text: ` ${f.t('tambon')} `, underline: true },
     { text: ' อำเภอ ' },
-    { text: ' แม่สอด ', underline: true },
+    { text: ` ${f.t('amphoe')} `, underline: true },
     { text: ' จังหวัด' },
-    { text: ' ตาก ', underline: true },
+    { text: ` ${f.t('province')} `, underline: true },
     { text: ' รหัสไปรษณีย์ ' },
-    { text: ' 63110 ', underline: true },
+    { text: ` ${f.t('postcode')} `, underline: true },
   ]);
-  gap(24);
+  gap(lineGap);
 
-  draw('มีความประสงค์จะนำของที่เข้ามาในราชอาณาจักรเข้าเขตปลอดอากร แม่สอดฟรีโซน ตามใบขน', {
-    x: MARGIN_X + 45,
-  });
-  gap(24);
-
+  draw(
+    `มีความประสงค์จะนำของที่เข้ามาในราชอาณาจักรเข้าเขตปลอดอากร ${f.t('zoneName')} ตามใบขน`,
+    { x: marginX + indent },
+  );
+  gap(lineGap);
 
   line([
     { text: 'สินค้าขาเข้า เลขที่ ' },
     { text: ` ${req.entryNo ?? ''} `, underline: true },
-    { text: ' เพื่อปรับสภาพก่อนส่งออกไปต่างประเทศ รายละเอียด ดังนี้' },
+    { text: ` ${f.t('purpose')} รายละเอียด ดังนี้` },
   ]);
-  gap(28);
+  gap(lineGap * 1.17);
 
   /* ---------- ตารางรายละเอียดของ ---------- */
+  const colW = f.n('tableColWidth');
+  const goodsLabel = f.t('colGoods');
   const cols = [
-    { label: 'จำนวนหีบห่อ', value: req.packageCount ?? '', w: 110 },
-    { label: 'น้ำหนักสุทธิ', value: req.netWeight ?? '', w: 110 },
-    { label: 'ราคาของ', value: req.goodsValue ?? '', w: 110 },
-    { label: 'ชนิดของ', value: req.goodsType ?? '', w: A4.width - MARGIN_X * 2 - 330 },
+    { label: f.t('colPackage'), value: req.packageCount ?? '', w: colW },
+    { label: f.t('colWeight'), value: req.netWeight ?? '', w: colW },
+    { label: f.t('colValue'), value: req.goodsValue ?? '', w: colW },
+    { label: goodsLabel, value: req.goodsType ?? '', w: A4.width - marginX * 2 - colW * 3 },
   ];
-  const headH = 26;
-  const bodyH = 30;
+  const headH = f.n('tableHeadHeight');
+  const bodyH = f.n('tableBodyHeight');
   const tableTop = y;
 
-  let x = MARGIN_X;
+  let x = marginX;
   for (const c of cols) {
     page.drawRectangle({
       x, y: tableTop - headH, width: c.w, height: headH,
       borderColor: black, borderWidth: 0.8,
     });
-    const lSize = fit(c.label, c.w - 10, 14);
+    const lSize = fit(c.label, c.w - 10, tableSize);
     page.drawText(c.label, {
-      x: x + (c.w - width(c.label, lSize)) / 2, y: tableTop - headH + 8,
-      size: lSize, font: regular, color: black,
+      x: x + (c.w - width(c.label, lSize)) / 2, y: tableTop - headH + headH * 0.31,
+      size: lSize, font: fontFor(c.label), color: black,
     });
     x += c.w;
   }
 
-  x = MARGIN_X;
+  x = marginX;
   for (const c of cols) {
     page.drawRectangle({
       x, y: tableTop - headH - bodyH, width: c.w, height: bodyH,
       borderColor: black, borderWidth: 0.8,
     });
     // ชนิดของเป็นข้อความยาว ชิดซ้าย ส่วนตัวเลขวางกลางช่อง
-    const isText = c.label === 'ชนิดของ';
-    const vSize = fit(c.value, c.w - 14, 14);
+    const isText = c.label === goodsLabel;
+    const vSize = fit(c.value, c.w - 14, tableSize);
     page.drawText(c.value, {
       x: isText ? x + 7 : x + (c.w - width(c.value, vSize)) / 2,
-      y: tableTop - headH - bodyH + 10,
-      size: vSize, font: regular, color: black,
+      y: tableTop - headH - bodyH + bodyH * 0.33,
+      size: vSize, font: fontFor(c.value), color: black,
     });
     x += c.w;
   }
   y = tableTop - headH - bodyH;
-  gap(34);
+  gap(lineGap * 1.42);
 
-  draw('จึงเรียนมาเพื่อโปรดพิจารณา', { x: MARGIN_X + 45 });
-  gap(34);
+  draw(f.t('closing'), { x: marginX + indent });
+  gap(lineGap * 1.42);
 
   /* ---------- ลงชื่อ ---------- */
   const rightX = A4.width / 2 + 20;
   const signTop = y;
-  draw('เรียน เรือตรี ชุมพล');
-  draw('ขอแสดงความนับถือ', { x: rightX + 60 });
-  gap(22);
-  draw('เพื่อดำเนินการตามระเบียบ', { x: MARGIN_X + 25 });
+  // ชื่อที่จ่าหน้าถึงกรอกใหม่ได้ทุกใบ ต่อท้ายข้อความคงที่ที่ตั้งไว้
+  draw([f.t('routeTo'), req.attentionName].filter(Boolean).join(' '));
+  draw(f.t('regards'), { x: rightX + 60 });
+  gap(lineGap * 0.92);
+  draw(f.t('routeNote'), { x: marginX + 25 });
 
-  y = signTop - 70;
-  draw('( ลงชื่อ ) ..................................... ตัวแทน/ผู้จัดการ', { x: rightX });
-  gap(24);
-  draw('( นายอัครเดช ตาสะหลี )  ประทับตรา', { x: rightX + 20 });
-  gap(40);
+  y = signTop - f.n('signGap');
+  draw(f.t('signLine'), { x: rightX });
+  gap(lineGap);
+  draw(f.t('signName'), { x: rightX + 20 });
+  gap(lineGap * 1.67);
 
   /* ---------- ช่องบันทึกของเจ้าหน้าที่ ---------- */
-  const half = (A4.width - MARGIN_X * 2) / 2;
-  const officerH = 120;
+  const half = (A4.width - marginX * 2) / 2;
+  const officerH = f.n('officerHeight');
+  const officerSize = pt(f.n('officerSize'));
   const officerTop = y;
-  for (const [i, label] of [
-    'บันทึกการอนุญาตของพนักงานศุลกากร',
-    'บันทึกการตรวจสอบพนักงานศุลกากร',
-  ].entries()) {
-    const bx = MARGIN_X + half * i;
+  const headRow = officerSize * 1.35;
+  for (const [i, label] of [f.t('officerLeft'), f.t('officerRight')].entries()) {
+    const bx = marginX + half * i;
     page.drawRectangle({
       x: bx, y: officerTop - officerH, width: half, height: officerH,
       borderColor: black, borderWidth: 0.8,
     });
     page.drawLine({
-      start: { x: bx, y: officerTop - 26 }, end: { x: bx + half, y: officerTop - 26 },
+      start: { x: bx, y: officerTop - headRow }, end: { x: bx + half, y: officerTop - headRow },
       thickness: 0.8, color: black,
     });
+    const size = fit(label, half - 10, officerSize);
     page.drawText(label, {
-      x: bx + (half - width(label, 13)) / 2, y: officerTop - 19,
-      size: 13, font: regular, color: black,
+      x: bx + (half - width(label, size)) / 2, y: officerTop - headRow + officerSize * 0.38,
+      size, font: fontFor(label), color: black,
     });
   }
 

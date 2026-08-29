@@ -7,10 +7,8 @@ import { db } from '@/db';
 import { customsEntries, eofficeRequests, jobSequences, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { storeRequestPdf } from '@/lib/eoffice-bundle';
+import { loadEofficeForm } from '@/lib/eoffice-form';
 import { logActivity, newId, number, required, runAction, text } from './common';
-
-/** เล่มที่ของคำร้อง คงที่ตามแบบฟอร์มที่ด่านใช้ */
-const BOOK_NO = '0869';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -67,10 +65,14 @@ async function createEofficeRequestImpl(formData: FormData) {
   const netWeight = `${text(formData.get('netWeight'), 40) || Number(job.grossWeight ?? 0)} KGM`;
   const goodsType = text(formData.get('goodsType'), 200)
     || `${job.product ?? 'สินค้า'} (รายละเอียดตามใบขนฯ แนบ)`;
+  const attentionName = text(formData.get('attentionName'), 120);
+
+  // เล่มที่ของคำร้องมาจากหน้าตั้งค่าฟอร์มปะหน้า ด่านเปลี่ยนเล่มทีก็แก้ตรงนั้น
+  const bookNo = (await loadEofficeForm()).t('bookNo');
 
   const requestNo = await db.transaction(async (tx) => {
     const running = await nextRunningNo(tx);
-    const full = `${BOOK_NO}/${running}`;
+    const full = `${bookNo}/${running}`;
 
     // ออกใหม่ทับของเดิมได้ แต่เก็บเลขเดิมไว้ไม่ให้เลขวิ่งฟรี
     const [existing] = await tx.select().from(eofficeRequests)
@@ -79,12 +81,13 @@ async function createEofficeRequestImpl(formData: FormData) {
     const values = {
       jobId, jobNo: job.jobNo,
       requestNo: existing?.requestNo ?? full,
-      bookNo: BOOK_NO,
+      bookNo,
       runningNo: existing?.runningNo ?? running,
       requestDate: new Date().toISOString().slice(0, 10),
       entryNo, packageCount, netWeight,
       goodsValue: `${goodsValue} ${goodsCurrency}`,
       goodsType,
+      attentionName,
       createdBy: user.id,
       updatedAt: new Date(),
     };

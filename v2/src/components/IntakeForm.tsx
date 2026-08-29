@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import type { Option } from '@/lib/queries/master';
 import { extractPdfText, parseArrivalText } from '@/lib/parse-arrival';
 import { SearchSelect } from '@/components/SearchSelect';
+import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 
 /**
  * ฟอร์มรับงาน
@@ -52,6 +53,17 @@ export function IntakeForm({
   const [parsed, setParsed] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
 
+  /*
+   * ไฟล์ที่เลือกไว้ กับไฟล์ที่ตัดหน้าออกแล้ว
+   *
+   * ช่อง input ยังถือไฟล์ต้นฉบับไว้เพื่อให้ required ของเบราว์เซอร์ทำงานตามปกติ
+   * ส่วนตัวที่จะอัปโหลดจริงเลือกตอนกดบันทึก ถ้ามีตัวที่ตัดแล้วก็ใช้ตัวนั้นแทน
+   */
+  const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [trimmedFile, setTrimmedFile] = useState<File | null>(null);
+  const [pageInfo, setPageInfo] = useState<{ kept: number; total: number } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
   async function handleFile(file: File | undefined) {
     if (!file) return;
     if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
@@ -61,6 +73,12 @@ export function IntakeForm({
     }
     setStatusTone('');
     setReadStatus('กำลังอ่านไฟล์...');
+    // เปิดแผงตัวอย่างทันทีที่เลือกไฟล์ ไม่ต้องรอผลอ่านข้อมูล
+    // ถึงอ่านข้อมูลไม่ออกก็ยังต้องดูหน้าและตัดหน้าที่ไม่เอาได้
+    setPickedFile(file);
+    setTrimmedFile(null);
+    setPageInfo(null);
+    setShowPreview(true);
     try {
       const result = parseArrivalText(await extractPdfText(file));
       const filled: Record<string, string> = {};
@@ -101,15 +119,22 @@ export function IntakeForm({
     setParsed({});
     setReadStatus('ยังไม่ได้อ่านไฟล์');
     setStatusTone('');
+    setPickedFile(null);
+    setTrimmedFile(null);
+    setPageInfo(null);
+    setShowPreview(false);
     setFormKey((n) => n + 1);
   }
 
   return (
+    <>
     <form
       key={formKey}
       action={(formData) => {
         formData.set('blRows', JSON.stringify(blRows));
         formData.set('containerRows', JSON.stringify(containerRows));
+        // ตัดหน้าแล้วให้ส่งตัวที่ตัดแล้วขึ้นไปแทนต้นฉบับที่ยังอยู่ในช่องเลือกไฟล์
+        if (trimmedFile) formData.set('file', trimmedFile);
         startTransition(async () => {
           const jobNo = await action(formData);
           if (jobNo) resetForNext(jobNo);
@@ -132,6 +157,20 @@ export function IntakeForm({
           onChange={(e) => void handleFile(e.target.files?.[0])} />
       </label>
       <div className={`read-status ${statusTone}`}>{readStatus}</div>
+      {pickedFile ? (
+        <div className="file-bar">
+          <span>
+            {pageInfo && pageInfo.kept < pageInfo.total
+              ? `ตัดเหลือ ${pageInfo.kept} จาก ${pageInfo.total} หน้า`
+              : pageInfo
+                ? `ใช้ทั้ง ${pageInfo.total} หน้า`
+                : 'ยังไม่ได้ตรวจหน้า'}
+          </span>
+          <button type="button" className="button tiny" onClick={() => setShowPreview(true)}>
+            ดูตัวอย่าง / ตัดหน้า
+          </button>
+        </div>
+      ) : null}
 
       <div className="section-title">ข้อมูลจาก {sourceType === 'AN' ? 'Arrival Notice' : 'BL'}</div>
       <div className="extract-grid">
@@ -287,6 +326,20 @@ export function IntakeForm({
         </button>
       </div>
     </form>
+
+    {showPreview && pickedFile ? (
+      <PdfPageTrimmer
+        file={pickedFile}
+        title={`ตัวอย่าง ${sourceType === 'AN' ? 'ARRIVAL NOTICE' : 'BILL OF LADING'}`}
+        onClose={() => setShowPreview(false)}
+        onApply={(trimmed, kept, total) => {
+          setTrimmedFile(trimmed);
+          setPageInfo({ kept, total });
+          setShowPreview(false);
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 

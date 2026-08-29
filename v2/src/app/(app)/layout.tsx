@@ -53,7 +53,10 @@ const NAV: NavGroup[] = [
   },
   {
     label: 'SYSTEM', color: '#793400', roles: ['ADMIN'],
-    items: [{ href: '/master', label: 'Master Data' }],
+    items: [
+      { href: '/master', label: 'Master Data' },
+      { href: '/master/eoffice', label: 'ฟอร์มปะหน้า E-Office' },
+    ],
   },
 ];
 

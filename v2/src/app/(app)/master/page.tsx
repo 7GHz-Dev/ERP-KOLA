@@ -1,7 +1,7 @@
-import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { listMaster, masterCounts, MASTER_TYPES } from '@/lib/queries/master';
 import { MasterRecordForm } from '@/components/ActionForms';
+import { MasterMenu } from '@/components/MasterMenu';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,18 +26,7 @@ export default async function MasterPage({
       </div>
 
       <div className="master-layout">
-        <nav className="master-menu">
-          {MASTER_TYPES.map((t) => (
-            <Link
-              key={t.key}
-              href={`/master?type=${t.key}`}
-              prefetch
-              aria-current={t.key === type ? 'page' : undefined}
-            >
-              {t.label} <small>({counts.get(t.key) ?? 0})</small>
-            </Link>
-          ))}
-        </nav>
+        <MasterMenu current={type} counts={counts} />
 
         <div>
           <div className="toolbar">

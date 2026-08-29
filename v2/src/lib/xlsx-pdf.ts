@@ -44,6 +44,150 @@ export function parsePrintArea(area: string) {
 type Align = 'left' | 'center' | 'right';
 
 /**
+ * ค่าที่อยู่ในช่อง โดยดึงผลลัพธ์ออกมาให้แล้วถ้าช่องนั้นเป็นสูตร
+ *
+ * ช่องยอดรวมเป็น SUM() ซึ่ง ExcelJS คืนเป็นออบเจ็กต์ { formula, result }
+ * ถ้าไม่แกะออกมา ตัวตรวจว่า "เป็นตัวเลขไหม" จะไม่ผ่าน แล้วยอดรวมจะชิดซ้าย
+ * ทั้งที่ตัวเลขในคอลัมน์เดียวกันชิดขวา
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function cellValue(cell: any): unknown {
+  const value = cell.value;
+  return value && typeof value === 'object' && !(value instanceof Date) && 'result' in value
+    ? value.result
+    : value;
+}
+
+/** ตัวเลขในช่อง หรือ null ถ้าช่องนั้นไม่ใช่ตัวเลข */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function numberIn(cell: any): number | null {
+  const value = cellValue(cell);
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * จัดรูปตัวเลขตามรูปแบบที่ตั้งไว้ในช่อง Excel
+ *
+ * ExcelJS อ่านรูปแบบมาให้ที่ cell.numFmt แต่ไม่ได้เอาไปใช้กับ cell.text ซึ่งคืนเลขดิบ
+ * ใบ Final Invoice ตั้ง "¥"#,##0 ไว้กับคอลัมน์ราคา ถ้าไม่จัดรูปเองจะได้ 769215
+ * แทนที่จะเป็น ¥769,215 ต่างจากที่ Excel พิมพ์ออกมา
+ *
+ * รองรับเท่าที่ใบงานจริงใช้ — ตัวคั่นหลักพัน จำนวนทศนิยม ข้อความคงที่อย่างสัญลักษณ์
+ * สกุลเงิน และเปอร์เซ็นต์ รูปแบบที่ซับซ้อนกว่านี้ (วันที่ เศษส่วน เลขยกกำลัง)
+ * ปล่อยผ่านเป็นเลขดิบเหมือนเดิม ดีกว่าเดาแล้วพิมพ์ผิด
+ */
+export function formatNumber(value: number, numFmt?: string): string {
+  const picked = pickSection(numFmt, value);
+  if (!picked) return String(value);
+  const { pattern, absolute } = picked;
+
+  let prefix = '';
+  let suffix = '';
+  let core = '';
+  let percent = false;
+
+  for (let i = 0; i < pattern.length; i += 1) {
+    const ch = pattern[i];
+    // [Red] และเงื่อนไขอื่นไม่มีผลกับข้อความที่พิมพ์
+    if (ch === '[') { i = pattern.indexOf(']', i); if (i < 0) break; continue; }
+    // _x เว้นที่เท่าความกว้างของ x ส่วน *x วาด x ซ้ำจนเต็มช่อง ทั้งคู่ไม่ใช่ตัวอักษรจริง
+    if (ch === '_' || ch === '*') { i += 1; continue; }
+    if (ch === '\\') { i += 1; addLiteral(pattern[i] ?? ''); continue; }
+    if (ch === '"') {
+      const end = pattern.indexOf('"', i + 1);
+      addLiteral(pattern.slice(i + 1, end < 0 ? undefined : end));
+      i = end < 0 ? pattern.length : end;
+      continue;
+    }
+    if (ch === '#' || ch === '0' || ch === '?' || ch === '.' || (ch === ',' && core)) {
+      core += ch;
+      continue;
+    }
+    if (ch === '%') percent = true;
+    addLiteral(ch);
+  }
+
+  function addLiteral(text: string) {
+    if (!text) return;
+    if (core) suffix += text; else prefix += text;
+  }
+
+  if (!core) return String(value);
+
+  const dot = core.indexOf('.');
+  const decimals = dot < 0 ? 0 : core.slice(dot + 1).replace(/[^0#?]/g, '').length;
+  const grouped = core.slice(0, dot < 0 ? undefined : dot).includes(',');
+
+  const base = absolute ? Math.abs(value) : value;
+  const shown = (percent ? base * 100 : base).toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: grouped,
+  });
+  return `${prefix}${shown}${suffix}`;
+}
+
+/**
+ * รูปแบบหนึ่งช่องแบ่งเป็นหลายท่อนด้วย ; ตามลำดับ บวก ลบ ศูนย์ ข้อความ
+ * เลือกท่อนให้ตรงกับค่า และถ้าท่อนของค่าลบมีเครื่องหมายลบเขียนไว้เองแล้ว
+ * ต้องส่งค่าสัมบูรณ์เข้าไป ไม่งั้นจะได้เครื่องหมายลบสองตัว
+ */
+function pickSection(
+  numFmt: string | undefined, value: number,
+): { pattern: string; absolute: boolean } | null {
+  const fmt = (numFmt ?? '').trim();
+  if (!fmt || /^general$/i.test(fmt)) return null;
+
+  const sections: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < fmt.length; i += 1) {
+    const ch = fmt[i];
+    if (ch === '"') quoted = !quoted;
+    if (ch === '\\') { current += ch + (fmt[i + 1] ?? ''); i += 1; continue; }
+    if (ch === ';' && !quoted) { sections.push(current); current = ''; continue; }
+    current += ch;
+  }
+  sections.push(current);
+
+  if (value < 0 && sections[1]) return { pattern: sections[1], absolute: true };
+  if (value === 0 && sections[2]) return { pattern: sections[2], absolute: false };
+  return { pattern: sections[0], absolute: false };
+}
+
+/**
+ * ข้อความที่จะพิมพ์จริงของช่องหนึ่ง
+ *
+ * ช่องวันที่ ExcelJS คืนค่าเป็น Date ซึ่ง .text จะกลายเป็นสตริงยาวแบบ
+ * "Fri Aug 14 2026 07:00:00 GMT+0700" จัดรูปเองให้เป็น dd/mm/yyyy ตามระบบ
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function displayText(cell: any): string {
+  const value = cellValue(cell);
+  if (value instanceof Date) {
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC',
+    }).format(value);
+  }
+  const n = numberIn(cell);
+  if (n !== null) return formatNumber(n, cell.numFmt);
+  return String(cell.text ?? '').trim();
+}
+
+/**
+ * ขนาดตัวอักษรอย่างต่ำของข้อความที่ล้นออกนอกช่องตัวเอง หน่วยเดียวกับที่ตั้งใน Excel
+ * เท่ากับขนาดของหัวข้ออื่นในใบ Final Invoice จะได้ไม่มีบรรทัดไหนเล็กกว่าที่เหลือ
+ */
+const MIN_SPILL_SIZE = 14;
+
+/** ระยะขอบกระดาษที่ตั้งไว้ในไฟล์ Excel หน่วยเป็นนิ้ว แปลงเป็นพอยต์ */
+function marginPt(inches: number | undefined, fallback: number) {
+  if (typeof inches !== 'number' || !Number.isFinite(inches)) return fallback;
+  // ขอบแคบกว่านี้เครื่องพิมพ์ส่วนใหญ่พิมพ์ไม่ถึงอยู่ดี
+  return Math.max(inches * 72, 14);
+}
+
+/**
  * แปลงไฟล์ Excel เป็น PDF
  * คืน null เมื่อไม่มีชีตไหนตั้งขอบเขตการพิมพ์ไว้ — จะได้ไม่พิมพ์ทั้งชีตออกมามั่ว ๆ
  */
@@ -72,21 +216,13 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
   doc.registerFontkit(fontkit);
 
   /*
-   * cambria.ttf ที่ Windows ให้มาเป็น "font collection" คือมีหลายฟอนต์ในไฟล์เดียว
-   * (Cambria กับ Cambria Math) ฝังตรง ๆ ไม่ได้ ต้องระบุชื่อฟอนต์ที่จะเอา
-   * ลองแบบธรรมดาก่อน ถ้าเจอกรณีนี้ค่อยระบุชื่อ จะได้ใช้ได้ทั้งไฟล์เดี่ยวและไฟล์รวม
+   * ไฟล์ในโฟลเดอร์นี้ต้องเป็นฟอนต์เดี่ยวเท่านั้น
+   * cambria.ttf ที่ Windows ให้มาเป็น font collection (Cambria กับ Cambria Math อยู่ไฟล์เดียว)
+   * ยัดลง PDF ทั้งก้อนแล้วโปรแกรมอ่านจะหาฟอนต์ในนั้นไม่เจอ แล้วถอยไปใช้ฟอนต์อื่นแทน
+   * ใบ Final Invoice ที่ออกมาจึงไม่ใช่ Cambria จริง ๆ แยกไฟล์ก่อนด้วย scripts/extract-ttc.ts
    */
-  const embed = async (bytes: Buffer, name: string) => {
-    try {
-      return await doc.embedFont(bytes, { subset: false });
-    } catch (error) {
-      if (!/collection/i.test(error instanceof Error ? error.message : '')) throw error;
-      return doc.embedFont(bytes, { subset: false, postscriptName: name });
-    }
-  };
-
-  const regular = await embed(regularBytes, 'Cambria');
-  const bold = await embed(boldBytes, 'Cambria-Bold');
+  const regular = await doc.embedFont(regularBytes, { subset: false });
+  const bold = await doc.embedFont(boldBytes, { subset: false });
 
   const landscape = sheet.pageSetup?.orientation === 'landscape';
   const pageW = landscape ? A4.height : A4.width;
@@ -107,15 +243,26 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
 
   const contentW = colW.reduce((a, b) => a + b, 0);
   const contentH = rowH.reduce((a, b) => a + b, 0);
-  const margin = 28;
+
+  /*
+   * ใช้ระยะขอบที่ตั้งไว้ในไฟล์ ไม่ใช่ค่าคงที่ของเราเอง
+   * ใบ Final Invoice ตั้งขอบไว้แคบเพื่อให้ตารางลงพอดีหนึ่งหน้า ถ้าบังคับขอบกว้างกว่านั้น
+   * อัตราย่อจะลดตามแล้วตัวอักษรทั้งใบเล็กกว่าที่ Excel พิมพ์ออกมาโดยไม่จำเป็น
+   */
+  const margins = sheet.pageSetup?.margins;
+  const marginL = marginPt(margins?.left, 28);
+  const marginR = marginPt(margins?.right, 28);
+  const marginT = marginPt(margins?.top, 28);
+  const marginB = marginPt(margins?.bottom, 28);
+
   const scale = Math.min(
-    (pageW - margin * 2) / contentW,
-    (pageH - margin * 2) / contentH,
+    (pageW - marginL - marginR) / contentW,
+    (pageH - marginT - marginB) / contentH,
     1,
   );
 
-  const originX = (pageW - contentW * scale) / 2;
-  const originY = pageH - margin;
+  const originX = marginL + (pageW - marginL - marginR - contentW * scale) / 2;
+  const originY = pageH - marginT;
 
   const xAt = (index: number) =>
     originX + colW.slice(0, index).reduce((a, b) => a + b, 0) * scale;
@@ -141,6 +288,39 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
 
   const mergeOf = (r: number, c: number) =>
     merges.find((m) => r >= m.top && r <= m.bottom && c >= m.left && c <= m.right);
+
+  /*
+   * ช่องไหนมีข้อความอยู่แล้วบ้าง — ต้องรู้ก่อนเริ่มวาด
+   * ช่องที่อยู่ในกลุ่มผสาน ExcelJS คืนข้อความของช่องบนซ้ายให้ทุกช่อง จึงนับว่าไม่ว่างทั้งกลุ่ม
+   */
+  const filled: boolean[][] = [];
+  for (let r = area.fromRow; r <= area.toRow; r += 1) {
+    const row: boolean[] = [];
+    for (let c = area.fromCol; c <= area.toCol; c += 1) {
+      row.push(displayText(sheet.getCell(r, c)) !== '');
+    }
+    filled.push(row);
+  }
+
+  /**
+   * ความกว้างที่ข้อความใช้ได้จริง
+   *
+   * Excel ปล่อยให้ข้อความยาวล้นไปทับช่องข้าง ๆ ที่ยังว่างอยู่ ถ้าบังคับให้อยู่ในช่องตัวเอง
+   * ตัวอักษรจะถูกย่อจนอ่านไม่ออก — ที่อยู่ผู้ส่ง 30 ตัวอักษรในคอลัมน์กว้าง 50 pt
+   * เคยหดเหลือราว 4 pt ทั้งที่ทั้งแถวว่างเปล่า
+   *
+   * ชิดซ้ายล้นไปทางขวา ชิดขวาล้นไปทางซ้าย จัดกลางล้นได้ทั้งสองทาง ตามที่ Excel ทำ
+   */
+  const roomFor = (ri: number, ci: number, spanCols: number, align: Align) => {
+    let room = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0);
+    if (align !== 'right') {
+      for (let k = ci + spanCols; k < colW.length && !filled[ri][k]; k += 1) room += colW[k];
+    }
+    if (align !== 'left') {
+      for (let k = ci - 1; k >= 0 && !filled[ri][k]; k -= 1) room += colW[k];
+    }
+    return room * scale;
+  };
 
   for (let r = area.fromRow; r <= area.toRow; r += 1) {
     const ri = r - area.fromRow;
@@ -194,23 +374,38 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
       edge(b?.left, x, yTop, x, yTop - h);
       edge(b?.right, x + w, yTop, x + w, yTop - h);
 
-      // ช่องวันที่ ExcelJS คืนค่าเป็น Date ซึ่ง .text จะกลายเป็นสตริงยาวแบบ
-      // "Fri Aug 14 2026 07:00:00 GMT+0700" จัดรูปเองให้เป็น dd/mm/yyyy ตามระบบ
-      const text = cell.value instanceof Date
-        ? new Intl.DateTimeFormat('en-GB', {
-          day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC',
-        }).format(cell.value)
-        : String(cell.text ?? '').trim();
+      const text = displayText(cell);
       if (!text) continue;
 
       const isBold = Boolean(cell.font?.bold);
       const font = isBold ? bold : regular;
-      const base = (cell.font?.size ?? 11) * scale;
-      let size = base;
-      while (size > 4 && font.widthOfTextAtSize(text, size) > w - 4) size -= 0.25;
-
       const align: Align = (cell.alignment?.horizontal as Align)
-        ?? (typeof cell.value === 'number' ? 'right' : 'left');
+        ?? (numberIn(cell) !== null ? 'right' : 'left');
+
+      /*
+       * ข้อความที่ล้นออกนอกช่องตัวเอง คือข้อความอิสระที่คนทำไฟล์ไม่ได้จัดให้พอดีคอลัมน์
+       * เช่นที่อยู่ผู้ส่งกับที่อยู่ผู้รับ ซึ่งในไฟล์ตั้งไว้ 12 pt เล็กกว่าหัวข้ออื่นในใบเดียวกัน
+       * พอย่อทั้งใบเหลือสองในสามแล้วเล็กจนอ่านยาก จึงยกขึ้นให้ไม่เล็กกว่าหัวข้ออื่น
+       *
+       * ช่องในตารางข้อมูลไม่โดน เพราะแต่ละช่องพอดีคอลัมน์อยู่แล้วไม่ได้ล้น
+       * และต้องเล็กกว่าหัวตารางไว้ ไม่งั้นหัวกับข้อมูลจะกลืนกัน
+       */
+      const natural = (cell.font?.size ?? 11) * scale;
+      const ownWidth = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0) * scale;
+      const spills = font.widthOfTextAtSize(text, natural) > ownWidth - 4;
+
+      const room = roomFor(ri, ci, spanCols, align) - 4;
+      let size = natural;
+
+      // ยกขึ้นเฉพาะเมื่อที่ว่างข้าง ๆ รับขนาดใหม่ไหว ไม่งั้นจะไปโดนย่อกลับจนเล็กกว่าเดิม
+      if (spills) {
+        const raised = Math.max(natural, MIN_SPILL_SIZE * scale);
+        if (font.widthOfTextAtSize(text, raised) <= room) size = raised;
+      }
+
+      // ย่อขนาดต่อเมื่อยาวเกินที่ล้นไปช่องว่างข้าง ๆ ได้แล้วจริง ๆ
+      while (size > 4 && font.widthOfTextAtSize(text, size) > room) size -= 0.25;
+
       const textW = font.widthOfTextAtSize(text, size);
       const tx = align === 'center' ? x + (w - textW) / 2
         : align === 'right' ? x + w - textW - 2

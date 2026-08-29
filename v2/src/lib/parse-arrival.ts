@@ -164,13 +164,23 @@ export function parseArrivalText(raw: string): ParsedArrival {
 }
 
 /** ดึงข้อความทุกหน้าออกจาก PDF ด้วย pdf.js */
-export async function extractPdfText(file: File): Promise<string> {
+/**
+ * เตรียม pdfjs ให้พร้อมใช้ในเบราว์เซอร์
+ *
+ * แยกออกมาเพราะทั้งตัวอ่านข้อความและตัวแสดงตัวอย่างหน้าต้องตั้ง worker เหมือนกัน
+ * โหลดแบบ dynamic เพื่อไม่ให้ pdfjs ติดไปกับก้อน JavaScript ก้อนแรกของหน้า
+ */
+export async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.mjs',
     import.meta.url,
   ).toString();
+  return pdfjs;
+}
 
+export async function extractPdfText(file: File): Promise<string> {
+  const pdfjs = await loadPdfjs();
   const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
   const pages: string[] = [];
   for (let i = 1; i <= doc.numPages; i += 1) {

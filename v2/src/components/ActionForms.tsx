@@ -199,10 +199,12 @@ export function SubmitCustomsTask({ jobId }: { jobId: string }) {
 /* ---------- คำร้อง E-Office ---------- */
 
 export function EofficeRequestForm({
-  jobId, unitAmount, packageType, grossWeight, product, hasRequest,
+  jobId, unitAmount, packageType, grossWeight, product, hasRequest, attentionName,
 }: {
   jobId: string; unitAmount: string | null; packageType: string | null;
   grossWeight: string | null; product: string | null; hasRequest: boolean;
+  /** ชื่อที่จ่าหน้าถึงของคำร้องใบก่อน เติมกลับให้ตอนออกใหม่ */
+  attentionName: string | null;
 }) {
   return (
     <details className="disclosure">
@@ -233,6 +235,10 @@ export function EofficeRequestForm({
         <label className="mini">
           <span>ชนิดของ</span>
           <input name="goodsType" defaultValue={`${product ?? 'สินค้า'} (รายละเอียดตามใบขนฯ แนบ)`} />
+        </label>
+        <label className="mini">
+          <span>เรียน คุณ</span>
+          <input name="attentionName" defaultValue={attentionName ?? ''} placeholder="ชื่อเจ้าหน้าที่ที่จ่าหน้าถึง" />
         </label>
         <ConfirmSubmit label="ออกคำร้อง" tone="primary"
           confirm="ออกเลขที่คำร้องสำหรับงานนี้ใช่ไหม"

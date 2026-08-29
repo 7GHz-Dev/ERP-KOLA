@@ -301,6 +301,8 @@ export const eofficeRequests = pgTable('eoffice_requests', {
   netWeight: text('net_weight'),
   goodsValue: text('goods_value'),
   goodsType: text('goods_type'),
+  /** ชื่อคนที่จ่าหน้าถึงในบรรทัด "เรียน คุณ ..." กรอกใหม่ได้ทุกใบ */
+  attentionName: text('attention_name'),
   storageKey: text('storage_key'),
   fileRecordId: text('file_record_id'),
   createdBy: text('created_by'),

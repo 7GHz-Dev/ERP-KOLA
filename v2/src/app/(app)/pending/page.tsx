@@ -91,6 +91,7 @@ function columnsFor(tab: string, sub: 'wait' | 'approve'): Column[] {
               grossWeight={r.grossWeight}
               product={r.product}
               hasRequest={Boolean(r.eofficeRequestNo)}
+              attentionName={r.eofficeAttention}
             />
           </div>
         ),

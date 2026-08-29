@@ -12,6 +12,7 @@ const PATHS = [
   '/nam/approve', '/nam/customer', '/nam/release',
   '/automation', '/automation?tab=customs',
   '/master', '/master?type=settings', '/master?type=terminals&q=A',
+  '/master/eoffice', '/api/eoffice/form-preview',
   '/jobs', '/jobs?tab=active', '/jobs?tab=done', '/jobs?blNo=OOLU',
 ];
 

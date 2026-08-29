@@ -9,6 +9,16 @@ dev-config.json
 # ไฟล์ยังอยู่ในเครื่อง npm run test:parser จึงยังรันได้ตามปกติ
 test/BL/
 test/E/
+test/final inv/
+test/คำร้อง/
+test/imp3_*.xlsx
+
+# ไฟล์เก็บถาวรของงานจริง ใหญ่เกินขีดจำกัดของ GitHub (100 MB) อยู่แล้ว
+test/Import.7z
+
+# ฟอนต์ที่ก๊อปมาจาก Windows ไว้ใช้กับ scripts/extract-ttc.ts
+# ตัวที่ระบบใช้จริงแยกเป็นฟอนต์เดี่ยวแล้วอยู่ที่ v2/assets/fonts/
+angsana.ttc
 
 # ผลลัพธ์ build และค่าลับ
 v2/.next/

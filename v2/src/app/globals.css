@@ -181,6 +181,64 @@ a.card:hover { background: #f7fafc; }
 }
 @media (max-width: 760px) { .master-layout { grid-template-columns: 1fr; } }
 
+/* ---------- หน้าตั้งค่าฟอร์มปะหน้า E-Office ---------- */
+
+.doc-form { display: flex; flex-direction: column; gap: 12px; }
+.doc-form-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px;
+}
+.doc-form-bar span { flex: 1; color: var(--muted); font-weight: 600; }
+.doc-form-group {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 14px 14px; margin: 0;
+}
+.doc-form-group legend {
+  padding: 0 6px; font-size: 12px; font-weight: 700; color: var(--navy);
+}
+.doc-form-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;
+}
+.doc-form-grid .field { display: block; margin-bottom: 0; }
+.doc-form-grid .field.wide { grid-column: 1 / -1; }
+.doc-form-grid .field span {
+  display: block; margin-bottom: 3px; font-size: 11px; font-weight: 600; color: var(--muted);
+}
+.doc-form-grid .field input {
+  width: 100%; min-height: 32px; padding: 5px 9px; font-size: 12px; font-family: inherit;
+  color: var(--ink); border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+}
+.doc-form-grid .field input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+.doc-form-grid .field small { display: block; margin-top: 3px; color: var(--muted); }
+.doc-form-reset { margin-top: 12px; text-align: right; }
+
+/* แบบฟอร์มพื้นหลังที่อัปโหลดเข้ามา */
+.template-on { margin-bottom: 12px; }
+.template-file { margin: 0 0 4px; font-size: 13px; }
+.template-file small { color: var(--muted); font-weight: 400; }
+.template-on .meta { margin: 0 0 10px; }
+.template-upload { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.template-upload .field { flex: 1; min-width: 240px; margin-bottom: 0; }
+.template-upload input[type="file"] {
+  width: 100%; padding: 6px 8px; font-size: 12px; font-family: inherit; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+}
+
+/* ตารางพิกัดของค่าที่เติมลงแบบฟอร์มพื้นหลัง */
+.slot-hint { margin: 0 0 10px; }
+.slot-wrap { max-height: none; min-height: 0; }
+.slot-table th[scope="row"] { text-align: left; font-weight: 600; white-space: nowrap; }
+.slot-table th[scope="row"] small {
+  display: block; font-weight: 400; color: var(--muted); font-size: 11px;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+.slot-table td { width: 86px; }
+.slot-table input, .slot-table select {
+  width: 100%; min-height: 30px; padding: 4px 7px; font-size: 12px; font-family: inherit;
+  color: var(--ink); border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+}
+.slot-table input:focus, .slot-table select:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+
 /* ---------- ปุ่มและฟอร์มในแถวตาราง ---------- */
 
 .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -275,35 +333,58 @@ a.file-link:hover { text-decoration: underline; }
 }
 .print-bar span { flex: 1; font-weight: 600; color: var(--muted); }
 
+/*
+ * ขนาดและระยะทุกค่ามาจากหน้า /master/eoffice ส่งเข้ามาเป็นตัวแปรบน .a4
+ * ค่าที่เขียนไว้ตรงนี้เป็นเพียงค่าสำรองเผื่อเปิดหน้าที่ยังไม่ได้ส่งตัวแปรมา
+ *
+ * ฟอนต์ใช้ Angsana New ตามแบบฟอร์มที่ด่านใช้ ซึ่งเป็นฟอนต์ที่ติดมากับ Windows อยู่แล้ว
+ * เครื่องที่ไม่มีจะไล่ลงไปหา AngsanaUPC แล้วค่อยเป็น Sarabun
+ */
 .a4 {
-  background: #fff; color: #000; margin: 0 auto; padding: 18mm 16mm;
+  --doc-title: 26pt; --doc-body: 22pt; --doc-table: 20pt; --doc-officer: 19pt;
+  --doc-margin-x: 45pt; --doc-top: 55pt; --doc-gap: 24pt; --doc-indent: 45pt;
+  --doc-col-w: 110pt; --doc-officer-h: 120pt; --doc-sign-gap: 70pt;
+
+  background: #fff; color: #000; margin: 0 auto;
+  padding: var(--doc-top) var(--doc-margin-x);
   width: 210mm; min-height: 297mm; box-shadow: 0 10px 30px rgba(24,50,71,.14);
-  font-family: "TH Sarabun New", "Sarabun", "Noto Sans Thai", Tahoma, sans-serif;
-  font-size: 16pt; line-height: 1.55;
+  font-family: "Angsana New", "AngsanaUPC", "TH Sarabun New", "Sarabun", "Noto Sans Thai", serif;
+  font-size: var(--doc-body); line-height: 1.35;
 }
-.a4 p { margin: 0 0 2pt; }
+.a4 p { margin: 0 0 calc(var(--doc-gap) * 0.1); }
 .a4 u { text-underline-offset: 3px; }
-.doc-title { font-size: 18pt; font-weight: 700; text-align: center; margin: 0 0 14pt; }
-.doc-no { text-align: right; margin-bottom: 6pt; }
-.doc-date { text-align: right; margin-bottom: 14pt; }
-.doc-row { display: flex; gap: 18pt; margin-bottom: 4pt; }
-.doc-row b { width: 42pt; font-weight: 400; }
-.indent { text-indent: 40pt; }
-
-.doc-table { width: 100%; border-collapse: collapse; margin: 12pt 0; }
-.doc-table th, .doc-table td {
-  border: 1px solid #000; padding: 5pt 7pt; text-align: center; font-size: 15pt; font-weight: 400;
+.doc-title {
+  font-size: var(--doc-title); font-weight: 700; text-align: center;
+  margin: 0 0 calc(var(--doc-gap) * 0.6);
 }
-.doc-table th { font-weight: 400; }
-.doc-table td.left { text-align: left; }
-.doc-table.officer { margin-top: 22pt; }
-.doc-table.officer td { height: 90pt; }
+.doc-no { text-align: right; margin-bottom: calc(var(--doc-gap) * 0.25); }
+.doc-date { text-align: right; margin-bottom: calc(var(--doc-gap) * 0.6); }
+.doc-row { display: flex; gap: calc(var(--doc-gap) * 0.75); margin-bottom: calc(var(--doc-gap) * 0.17); }
+.doc-row b { width: calc(var(--doc-body) * 1.9); font-weight: 400; }
+.indent { text-indent: var(--doc-indent); }
 
-.sign-area { display: flex; gap: 20pt; margin-top: 16pt; }
+.doc-table { width: 100%; border-collapse: collapse; margin: calc(var(--doc-gap) * 0.5) 0; }
+.doc-table th, .doc-table td {
+  border: 1px solid #000; padding: 5pt 7pt; text-align: center;
+  font-size: var(--doc-table); font-weight: 400;
+}
+.doc-table th.fixed { width: var(--doc-col-w); }
+.doc-table td.left { text-align: left; }
+.doc-table.officer { margin-top: calc(var(--doc-gap) * 0.9); }
+.doc-table.officer th { font-size: var(--doc-officer); }
+.doc-table.officer td { height: var(--doc-officer-h); }
+
+.sign-area { display: flex; gap: 20pt; margin-top: calc(var(--doc-gap) * 0.67); }
 .sign-left { flex: 1; }
 .sign-right { flex: 1; text-align: center; }
-.sign-line { margin-top: 42pt; }
+.sign-line { margin-top: var(--doc-sign-gap); }
 .sign-name { margin-top: 4pt; }
+
+/* คำร้องที่ออกจากแบบฟอร์มพื้นหลัง แสดงไฟล์จริงแทนการจำลองด้วย HTML */
+.doc-embed {
+  display: block; width: 100%; height: calc(100vh - 130px); min-height: 480px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+}
 
 @media print {
   @page { size: A4; margin: 0; }
@@ -555,6 +636,51 @@ label.mini span { font-size: 12px; }
 }
 .drawer-note.warn { background: var(--red-soft); color: var(--red); }
 .drawer-empty { color: var(--muted); }
+
+/* ---------- ตัวอย่างหน้าไฟล์ก่อนบันทึก (หน้ารับงาน) ---------- */
+
+.drawer-file {
+  font-size: 15px; font-weight: 700; max-width: 46ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.drawer-nav span.wide { min-width: 108px; }
+
+.page-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;
+}
+.page-card {
+  display: block; padding: 0; cursor: pointer; text-align: left; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  font-family: inherit; color: var(--ink);
+}
+.page-card:hover { border-color: var(--blue); }
+.page-card img { display: block; width: 100%; height: auto; background: #fff; }
+.page-card-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 6px 8px; border-top: 1px solid var(--line); font-size: 11px;
+}
+.page-card-bar em { font-style: normal; color: var(--green); font-weight: 700; }
+.page-card.dropped { border-color: var(--red); background: var(--red-soft); }
+/* หน้าที่ตัดออกยังต้องเห็นว่าเป็นหน้าอะไร จะได้กดเอากลับถูก จึงจางลงแทนที่จะซ่อน */
+.page-card.dropped img { opacity: .28; filter: grayscale(1); }
+.page-card.dropped .page-card-bar em { color: var(--red); }
+.page-card.loading {
+  display: grid; place-items: center; min-height: 150px; cursor: default;
+  color: var(--muted); font-size: 12px;
+}
+
+.trimmer-foot {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: var(--surface); border-top: 1px solid var(--line);
+}
+.trimmer-foot span { flex: 1; font-size: 12px; font-weight: 600; color: var(--muted); }
+
+.file-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 8px; padding: 7px 10px;
+  background: var(--blue-soft); border-radius: 6px;
+}
+.file-bar span { flex: 1; font-size: 12px; font-weight: 600; color: var(--navy); }
 
 .container-box { padding: 8px 11px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
 .container-line {
