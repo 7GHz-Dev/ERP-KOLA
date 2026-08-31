@@ -61,6 +61,11 @@ export const DO_LETTER_FIELDS: FormField[] = [
   { key: 'signerTitle', label: 'ตำแหน่ง', group: 'ผู้ลงนาม', fallback: 'DIRECTOR' },
 ];
 
+/** โค้ดที่ใช้เก็บแบบฟอร์มพื้นหลังใน master_records */
+export const TEMPLATE_KEY = 'templateKey';
+export const TEMPLATE_NAME = 'templateName';
+export const TEMPLATE_AT = 'templateUploadedAt';
+
 /**
  * ตำแหน่งของแต่ละบล็อกบนกระดาษ — หน่วยเป็นพอยต์ นับจากมุมบนซ้าย
  *
@@ -132,6 +137,10 @@ export type DoLetterForm = {
   value: (field: string, line?: string) => string;
   /** ตำแหน่งของบล็อกหนึ่ง ผสมกับค่าเริ่มต้นแล้ว — ของสายเรือทับค่ากลางได้ */
   block: (key: string, line?: string) => Required<LetterBlock>;
+  /** อัปโหลดแบบฟอร์มพื้นหลังไว้แล้วหรือยัง */
+  hasTemplate: boolean;
+  /** ที่อยู่ไฟล์แบบฟอร์มพื้นหลังใน storage */
+  templateKey: string;
 };
 
 export async function loadDoLetterForm(): Promise<DoLetterForm> {
@@ -170,6 +179,8 @@ export async function loadDoLetterForm(): Promise<DoLetterForm> {
         gap: num('gap', base.gap ?? 21),
       };
     },
+    hasTemplate: Boolean(raw(TEMPLATE_KEY)),
+    templateKey: raw(TEMPLATE_KEY),
   };
 }
 

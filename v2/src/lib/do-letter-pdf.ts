@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DETAIL_LABELS, blockCode, loadDoLetterForm, type DoLetterForm } from '@/lib/do-letter';
+import { downloadFile } from '@/lib/storage';
 
 /**
  * ออกไฟล์ PDF จดหมายขอแลก D/O
@@ -138,9 +139,25 @@ export async function renderDoLetterPdf(
   const pick = (text: string, useBold = false) =>
     (HAS_THAI.test(text) ? thai : latin)[useBold ? 'bold' : 'regular'];
 
-  const PAGE_W = 595.28;
-  const PAGE_H = 841.89;
-  const page = doc.addPage([PAGE_W, PAGE_H]);
+  /*
+   * มีแบบฟอร์มพื้นหลังก็ใช้ไฟล์นั้นเป็นกระดาษ แล้วเติมเฉพาะค่าลงไป
+   * เหมือนคำร้องปะหน้า E-Office — หัวจดหมายและเส้นทั้งหมดมาจากไฟล์ จึงตรงต้นฉบับ
+   * อ่านไฟล์ไม่ได้ก็วาดเองทั้งใบต่อ ดีกว่าออกจดหมายไม่ได้เลย
+   */
+  let page;
+  if (f.hasTemplate && f.templateKey) {
+    try {
+      const { body } = await downloadFile(f.templateKey);
+      const tpl = await PDFDocument.load(body, { password: '' });
+      const [copied] = await doc.copyPages(tpl, [0]);
+      page = doc.addPage(copied);
+    } catch {
+      page = undefined;
+    }
+  }
+  const PAGE_W = page ? page.getWidth() : 595.28;
+  const PAGE_H = page ? page.getHeight() : 841.89;
+  if (!page) page = doc.addPage([595.28, 841.89]);
   const size = (pt: number) => pt * fonts.sizeRatio;
   const b = (key: string) => f.block(key, line);
 
@@ -192,14 +209,17 @@ export async function renderDoLetterPdf(
   };
 
   // ---------- หัวจดหมาย ----------
-  const head = b('header');
-  draw(f.value('companyName', line), { x: head.x, y: head.y }, { bold: true, pt: 20 });
-  let hy = head.y + head.gap + 6;
-  for (const key of ['companyAddress', 'companyContact']) {
-    const v = f.value(key, line);
-    if (!v) continue;
-    draw(v, { x: head.x, y: hy }, { pt: 14 });
-    hy += head.gap;
+  // มีพื้นหลังแล้วหัวจดหมายอยู่ในไฟล์ ไม่ต้องวาดซ้ำให้ทับกัน
+  if (!f.hasTemplate) {
+    const head = b('header');
+    draw(f.value('companyName', line), { x: head.x, y: head.y }, { bold: true, pt: 20 });
+    let hy = head.y + head.gap + 6;
+    for (const key of ['companyAddress', 'companyContact']) {
+      const v = f.value(key, line);
+      if (!v) continue;
+      draw(v, { x: head.x, y: hy }, { pt: 14 });
+      hy += head.gap;
+    }
   }
 
   // ---------- วันที่ (ชิดขวาจากจุดที่ตั้งไว้) ----------

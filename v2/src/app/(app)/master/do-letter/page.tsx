@@ -3,10 +3,14 @@ import { requireUser } from '@/lib/auth';
 import { masterCounts } from '@/lib/queries/master';
 import {
   DO_LETTER_FIELDS, DO_LETTER_GROUPS, LETTER_BLOCKS, SHIPPING_LINES,
-  blockCode, lineKey, loadDoLetterForm,
+  TEMPLATE_AT, TEMPLATE_NAME, blockCode, lineKey, loadDoLetterForm,
 } from '@/lib/do-letter';
+import { ConfirmSubmit } from '@/components/Interactions';
+import { FormPreviewPane } from '@/components/FormPreviewPane';
 import { DO_LETTER_MENU_KEY, MasterMenu } from '@/components/MasterMenu';
-import { saveDoLetterForm } from '@/lib/actions/do-letter';
+import {
+  removeDoLetterTemplate, saveDoLetterForm, uploadDoLetterTemplate,
+} from '@/lib/actions/do-letter';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +30,8 @@ export default async function DoLetterFormPage({
   const line = SHIPPING_LINES.includes(asked as (typeof SHIPPING_LINES)[number]) ? asked : '';
 
   const [form, counts] = await Promise.all([loadDoLetterForm(), masterCounts()]);
+  const templateName = form.raw(TEMPLATE_NAME);
+  const uploadedAt = form.raw(TEMPLATE_AT);
   const fields = DO_LETTER_FIELDS.filter((f) => !line || !f.sharedOnly);
   const groups = DO_LETTER_GROUPS.filter((g) => fields.some((f) => f.group === g));
 
@@ -43,6 +49,52 @@ export default async function DoLetterFormPage({
         <MasterMenu current={DO_LETTER_MENU_KEY} counts={counts} />
 
         <div className="doc-form">
+          {/* ---------- แบบฟอร์มพื้นหลัง ---------- */}
+          <fieldset className="doc-form-group">
+            <legend>แบบฟอร์มพื้นหลัง (กระดาษหัวจดหมาย)</legend>
+
+            {form.hasTemplate ? (
+              <div className="template-on">
+                <p className="template-file">
+                  <b>{templateName || 'แบบฟอร์มที่อัปโหลดไว้'}</b>
+                  {uploadedAt ? (
+                    <small> · อัปโหลดเมื่อ {uploadedAt.slice(0, 10).split('-').reverse().join('/')}</small>
+                  ) : null}
+                </p>
+                <p className="meta">
+                  ระบบใช้ไฟล์นี้เป็นกระดาษ แล้วเติมเฉพาะค่าลงไปตามพิกัดด้านล่าง
+                  หัวบริษัทและโลโก้มาจากไฟล์ จึงตรงกับกระดาษจริงทุกจุด
+                </p>
+                <form action={removeDoLetterTemplate} className="inline-form">
+                  <ConfirmSubmit
+                    label="เอาแบบฟอร์มพื้นหลังออก"
+                    tone="danger"
+                    confirm="เอาแบบฟอร์มพื้นหลังออกใช่ไหม"
+                    detail="ระบบจะกลับไปวาดจดหมายทั้งใบเอง พิกัดที่ตั้งไว้ยังเก็บอยู่ ถ้าอัปโหลดใหม่ใช้ต่อได้เลย"
+                  />
+                </form>
+              </div>
+            ) : (
+              <p className="meta">
+                ตอนนี้ระบบวาดจดหมายทั้งใบเองตามค่าด้านล่าง
+                ถ้ามีกระดาษหัวจดหมายของบริษัทอยู่แล้ว ให้ Save as PDF แล้วอัปโหลดที่นี่
+                ระบบจะเปลี่ยนไปเติมค่าลงบนไฟล์นั้นแทน และไม่วาดหัวจดหมายซ้ำ
+              </p>
+            )}
+
+            <form action={uploadDoLetterTemplate} className="template-upload">
+              <label className="field">
+                <span>{form.hasTemplate ? 'เปลี่ยนไฟล์ (PDF ไม่เกิน 8 MB)' : 'อัปโหลดไฟล์ (PDF ไม่เกิน 8 MB)'}</span>
+                <input type="file" name="template" accept="application/pdf,.pdf" required />
+                <small>
+                  ใช้เฉพาะหน้าแรก · ลบข้อความตัวอย่างในไฟล์ออกก่อน ให้เหลือแต่หัวจดหมาย
+                  ไม่งั้นค่าเก่าจะทับกับค่าที่ระบบเติมให้
+                </small>
+              </label>
+              <button className="button primary" type="submit">อัปโหลด</button>
+            </form>
+          </fieldset>
+
           {/* เลือกว่ากำลังแก้ค่ากลาง หรือของสายเรือไหน */}
           <div className="tabs">
             <Link href="/master/do-letter" aria-current={line ? undefined : 'page'}>
@@ -64,14 +116,11 @@ export default async function DoLetterFormPage({
 
             <div className="doc-form-bar">
               <span>ฟอนต์ Angsana New · กระดาษ A4 แนวตั้ง</span>
-              <a
-                className="button"
-                href={`/api/do-letter/preview${line ? `?line=${encodeURIComponent(line)}` : ''}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                ดูตัวอย่าง PDF
-              </a>
+              <FormPreviewPane
+                src={`/api/do-letter/preview${line ? `?line=${encodeURIComponent(line)}` : ''}`}
+                title={`ตัวอย่างจดหมาย${line ? ` · ${line}` : ' (ค่ากลาง)'}`}
+                label="ดูตัวอย่าง PDF"
+              />
               <button className="button primary" type="submit">บันทึก</button>
             </div>
             {groups.map((group) => (
@@ -147,34 +196,6 @@ export default async function DoLetterFormPage({
             </div>
           </form>
 
-          {/*
-            ตัวอย่างที่เห็นเป็นค่าที่บันทึกไว้ล่าสุด ไม่ใช่ค่าที่กำลังพิมพ์อยู่
-            เพราะจดหมายวาดที่เซิร์ฟเวอร์ ต้องกดบันทึกก่อนถึงจะเห็นผลของสิ่งที่แก้
-            key ผูกกับสายเรือ เพื่อให้สลับแท็บแล้วโหลดตัวอย่างใหม่จริง ๆ
-          */}
-          <fieldset className="doc-form-group">
-            <legend>ตัวอย่างจดหมาย{line ? ` · ${line}` : ' (ค่ากลาง)'}</legend>
-            <p className="doc-preview-note">
-              เป็นค่าที่บันทึกไว้ล่าสุด · แก้แล้วกดบันทึกเพื่อดูผลใหม่
-            </p>
-            <object
-              key={line || 'shared'}
-              className="doc-preview"
-              data={`/api/do-letter/preview${line ? `?line=${encodeURIComponent(line)}` : ''}`}
-              type="application/pdf"
-            >
-              <p className="drawer-note warn">
-                เบราว์เซอร์นี้แสดง PDF ในหน้าไม่ได้ ·{' '}
-                <a
-                  href={`/api/do-letter/preview${line ? `?line=${encodeURIComponent(line)}` : ''}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  เปิดในแท็บใหม่
-                </a>
-              </p>
-            </object>
-          </fieldset>
         </div>
       </div>
     </>

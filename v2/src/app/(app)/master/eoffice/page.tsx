@@ -9,6 +9,7 @@ import {
   removeEofficeTemplate, resetEofficeForm, saveEofficeForm, uploadEofficeTemplate,
 } from '@/lib/actions/eoffice-form';
 import { ConfirmSubmit } from '@/components/Interactions';
+import { FormPreviewPane } from '@/components/FormPreviewPane';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,13 +100,17 @@ export default async function EofficeFormPage() {
                   : 'ฟอนต์ Angsana New · กระดาษ A4 แนวตั้ง'}
               </span>
               {form.hasTemplate ? (
-                <a className="button" href="/api/eoffice/form-preview?grid=1" target="_blank" rel="noreferrer">
-                  ดูตัวอย่างพร้อมเส้นพิกัด
-                </a>
+                <FormPreviewPane
+                  src="/api/eoffice/form-preview?grid=1"
+                  title="ตัวอย่างพร้อมเส้นพิกัด"
+                  label="ดูตัวอย่างพร้อมเส้นพิกัด"
+                />
               ) : null}
-              <a className="button" href="/api/eoffice/form-preview" target="_blank" rel="noreferrer">
-                ดูตัวอย่าง PDF
-              </a>
+              <FormPreviewPane
+                src="/api/eoffice/form-preview"
+                title="ตัวอย่างปะหน้า E-Office"
+                label="ดูตัวอย่าง PDF"
+              />
               <button className="button primary" type="submit">บันทึก</button>
             </div>
 
