@@ -33,10 +33,10 @@ export async function storeDoLetterPdf(jobId: string, userId: string) {
     voyage: job.voyage,
     eta: job.eta,
     portName: port?.name ?? null,
-    // เมืองต้นทางยังไม่มีเก็บในฐานข้อมูล เว้นว่างไว้ให้เขียนเติมบนกระดาษ
-    originName: null,
+    originName: job.originPort,
   });
 
+  // ไฟล์เดียวมีสองหน้า — ใบของ KOLA และใบของ MAESOT FREEZONE
   const fileName = `${job.jobNo} [จดหมายแลก DO ${line}].pdf`;
   const id = newId('FIL');
   const key = buildKey(jobId, 'DO_LETTER', id, fileName);

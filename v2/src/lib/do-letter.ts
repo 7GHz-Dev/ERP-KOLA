@@ -37,34 +37,54 @@ export type FormField = {
 export const DO_LETTER_GROUPS = ['หัวจดหมาย', 'เนื้อความ', 'ผู้ลงนาม'] as const;
 
 /**
- * ช่องของแบบฟอร์ม — ถ้อยคำตั้งต้นถอดมาจากจดหมายจริงที่ใช้อยู่
- * ค่าที่เป็นของแต่ละงาน (B/L, เรือ, ท่า, วันเรือเข้า) ระบบเติมให้เอง ไม่ต้องตั้งที่นี่
+ * จดหมายหนึ่งงานออกสองใบ — ใบของ KOLA และใบของ MAESOT FREEZONE
+ *
+ * เนื้อความและตำแหน่งทุกอย่างเหมือนกันหมด ต่างแค่หัวจดหมาย ที่อยู่ และผู้ลงนาม
+ * จึงเก็บเป็นชุดละบริษัท แล้ววนออกทีละใบด้วยตัววาดตัวเดียวกัน
+ * คีย์ของช่องที่ต่างกันใช้รูปแบบ `co<n>.<field>` ส่วนช่องที่ใช้ร่วมกันไม่มีคำนำหน้า
  */
+export const LETTER_COMPANIES = [1, 2] as const;
+export type CompanyNo = (typeof LETTER_COMPANIES)[number];
+
+/** ช่องที่แยกตามบริษัท — ต่อคำนำหน้า co<n>. ให้ตอนอ่านค่า */
+export const COMPANY_FIELDS = ['companyName', 'companyAddress', 'signerName'] as const;
+
+export const companyKey = (co: CompanyNo, field: string) => `co${co}.${field}`;
+
 export const DO_LETTER_FIELDS: FormField[] = [
-  { key: 'companyName', label: 'ชื่อบริษัท (หัวจดหมาย)', group: 'หัวจดหมาย',
+  { key: companyKey(1, 'companyName'), label: 'ชื่อบริษัท ใบที่ 1', group: 'หัวจดหมาย',
     fallback: 'KOLA SHIPPING CO.,LTD', wide: true },
-  { key: 'companyAddress', label: 'ที่อยู่', group: 'หัวจดหมาย',
-    fallback: '567 MOO 7, THASAILUAT, MAE SOT, TAK, THAILAND 63110', wide: true },
-  { key: 'companyContact', label: 'โทรศัพท์ / อีเมล', group: 'หัวจดหมาย',
-    fallback: 'Tel. 087-5252697', wide: true },
+  { key: companyKey(1, 'companyAddress'), label: 'ที่อยู่ ใบที่ 1', group: 'หัวจดหมาย',
+    fallback: '567 MOO 7, THASAILUAT, MAE SOT, TAK, THAILAND 63110  Tel. 087-5252697',
+    wide: true, hint: 'ที่อยู่และเบอร์โทรอยู่บรรทัดเดียวกันตามต้นฉบับ' },
+  { key: companyKey(2, 'companyName'), label: 'ชื่อบริษัท ใบที่ 2', group: 'หัวจดหมาย',
+    fallback: 'MAESOT FREEZONE CO.,LTD', wide: true },
+  { key: companyKey(2, 'companyAddress'), label: 'ที่อยู่ ใบที่ 2', group: 'หัวจดหมาย',
+    fallback: '888/2 M.7, THASAILOUD MAESOT, TAK,THAILAND 63110 TEL: 092-689-5294 EMAIL: MAESOT.FZ@GMAIL.COM',
+    wide: true },
 
   { key: 'subject', label: 'เรื่อง', group: 'เนื้อความ', fallback: 'ขอแลก D/O', wide: true },
   { key: 'attention', label: 'เรียน', group: 'เนื้อความ',
-    fallback: 'จัดการแผนกขาเข้า', wide: true,
+    fallback: 'จัดการแผนกขาเข้า บริษัท', wide: true,
     hint: 'ระบบจะต่อท้ายด้วยชื่อบริษัทสายเรือให้เอง' },
+  { key: 'notice', label: 'ข้อความแจ้งจากผู้ส่งออก', group: 'เนื้อความ', wide: true,
+    fallback: 'เนื่องด้วยทางบริษัท {company} ได้รับแจ้งจากผู้ส่งออกที่ต้นทางว่า\nบี / แอล ต้นฉบับได้ทำเป็นลักษณะ:',
+    hint: '{company} จะถูกแทนด้วยชื่อบริษัทของใบนั้น' },
+  { key: 'options', label: 'ตัวเลือกลักษณะ B/L (บรรทัดละตัวเลือก)', group: 'เนื้อความ', wide: true,
+    fallback: 'SURRENDERED OB/L AT ORIGIN PORT\nSEA WAYBILL\nEXPRESS B/L',
+    hint: 'ระบบเติม ( ) นำหน้าทุกบรรทัดให้เอง' },
   { key: 'request', label: 'ข้อความขออนุมัติ', group: 'เนื้อความ', wide: true,
-    fallback: 'จึงเรียนมาเพื่อโปรดอนุมัติปล่อย D/O ให้กับทางบริษัทฯ โดยปราศจากการใช้ OBL' },
-  { key: 'liability', label: 'ข้อความรับผิดชอบ', group: 'เนื้อความ', wide: true,
-    fallback: 'หากมีความเสียหายประการใดเกิดขึ้น ทางบริษัทฯ ยินดีจะรับผิดชอบความเสียหายทุกประการ' },
+    fallback: 'จึงเรียนมาเพื่อโปรดอนุมัติปล่อย D/O ให้กับทางบริษัทฯ โดยปราศจากการใช้ OBL ตามหนังสือฉบับนี้ด้วย  ซึ่งในการนี้ หากมีความเสียหายประการใดเกิดขึ้น ทางบริษัทฯ ยินดีจะรับผิดชอบความเสียหายทุกประการ' },
+  { key: 'closingLine', label: 'บรรทัดปิดท้าย', group: 'เนื้อความ', wide: true,
+    fallback: 'จึงเรียนเพื่อโปรดดำเนินการ' },
 
-  { key: 'signerName', label: 'ชื่อผู้ลงนาม', group: 'ผู้ลงนาม', fallback: 'TANAKORN TASALEE' },
-  { key: 'signerTitle', label: 'ตำแหน่ง', group: 'ผู้ลงนาม', fallback: 'DIRECTOR' },
+  { key: 'closing', label: 'คำลงท้าย', group: 'ผู้ลงนาม', fallback: 'ขอแสดงความนับถือ', wide: true },
+  { key: companyKey(1, 'signerName'), label: 'ชื่อผู้ลงนาม ใบที่ 1', group: 'ผู้ลงนาม',
+    fallback: 'TANAKORN   TASALEE', hint: 'ระบบใส่วงเล็บครอบให้เอง' },
+  { key: companyKey(2, 'signerName'), label: 'ชื่อผู้ลงนาม ใบที่ 2', group: 'ผู้ลงนาม',
+    fallback: 'อัครเดช ตาสะทึ', hint: 'ระบบใส่วงเล็บครอบให้เอง' },
+  { key: 'signerTitle', label: 'ตำแหน่ง (ใช้ทั้งสองใบ)', group: 'ผู้ลงนาม', fallback: 'DIRECTOR' },
 ];
-
-/** โค้ดที่ใช้เก็บแบบฟอร์มพื้นหลังใน master_records */
-export const TEMPLATE_KEY = 'templateKey';
-export const TEMPLATE_NAME = 'templateName';
-export const TEMPLATE_AT = 'templateUploadedAt';
 
 /**
  * ตำแหน่งของแต่ละบล็อกบนกระดาษ — หน่วยเป็นพอยต์ นับจากมุมบนซ้าย
@@ -83,14 +103,18 @@ export type LetterBlock = {
 };
 
 export const LETTER_BLOCKS: LetterBlock[] = [
-  { key: 'header', label: 'หัวจดหมาย (ชื่อบริษัท · ที่อยู่ · ติดต่อ)', x: 70, y: 62, gap: 18 },
-  { key: 'date', label: 'วันที่ (ชิดขวา)', x: 525, y: 138 },
-  { key: 'subject', label: 'เรื่อง', x: 70, y: 168 },
-  { key: 'attention', label: 'เรียน', x: 70, y: 190 },
-  { key: 'details', label: 'รายละเอียดงาน (B/L · เรือ · ท่า · วันเรือเข้า)', x: 70, y: 226, gap: 21 },
-  { key: 'body', label: 'ข้อความขออนุมัติ และความรับผิดชอบ', x: 70, y: 356, gap: 21 },
-  { key: 'closing', label: 'ขอแสดงความนับถือ', x: 430, y: 452 },
-  { key: 'signer', label: 'ชื่อผู้ลงนาม และตำแหน่ง', x: 430, y: 508, gap: 20 },
+  { key: 'header', label: 'หัวจดหมาย (ชื่อบริษัท · ที่อยู่)', x: 298, y: 95, gap: 30 },
+  { key: 'rule', label: 'เส้นคาดใต้หัวจดหมาย', x: 85, y: 138 },
+  { key: 'date', label: 'วันที่ (ชิดขวา)', x: 545, y: 165 },
+  { key: 'subject', label: 'เรื่อง', x: 85, y: 188 },
+  { key: 'attention', label: 'เรียน', x: 85, y: 218 },
+  { key: 'details', label: 'รายละเอียดงาน (B/L · ต้นทาง · ปลายทาง · เรือ · วันเรือเข้า)', x: 85, y: 262, gap: 25 },
+  { key: 'notice', label: 'ข้อความแจ้งจากผู้ส่งออก', x: 85, y: 400, gap: 25 },
+  { key: 'options', label: 'ตัวเลือกลักษณะ B/L', x: 155, y: 456, gap: 25 },
+  { key: 'request', label: 'ข้อความขออนุมัติ', x: 85, y: 545, gap: 25 },
+  { key: 'closingLine', label: 'บรรทัดปิดท้าย', x: 85, y: 630, gap: 25 },
+  { key: 'closing', label: 'คำลงท้าย (ขอแสดงความนับถือ)', x: 400, y: 700 },
+  { key: 'signer', label: 'ชื่อผู้ลงนาม และตำแหน่ง', x: 400, y: 745, gap: 26 },
 ];
 
 const BLOCK_BY_KEY = new Map(LETTER_BLOCKS.map((b) => [b.key, b]));
@@ -106,6 +130,29 @@ export const DETAIL_LABELS = {
   vessel: 'ชื่อเรือ',
   eta: 'วันที่เรือเข้า',
 } as const;
+
+/** เดือนภาษาอังกฤษตัวพิมพ์ใหญ่ — จดหมายต้นฉบับใช้รูปแบบ 27 AUGUST 2026 */
+const EN_MONTHS = [
+  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+  'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER',
+];
+
+/**
+ * วันที่แบบที่จดหมายใช้ — "27 AUGUST 2026" ปี ค.ศ.
+ *
+ * รับได้ทั้ง Date และสตริง YYYY-MM-DD ที่มาจากคอลัมน์ date ของฐานข้อมูล
+ * สตริงตัดเอาเฉพาะตัวเลขเอง ไม่ผ่าน new Date() เพราะจะโดนเลื่อนตามโซนเวลา
+ * อ่านไม่ออกก็คืนค่าเดิมไป ดีกว่าปล่อยช่องว่างบนจดหมาย
+ */
+export function letterDate(value: Date | string | null): string {
+  if (!value) return '';
+  if (value instanceof Date) {
+    return `${value.getDate()} ${EN_MONTHS[value.getMonth()]} ${value.getFullYear()}`;
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (!m) return value;
+  return `${Number(m[3])} ${EN_MONTHS[Number(m[2]) - 1]} ${m[1]}`;
+}
 
 export function lineKey(line: string, field: string) {
   return `${line}::${field}`;
@@ -135,12 +182,10 @@ export type DoLetterForm = {
   raw: (key: string) => string;
   /** ค่าที่ใช้จริงของสายเรือนั้น — ของสายเรือ → ค่ากลาง → ค่าตั้งต้นในโค้ด */
   value: (field: string, line?: string) => string;
+  /** ค่าของช่องที่แยกตามบริษัท เช่น ชื่อบริษัทและผู้ลงนามของใบนั้น */
+  coValue: (co: CompanyNo, field: string, line?: string) => string;
   /** ตำแหน่งของบล็อกหนึ่ง ผสมกับค่าเริ่มต้นแล้ว — ของสายเรือทับค่ากลางได้ */
   block: (key: string, line?: string) => Required<LetterBlock>;
-  /** อัปโหลดแบบฟอร์มพื้นหลังไว้แล้วหรือยัง */
-  hasTemplate: boolean;
-  /** ที่อยู่ไฟล์แบบฟอร์มพื้นหลังใน storage */
-  templateKey: string;
 };
 
 export async function loadDoLetterForm(): Promise<DoLetterForm> {
@@ -164,6 +209,7 @@ export async function loadDoLetterForm(): Promise<DoLetterForm> {
   return {
     raw,
     value,
+    coValue: (co, field, line) => value(companyKey(co, field), line),
     block: (key, line) => {
       const base = BLOCK_BY_KEY.get(key);
       if (!base) throw new Error(`ไม่รู้จักบล็อก ${key}`);
@@ -179,8 +225,6 @@ export async function loadDoLetterForm(): Promise<DoLetterForm> {
         gap: num('gap', base.gap ?? 21),
       };
     },
-    hasTemplate: Boolean(raw(TEMPLATE_KEY)),
-    templateKey: raw(TEMPLATE_KEY),
   };
 }
 

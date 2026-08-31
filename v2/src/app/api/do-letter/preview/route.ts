@@ -19,6 +19,7 @@ const SAMPLE = {
   vessel: 'HUA XIANG 936',
   voyage: '0QIORS1NC',
   eta: '2026-08-29',
+  letterDate: '2026-08-27',
   portName: 'LAEM CHABANG, THAILAND',
   originName: 'NAGOYA',
 };

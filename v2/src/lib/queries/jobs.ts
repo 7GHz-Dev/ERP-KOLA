@@ -114,6 +114,7 @@ export async function listJobs(filter: JobFilter = {}) {
       eofficeSentAt: jobs.eofficeSentAt,
       doShippingLine: jobs.doShippingLine,
       shipline: jobs.shipline,
+      originPort: jobs.originPort,
       doLetterAt: jobs.doLetterAt,
       jobTypeName: sql<string | null>`job_type.name`,
       portName: sql<string | null>`port.name`,

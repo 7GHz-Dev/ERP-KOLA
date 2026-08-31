@@ -91,6 +91,8 @@ export const jobs = pgTable('jobs', {
   etd: date('etd'),
   etaIsOfficial: boolean('eta_is_official').default(false).notNull(),
   transportDate: date('transport_date'),
+  /** เมืองต้นทางบนจดหมายแลก DO — เก็บเป็นข้อความเพราะท่าต้นทางต่างประเทศไม่มีใน Master */
+  originPort: text('origin_port'),
 
   shipperId: text('shipper_id'),
   consigneeId: text('consignee_id'),

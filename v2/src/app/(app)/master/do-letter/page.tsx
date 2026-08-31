@@ -3,14 +3,11 @@ import { requireUser } from '@/lib/auth';
 import { masterCounts } from '@/lib/queries/master';
 import {
   DO_LETTER_FIELDS, DO_LETTER_GROUPS, LETTER_BLOCKS, SHIPPING_LINES,
-  TEMPLATE_AT, TEMPLATE_NAME, blockCode, lineKey, loadDoLetterForm,
+  blockCode, lineKey, loadDoLetterForm,
 } from '@/lib/do-letter';
-import { ConfirmSubmit } from '@/components/Interactions';
 import { FormPreviewPane } from '@/components/FormPreviewPane';
 import { DO_LETTER_MENU_KEY, MasterMenu } from '@/components/MasterMenu';
-import {
-  removeDoLetterTemplate, saveDoLetterForm, uploadDoLetterTemplate,
-} from '@/lib/actions/do-letter';
+import { saveDoLetterForm } from '@/lib/actions/do-letter';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +27,6 @@ export default async function DoLetterFormPage({
   const line = SHIPPING_LINES.includes(asked as (typeof SHIPPING_LINES)[number]) ? asked : '';
 
   const [form, counts] = await Promise.all([loadDoLetterForm(), masterCounts()]);
-  const templateName = form.raw(TEMPLATE_NAME);
-  const uploadedAt = form.raw(TEMPLATE_AT);
   const fields = DO_LETTER_FIELDS.filter((f) => !line || !f.sharedOnly);
   const groups = DO_LETTER_GROUPS.filter((g) => fields.some((f) => f.group === g));
 
@@ -49,52 +44,6 @@ export default async function DoLetterFormPage({
         <MasterMenu current={DO_LETTER_MENU_KEY} counts={counts} />
 
         <div className="doc-form">
-          {/* ---------- แบบฟอร์มพื้นหลัง ---------- */}
-          <fieldset className="doc-form-group">
-            <legend>แบบฟอร์มพื้นหลัง (กระดาษหัวจดหมาย)</legend>
-
-            {form.hasTemplate ? (
-              <div className="template-on">
-                <p className="template-file">
-                  <b>{templateName || 'แบบฟอร์มที่อัปโหลดไว้'}</b>
-                  {uploadedAt ? (
-                    <small> · อัปโหลดเมื่อ {uploadedAt.slice(0, 10).split('-').reverse().join('/')}</small>
-                  ) : null}
-                </p>
-                <p className="meta">
-                  ระบบใช้ไฟล์นี้เป็นกระดาษ แล้วเติมเฉพาะค่าลงไปตามพิกัดด้านล่าง
-                  หัวบริษัทและโลโก้มาจากไฟล์ จึงตรงกับกระดาษจริงทุกจุด
-                </p>
-                <form action={removeDoLetterTemplate} className="inline-form">
-                  <ConfirmSubmit
-                    label="เอาแบบฟอร์มพื้นหลังออก"
-                    tone="danger"
-                    confirm="เอาแบบฟอร์มพื้นหลังออกใช่ไหม"
-                    detail="ระบบจะกลับไปวาดจดหมายทั้งใบเอง พิกัดที่ตั้งไว้ยังเก็บอยู่ ถ้าอัปโหลดใหม่ใช้ต่อได้เลย"
-                  />
-                </form>
-              </div>
-            ) : (
-              <p className="meta">
-                ตอนนี้ระบบวาดจดหมายทั้งใบเองตามค่าด้านล่าง
-                ถ้ามีกระดาษหัวจดหมายของบริษัทอยู่แล้ว ให้ Save as PDF แล้วอัปโหลดที่นี่
-                ระบบจะเปลี่ยนไปเติมค่าลงบนไฟล์นั้นแทน และไม่วาดหัวจดหมายซ้ำ
-              </p>
-            )}
-
-            <form action={uploadDoLetterTemplate} className="template-upload">
-              <label className="field">
-                <span>{form.hasTemplate ? 'เปลี่ยนไฟล์ (PDF ไม่เกิน 8 MB)' : 'อัปโหลดไฟล์ (PDF ไม่เกิน 8 MB)'}</span>
-                <input type="file" name="template" accept="application/pdf,.pdf" required />
-                <small>
-                  ใช้เฉพาะหน้าแรก · ลบข้อความตัวอย่างในไฟล์ออกก่อน ให้เหลือแต่หัวจดหมาย
-                  ไม่งั้นค่าเก่าจะทับกับค่าที่ระบบเติมให้
-                </small>
-              </label>
-              <button className="button primary" type="submit">อัปโหลด</button>
-            </form>
-          </fieldset>
-
           {/* เลือกว่ากำลังแก้ค่ากลาง หรือของสายเรือไหน */}
           <div className="tabs">
             <Link href="/master/do-letter" aria-current={line ? undefined : 'page'}>
@@ -115,7 +64,7 @@ export default async function DoLetterFormPage({
             <input type="hidden" name="line" value={line} />
 
             <div className="doc-form-bar">
-              <span>ฟอนต์ Angsana New · กระดาษ A4 แนวตั้ง</span>
+              <span>ฟอนต์ Angsana New · กระดาษ A4 แนวตั้ง · ออกครั้งละ 2 ใบ (KOLA · MAESOT FREEZONE)</span>
               <FormPreviewPane
                 src={`/api/do-letter/preview?grid=1${line ? `&line=${encodeURIComponent(line)}` : ''}`}
                 title={`ตัวอย่างพร้อมเส้นพิกัด${line ? ` · ${line}` : ''}`}
@@ -136,7 +85,7 @@ export default async function DoLetterFormPage({
                     const own = line ? form.raw(lineKey(line, f.key)) : form.raw(f.key);
                     // ช่องของสายเรือที่ว่างอยู่ ให้เห็นค่าที่จะถูกใช้จริงเป็น placeholder
                     const inherited = line ? form.value(f.key) : f.fallback;
-                    const long = f.key === 'body';
+                    const long = ['notice', 'options', 'request'].includes(f.key);
                     return (
                       <label key={f.key} className={f.wide ? 'doc-field wide' : 'doc-field'}>
                         <span>{f.label}</span>

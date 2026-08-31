@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DETAIL_LABELS, blockCode, loadDoLetterForm, type DoLetterForm } from '@/lib/do-letter';
-import { downloadFile } from '@/lib/storage';
+import {
+  DETAIL_LABELS, LETTER_COMPANIES, letterDate, loadDoLetterForm,
+  type CompanyNo, type DoLetterForm,
+} from '@/lib/do-letter';
 import { drawCoordinateGrid } from '@/lib/pdf-grid';
 
 /**
@@ -18,11 +20,6 @@ const SARABUN_SIZE_RATIO = 1 / 1.5;
 
 /** ตัวอักษรไทยหนึ่งตัวขึ้นไป ใช้เลือกว่าจะวาดด้วยฟอนต์สำเนาไหน */
 const HAS_THAI = /[\u0E00-\u0E7F]/;
-
-const THAI_MONTHS = [
-  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
-];
 
 export class MissingThaiFontError extends Error {
   constructor() {
@@ -61,21 +58,18 @@ async function loadFonts() {
   }
 }
 
-function thaiToday() {
-  const d = new Date();
-  return `${d.getDate()} ${THAI_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
-}
-
 export type DoLetterData = {
   shippingLine: string;
   blNo: string | null;
   vessel: string | null;
   voyage: string | null;
-  eta: string | null;
+  eta: string | Date | null;
   /** ท่าปลายทาง */
   portName: string | null;
   /** เมืองต้นทาง — ยังไม่มีในฐานข้อมูล ปล่อยว่างให้กรอกด้วยมือบนกระดาษได้ */
   originName: string | null;
+  /** วันที่บนหัวจดหมาย — ไม่ส่งมาก็ใช้วันที่ออกจดหมาย */
+  letterDate?: Date | string | null;
 };
 
 /**
@@ -146,25 +140,6 @@ export async function renderDoLetterPdf(
   const pick = (text: string, useBold = false) =>
     (HAS_THAI.test(text) ? thai : latin)[useBold ? 'bold' : 'regular'];
 
-  /*
-   * มีแบบฟอร์มพื้นหลังก็ใช้ไฟล์นั้นเป็นกระดาษ แล้วเติมเฉพาะค่าลงไป
-   * เหมือนคำร้องปะหน้า E-Office — หัวจดหมายและเส้นทั้งหมดมาจากไฟล์ จึงตรงต้นฉบับ
-   * อ่านไฟล์ไม่ได้ก็วาดเองทั้งใบต่อ ดีกว่าออกจดหมายไม่ได้เลย
-   */
-  let page;
-  if (f.hasTemplate && f.templateKey) {
-    try {
-      const { body } = await downloadFile(f.templateKey);
-      const tpl = await PDFDocument.load(body, { password: '' });
-      const [copied] = await doc.copyPages(tpl, [0]);
-      page = doc.addPage(copied);
-    } catch {
-      page = undefined;
-    }
-  }
-  const PAGE_W = page ? page.getWidth() : 595.28;
-  const PAGE_H = page ? page.getHeight() : 841.89;
-  if (!page) page = doc.addPage([595.28, 841.89]);
   const size = (pt: number) => pt * fonts.sizeRatio;
   const b = (key: string) => f.block(key, line);
 
@@ -199,99 +174,184 @@ export async function renderDoLetterPdf(
     return out;
   };
 
-  /** y ที่ส่งเข้ามานับจากขอบบน แต่ pdf-lib นับจากขอบล่าง จึงกลับด้านให้ที่นี่ */
-  const draw = (
-    text: string,
-    at: { x: number; y: number },
-    opts: { bold?: boolean; pt?: number } = {},
-  ) => {
-    if (!text) return;
-    const pt = size(opts.pt ?? 16);
-    const font = pick(text, opts.bold);
-    let x = at.x;
-    for (const c of clustersOf(text, pt, Boolean(opts.bold))) {
-      page.drawText(c.text, { x, y: PAGE_H - at.y, size: pt, font, color: rgb(0, 0, 0) });
-      x += c.advance;
-    }
-  };
+  const PAGE_W = 595.28;
+  const PAGE_H = 841.89;
 
-  // วาดเส้นตารางก่อน ข้อความจะได้อยู่ทับเส้น ไม่ถูกเส้นบัง
-  if (options.grid) drawCoordinateGrid(page, latin.regular, PAGE_W, PAGE_H, rgb);
-
-  // ---------- หัวจดหมาย ----------
-  // มีพื้นหลังแล้วหัวจดหมายอยู่ในไฟล์ ไม่ต้องวาดซ้ำให้ทับกัน
-  if (!f.hasTemplate) {
-    const head = b('header');
-    draw(f.value('companyName', line), { x: head.x, y: head.y }, { bold: true, pt: 20 });
-    let hy = head.y + head.gap + 6;
-    for (const key of ['companyAddress', 'companyContact']) {
-      const v = f.value(key, line);
-      if (!v) continue;
-      draw(v, { x: head.x, y: hy }, { pt: 14 });
-      hy += head.gap;
-    }
-  }
-
-  // ---------- วันที่ (ชิดขวาจากจุดที่ตั้งไว้) ----------
-  const dateAt = b('date');
-  const today = `วันที่ ${thaiToday()}`;
-  draw(today, { x: dateAt.x - widthOf(today, size(16)), y: dateAt.y });
-
-  // ---------- เรื่อง · เรียน ----------
-  const subjectAt = b('subject');
-  draw(`เรื่อง  ${f.value('subject', line)}`, subjectAt, { bold: true });
-
-  const attnAt = b('attention');
-  draw(`เรียน  ${f.value('attention', line)} บริษัท ${line}`, attnAt);
-
-  // ---------- รายละเอียดงาน ----------
-  const detailAt = b('details');
+  // รายละเอียดงานเหมือนกันทั้งสองใบ คิดครั้งเดียวแล้วใช้ซ้ำ
   const details: Array<[string, string | null]> = [
     [DETAIL_LABELS.blNo, data.blNo],
     [DETAIL_LABELS.origin, data.originName],
     [DETAIL_LABELS.destination, data.portName],
-    [DETAIL_LABELS.vessel, [data.vessel, data.voyage].filter(Boolean).join(' V. ') || null],
-    [DETAIL_LABELS.eta, data.eta],
+    [DETAIL_LABELS.vessel, [data.vessel, data.voyage].filter(Boolean).join('  V. ') || null],
+    [DETAIL_LABELS.eta, letterDate(data.eta ?? null) || null],
   ];
-  // ป้ายทุกบรรทัดกว้างเท่ากัน ค่าจึงเริ่มที่คอลัมน์เดียวกันทั้งหมด
-  const tagWidth = Math.max(...details.map(([t]) => widthOf(t, size(16)))) + size(14);
-  let dy = detailAt.y;
-  for (const [label, value] of details) {
-    draw(label, { x: detailAt.x, y: dy });
-    // ค่าเป็นภาษาอังกฤษ วาดแยกจากป้ายไทยเพื่อไม่ให้สำเนาฟอนต์เดียวรับสองสคริปต์
-    draw(value ?? '', { x: detailAt.x + tagWidth, y: dy });
-    dy += detailAt.gap;
-  }
 
-  // ---------- ข้อความขออนุมัติ ----------
-  const bodyAt = b('body');
-  const bodyWidth = PAGE_W - bodyAt.x - 70;
-  // ย่อหน้าแรกของแต่ละย่อหน้าตามแบบจดหมายราชการไทย บรรทัดถัดไปชิดซ้ายตามปกติ
-  const INDENT = size(36);
-  let by = bodyAt.y;
-  for (const key of ['request', 'liability']) {
-    const lines = wrapBy(
-      (t) => widthOf(t, size(16)),
-      f.value(key, line),
-      bodyWidth,
+  /**
+   * วาดจดหมายหนึ่งใบของบริษัทหนึ่ง
+   *
+   * ทุกใบใช้เนื้อความและพิกัดชุดเดียวกัน ต่างแค่หัวจดหมาย ที่อยู่ และผู้ลงนาม
+   * จึงแยกเป็นฟังก์ชันแล้ววนเรียกตามจำนวนบริษัท ไม่ต้องเขียนโครงจดหมายซ้ำ
+   */
+  const drawLetter = (co: CompanyNo) => {
+    const page = doc.addPage([PAGE_W, PAGE_H]);
+
+    /** y ที่ส่งเข้ามานับจากขอบบน แต่ pdf-lib นับจากขอบล่าง จึงกลับด้านให้ที่นี่ */
+    const draw = (
+      text: string,
+      at: { x: number; y: number },
+      opts: { bold?: boolean; pt?: number } = {},
+    ) => {
+      if (!text) return;
+      const pt = size(opts.pt ?? 16);
+      const font = pick(text, opts.bold);
+      let x = at.x;
+      for (const c of clustersOf(text, pt, Boolean(opts.bold))) {
+        page.drawText(c.text, { x, y: PAGE_H - at.y, size: pt, font, color: rgb(0, 0, 0) });
+        x += c.advance;
+      }
+    };
+
+    /** วาดกึ่งกลางรอบ x ที่ตั้งไว้ ใช้กับหัวจดหมายที่ต้องอยู่กลางหน้า */
+    const drawCentered = (
+      text: string,
+      at: { x: number; y: number },
+      opts: { bold?: boolean; pt?: number } = {},
+    ) => {
+      if (!text) return;
+      const pt = size(opts.pt ?? 16);
+      draw(text, { x: at.x - widthOf(text, pt, opts.bold) / 2, y: at.y }, opts);
+    };
+
+    // วาดเส้นตารางก่อน ข้อความจะได้อยู่ทับเส้น ไม่ถูกเส้นบัง
+    if (options.grid) drawCoordinateGrid(page, latin.regular, PAGE_W, PAGE_H, rgb);
+
+    const companyName = f.coValue(co, 'companyName', line);
+
+    // ---------- หัวจดหมาย ----------
+    const head = b('header');
+    drawCentered(companyName, { x: head.x, y: head.y }, { bold: true, pt: 26 });
+    drawCentered(
+      f.coValue(co, 'companyAddress', line),
+      { x: head.x, y: head.y + head.gap },
+      { bold: true, pt: 13 },
+    );
+
+    // เส้นคาดใต้หัวจดหมาย — x ที่ตั้งไว้คือขอบซ้าย อีกฝั่งสะท้อนให้เท่ากัน
+    const rule = b('rule');
+    page.drawLine({
+      start: { x: rule.x, y: PAGE_H - rule.y },
+      end: { x: PAGE_W - rule.x, y: PAGE_H - rule.y },
+      thickness: 2.5,
+      color: rgb(0, 0, 0),
+    });
+
+    // ---------- วันที่ (ชิดขวาจากจุดที่ตั้งไว้) ----------
+    const dateAt = b('date');
+    const dateValue = letterDate(data.letterDate ?? new Date());
+    const dateLabel = 'วันที่ ';
+    // ค่าเป็นตัวหนา ป้ายเป็นตัวธรรมดา วัดรวมกันก่อนเพื่อให้ท้ายบรรทัดชิดขวาพอดี
+    const dateWidth = widthOf(dateLabel, size(16)) + widthOf(dateValue, size(16), true);
+    const dateX = dateAt.x - dateWidth;
+    draw(dateLabel, { x: dateX, y: dateAt.y });
+    draw(dateValue, { x: dateX + widthOf(dateLabel, size(16)), y: dateAt.y }, { bold: true });
+
+    // ---------- เรื่อง · เรียน ----------
+    // ป้ายสองบรรทัดนี้กว้างเท่ากัน ค่าจึงเริ่มที่คอลัมน์เดียวกัน
+    const headTag = Math.max(widthOf('เรื่อง', size(16)), widthOf('เรียน', size(16))) + size(24);
+
+    const subjectAt = b('subject');
+    draw('เรื่อง', subjectAt);
+    draw(f.value('subject', line), { x: subjectAt.x + headTag, y: subjectAt.y });
+
+    const attnAt = b('attention');
+    draw('เรียน', attnAt);
+    const attnLabel = `${f.value('attention', line)} `;
+    draw(attnLabel, { x: attnAt.x + headTag, y: attnAt.y });
+    // ชื่อสายเรือเป็นค่าที่เปลี่ยนทุกงาน ทำตัวหนาให้เห็นชัดเหมือนต้นฉบับ
+    draw(
+      line,
+      { x: attnAt.x + headTag + widthOf(attnLabel, size(16)), y: attnAt.y },
+      { bold: true },
+    );
+
+    // ---------- รายละเอียดงาน ----------
+    const detailAt = b('details');
+    // ป้ายทุกบรรทัดกว้างเท่ากัน ค่าจึงเริ่มที่คอลัมน์เดียวกันทั้งหมด
+    const tagWidth = Math.max(...details.map(([t]) => widthOf(t, size(16)))) + size(24);
+    let dy = detailAt.y;
+    for (const [label, value] of details) {
+      draw(label, { x: detailAt.x, y: dy });
+      // ค่าเป็นภาษาอังกฤษ วาดแยกจากป้ายไทยเพื่อไม่ให้สำเนาฟอนต์เดียวรับสองสคริปต์
+      draw(value ?? '', { x: detailAt.x + tagWidth, y: dy }, { bold: true });
+      dy += detailAt.gap;
+    }
+
+    // ย่อหน้าแรกของแต่ละย่อหน้าตามแบบจดหมายราชการไทย บรรทัดถัดไปชิดซ้ายตามปกติ
+    const INDENT = size(36);
+    const bodyRight = 70;
+
+    // ---------- ข้อความแจ้งจากผู้ส่งออก ----------
+    const noticeAt = b('notice');
+    const noticeLines = wrapBy(
+      (t) => widthOf(t, size(16), true),
+      f.value('notice', line).replaceAll('{company}', companyName),
+      PAGE_W - noticeAt.x - bodyRight,
       INDENT,
     );
-    lines.forEach((text, i) => {
-      if (text) draw(text, { x: bodyAt.x + (i === 0 ? INDENT : 0), y: by });
-      by += bodyAt.gap;
+    let ny = noticeAt.y;
+    noticeLines.forEach((text, i) => {
+      if (text) draw(text, { x: noticeAt.x + (i === 0 ? INDENT : 0), y: ny }, { bold: true });
+      ny += noticeAt.gap;
     });
-  }
 
-  // ---------- ผู้ลงนาม ----------
-  const closeAt = b('closing');
-  draw('ขอแสดงความนับถือ', closeAt);
+    // ---------- ตัวเลือกลักษณะ B/L ----------
+    const optionsAt = b('options');
+    const mark = '(  )';
+    const markWidth = widthOf(mark, size(16), true) + size(18);
+    let oy = optionsAt.y;
+    for (const option of f.value('options', line).split('\n')) {
+      if (!option.trim()) continue;
+      draw(mark, { x: optionsAt.x, y: oy }, { bold: true });
+      draw(option.trim(), { x: optionsAt.x + markWidth, y: oy }, { bold: true });
+      oy += optionsAt.gap;
+    }
 
-  const signAt = b('signer');
-  const signer = f.value('signerName', line);
-  const title = f.value('signerTitle', line);
-  let sy = signAt.y;
-  if (signer) { draw(signer, { x: signAt.x, y: sy }, { bold: true }); sy += signAt.gap; }
-  if (title) draw(title, { x: signAt.x, y: sy }, { pt: 14 });
+    // ---------- ข้อความขออนุมัติ ----------
+    const requestAt = b('request');
+    const requestLines = wrapBy(
+      (t) => widthOf(t, size(16), true),
+      f.value('request', line),
+      PAGE_W - requestAt.x - bodyRight,
+      INDENT,
+    );
+    let ry = requestAt.y;
+    requestLines.forEach((text, i) => {
+      if (text) draw(text, { x: requestAt.x + (i === 0 ? INDENT : 0), y: ry }, { bold: true });
+      ry += requestAt.gap;
+    });
+
+    // ---------- บรรทัดปิดท้าย ----------
+    const closingLineAt = b('closingLine');
+    draw(
+      f.value('closingLine', line),
+      { x: closingLineAt.x + INDENT, y: closingLineAt.y },
+      { bold: true },
+    );
+
+    // ---------- ผู้ลงนาม ----------
+    const closeAt = b('closing');
+    draw(f.value('closing', line), closeAt, { bold: true });
+
+    const signAt = b('signer');
+    const signer = f.coValue(co, 'signerName', line);
+    const title = f.value('signerTitle', line);
+    let sy = signAt.y;
+    // ชื่อผู้ลงนามอยู่ในวงเล็บตามต้นฉบับ ผู้ดูแลจึงกรอกแค่ชื่อ
+    if (signer) { draw(`(${signer})`, { x: signAt.x, y: sy }, { bold: true }); sy += signAt.gap; }
+    if (title) draw(title, { x: signAt.x, y: sy }, { bold: true });
+  };
+
+  for (const co of LETTER_COMPANIES) drawLetter(co);
 
   return Buffer.from(await doc.save());
 }

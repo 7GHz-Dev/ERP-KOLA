@@ -1007,6 +1007,7 @@ body.has-preview-pane .slot-table td { width: 72px; }
 
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }
+table.data td.col-wrap.col-origin, table.data th.col-origin { width: 140px; min-width: 120px; }
 .shipline-cell b { display: block; font-size: 12px; font-weight: 600; line-height: 1.35; }
 
 /* ข้อความอธิบายในแผงเล็ก เช่นเหตุผลที่แก้ไขเองไม่ได้ */
