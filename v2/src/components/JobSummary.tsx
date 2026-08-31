@@ -58,6 +58,17 @@ export function JobSummary({ detail, canAck }: { detail: JobDetail; canAck?: boo
         </div>
       ) : null}
 
+      {/*
+        เปลี่ยนไฟล์แล้วมีคนกดรับทราบไปแล้ว — บอกว่าใครกดและเมื่อไร
+        ไฟล์ที่อัปครั้งแรกไม่นับ เพราะไม่ได้ผ่านการรับทราบจริง (ระบบตั้ง true ให้เอง)
+      */}
+      {!job.hasInvoiceAlert && invoice?.acknowledgedByName ? (
+        <p className="ack-note">
+          Invoice สินค้าเคยถูกเปลี่ยน · <b>{invoice.acknowledgedByName}</b> กดรับทราบแล้ว
+          {invoice.acknowledgedAt ? ` เมื่อ ${formatDateTime(invoice.acknowledgedAt)}` : ''}
+        </p>
+      ) : null}
+
       <div className="drawer-status">
         <span className={`badge ${statusTone(job.status)}`}>{statusLabel(job.status)}</span>
       </div>
@@ -122,9 +133,7 @@ export function JobSummary({ detail, canAck }: { detail: JobDetail; canAck?: boo
             <div key={f.id} className="document-line">
               <span className="label">{fileLabel(f.category)}</span>
               <span className="badge approved">{f.fileName} · v{f.version}</span>
-              <a className="button tiny" href={`/files/${f.id}`} target="_blank" rel="noreferrer">
-                ดูไฟล์
-              </a>
+              <Link className="button tiny" href={`/file/${f.id}`}>ดูไฟล์</Link>
             </div>
           ))
         ) : (
@@ -142,10 +151,9 @@ export function JobSummary({ detail, canAck }: { detail: JobDetail; canAck?: boo
                   {f.sizeBytes ? ` · ${fileSize(f.sizeBytes)}` : ''}
                   {' · '}{f.uploaderName ?? 'ไม่ทราบผู้อัปโหลด'} · {formatDateTime(f.uploadedAt)}
                   {f.changeReason ? ` · เหตุผลที่เปลี่ยน: ${f.changeReason}` : ''}
+                  {f.acknowledgedByName ? ` · ${f.acknowledgedByName} รับทราบ` : ''}
                 </span>
-                <a className="button tiny" href={`/files/${f.id}`} target="_blank" rel="noreferrer">
-                  ดูไฟล์
-                </a>
+                <Link className="button tiny" href={`/file/${f.id}`}>ดูไฟล์</Link>
               </div>
             ))}
           </details>

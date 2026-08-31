@@ -4,6 +4,7 @@ import {
   loadEofficeForm, OVERLAY_SLOTS, TEMPLATE_KEY, type EofficeForm,
 } from '@/lib/eoffice-form';
 import { downloadFile } from '@/lib/storage';
+import { clustersOf } from '@/lib/thai-text';
 
 /**
  * ออกไฟล์ PDF ของคำร้องขอนำของเข้าเขตปลอดอากร (ปะหน้าชุด E-Office)
@@ -264,6 +265,23 @@ async function renderDrawn(
   const fontFor = (text: string, useBold = false) =>
     (HAS_THAI.test(text) ? thai : latin)[useBold ? 'bold' : 'regular'];
 
+  // ฟอนต์ดิบไว้ให้ fontkit จัดวางเอง ใช้แก้สระซ้อนที่ drawText วางผิดที่
+  const rawFor = (useBold: boolean) =>
+    fontkit.create(useBold ? fonts.bold : fonts.regular) as any;
+  const rawRegular = rawFor(false);
+  const rawBold = rawFor(true);
+
+  /** วาดทีละก้อน สระซ้อนจะได้ไม่หลุดออกจากพยัญชนะ (ดู src/lib/thai-text.ts) */
+  const put = (text: string, x: number, yy: number, size: number, useBold = false) => {
+    if (!text) return;
+    const font = fontFor(text, useBold);
+    let cx = x;
+    for (const c of clustersOf(useBold ? rawBold : rawRegular, text, size)) {
+      page.drawText(c.text, { x: cx, y: yy, size, font, color: black });
+      cx += c.advance;
+    }
+  };
+
   const page = doc.addPage([A4.width, A4.height]);
 
   const black = rgb(0, 0, 0);
@@ -303,7 +321,7 @@ async function renderDrawn(
     let x = opts.x ?? marginX;
     const size = fit(text, A4.width - marginX - x, opts.size ?? bodySize, opts.bold);
     if (opts.center) x = (A4.width - width(text, size, opts.bold)) / 2;
-    page.drawText(text, { x, y, size, font: fontFor(text, opts.bold), color: black });
+    put(text, x, y, size, opts.bold);
   };
 
   /** ข้อความที่มีขีดเส้นใต้เฉพาะค่าที่กรอก ไล่วาดทีละท่อนบนบรรทัดเดียว */
@@ -318,8 +336,7 @@ async function renderDrawn(
     const size = fitBy(measure, A4.width - marginX - start, opts.size ?? bodySize);
     let x = start;
     for (const part of parts) {
-      const font = fontFor(part.text, part.bold);
-      page.drawText(part.text, { x, y, size, font, color: black });
+      put(part.text, x, y, size, part.bold);
       const w = width(part.text, size, part.bold);
       if (part.underline) {
         page.drawLine({
@@ -345,12 +362,8 @@ async function renderDrawn(
   const noText = 'เลขที่ ';
   const noValue = `${book}  /  ${running}`;
   const noWidth = width(noText, bodySize) + width(noValue, bodySize);
-  page.drawText(noText, {
-    x: A4.width - marginX - noWidth, y, size: bodySize, font: fontFor(noText),
-  });
-  page.drawText(noValue, {
-    x: A4.width - marginX - width(noValue, bodySize), y, size: bodySize, font: fontFor(noValue),
-  });
+  put(noText, A4.width - marginX - noWidth, y, bodySize);
+  put(noValue, A4.width - marginX - width(noValue, bodySize), y, bodySize);
   gap(lineGap * 0.92);
 
   const dateParts = [
@@ -435,10 +448,7 @@ async function renderDrawn(
       borderColor: black, borderWidth: 0.8,
     });
     const lSize = fit(c.label, c.w - 10, tableSize);
-    page.drawText(c.label, {
-      x: x + (c.w - width(c.label, lSize)) / 2, y: tableTop - headH + headH * 0.31,
-      size: lSize, font: fontFor(c.label), color: black,
-    });
+    put(c.label, x + (c.w - width(c.label, lSize)) / 2, tableTop - headH + headH * 0.31, lSize);
     x += c.w;
   }
 
@@ -451,11 +461,12 @@ async function renderDrawn(
     // ชนิดของเป็นข้อความยาว ชิดซ้าย ส่วนตัวเลขวางกลางช่อง
     const isText = c.label === goodsLabel;
     const vSize = fit(c.value, c.w - 14, tableSize);
-    page.drawText(c.value, {
-      x: isText ? x + 7 : x + (c.w - width(c.value, vSize)) / 2,
-      y: tableTop - headH - bodyH + bodyH * 0.33,
-      size: vSize, font: fontFor(c.value), color: black,
-    });
+    put(
+      c.value,
+      isText ? x + 7 : x + (c.w - width(c.value, vSize)) / 2,
+      tableTop - headH - bodyH + bodyH * 0.33,
+      vSize,
+    );
     x += c.w;
   }
   y = tableTop - headH - bodyH;
@@ -496,10 +507,7 @@ async function renderDrawn(
       thickness: 0.8, color: black,
     });
     const size = fit(label, half - 10, officerSize);
-    page.drawText(label, {
-      x: bx + (half - width(label, size)) / 2, y: officerTop - headRow + officerSize * 0.38,
-      size, font: fontFor(label), color: black,
-    });
+    put(label, bx + (half - width(label, size)) / 2, officerTop - headRow + officerSize * 0.38, size);
   }
 
   return Buffer.from(await doc.save());

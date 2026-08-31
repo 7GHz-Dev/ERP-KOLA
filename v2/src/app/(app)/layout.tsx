@@ -32,13 +32,14 @@ const NAV: NavGroup[] = [
       { href: '/intake/an', label: 'Arrival Notice BL' },
       { href: '/intake/bl', label: 'BL Waiting Confirm' },
       { href: '/pending', label: 'งานคงค้าง', count: 'openJobs' },
+      { href: '/paint/eoffice-signed', label: 'Upload ชุดปล่อย E-Office / ส่ง Partner', count: 'eofficeSignedWait' },
       { href: '/automation', label: 'คิว Automation', count: 'queue' },
     ],
   },
   {
     label: 'FAH', color: '#dd5b00', roles: ['FAH'],
     items: [
-      { href: '/fah/do', label: 'Upload InvDO / ETA Official / Terminal / Send Partner' },
+      { href: '/fah/do', label: 'Upload InvDO / ETA Official / Terminal / Send Partner', count: 'fahDoWait' },
       { href: '/fah/fn', label: 'อนุมัติ Final Invoice', count: 'pendingFn' },
       { href: '/fah/draft', label: 'ตรวจ Draft / ทำใบขน', count: 'draftReview' },
     ],
@@ -47,8 +48,14 @@ const NAV: NavGroup[] = [
     label: 'NAMKANG', color: '#1aae39', roles: ['NAMKANG'],
     items: [
       { href: '/nam/approve', label: 'อนุมัติข้อมูล BL เข้าตารางหลัก', count: 'pendingAn' },
-      { href: '/nam/customer', label: 'ใส่ Client in Charge / Surrender File' },
+      { href: '/nam/customer', label: 'ใส่ Client in Charge / ติดตาม Invoice สินค้า & Surrender', count: 'namCustomerWait' },
       { href: '/nam/release', label: 'ตรวจ & ปล่อยสินค้า' },
+    ],
+  },
+  {
+    label: 'ANN', color: '#7b3fe4', roles: ['ANN'],
+    items: [
+      { href: '/do-exchange', label: 'จัดการแลก DO', count: 'doExchangeWait' },
     ],
   },
   {
@@ -92,17 +99,22 @@ export default async function AppLayout({
           </div>
         </div>
 
-        <SideNav
-          groups={visible.map((group) => ({
-            label: group.label,
-            color: group.color,
-            items: group.items.map((item) => ({
-              href: item.href,
-              label: item.label,
-              count: item.count ? counts[item.count] : 0,
-            })),
-          }))}
-        />
+        {/* useSearchParams ใน SideNav ต้องอยู่ใต้ Suspense เสมอ */}
+        <Suspense fallback={null}>
+          <SideNav
+            groups={visible.map((group) => ({
+              label: group.label,
+              color: group.color,
+              items: group.items.map((item) => ({
+                href: item.href,
+                label: item.label,
+                count: item.count ? counts[item.count] : 0,
+                // ส่งชื่อค่าไปด้วย เมนูจะได้ดึงตัวเลขใหม่เองหลังข้อมูลเปลี่ยน
+                countKey: item.count,
+              })),
+            }))}
+          />
+        </Suspense>
 
         <div className="sidebar-user">
           <span>{user.displayName}</span>

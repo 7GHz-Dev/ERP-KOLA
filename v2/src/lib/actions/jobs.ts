@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { approvals, customsEntries, doHandoffs, jobs, masterRecords } from '@/db/schema';
+import { approvals, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
@@ -162,6 +162,91 @@ async function updateSurrenderImpl(formData: FormData) {
   revalidatePath('/nam/release');
 }
 
+/** NAMKANG เลือก Client in Charge ในตาราง */
+async function saveClientInChargeImpl(formData: FormData) {
+  const user = await requireActiveSession(['NAMKANG']);
+  const jobId = required(formData.get('jobId'), 'งาน', 80);
+  const personId = text(formData.get('personId'), 80);
+
+  // เลือกจาก Master Data เท่านั้น กันชื่อที่สะกดกันคนละแบบ
+  if (personId) {
+    const [person] = await db.select({ id: masterRecords.id })
+      .from(masterRecords).where(eq(masterRecords.id, personId)).limit(1);
+    if (!person) throw new Error('ไม่พบ Client in Charge ที่เลือก');
+  }
+
+  await db.update(jobs)
+    .set({ personId: personId || null, updatedBy: user.id, updatedAt: new Date() })
+    .where(eq(jobs.id, jobId));
+  await logActivity(user.id, 'SET_CLIENT_IN_CHARGE', 'JOB', jobId, { personId });
+
+  revalidatePath('/nam/customer');
+}
+
+/**
+ * NAMKANG ยืนยันข้อมูลลูกค้า — งานจะย้ายไปแท็บ "อัปเดต/อัปโหลดแล้ว"
+ *
+ * ตรวจครบสามอย่างฝั่งเซิร์ฟเวอร์ด้วย ไม่พึ่งแค่ปุ่มที่ซ่อนไว้บนหน้าจอ
+ * เพราะฟอร์มถูกยิงตรงได้ และข้อมูลอาจถูกแก้จากหน้าอื่นระหว่างนั้น
+ */
+async function confirmCustomerInfoImpl(formData: FormData) {
+  const user = await requireActiveSession(['NAMKANG']);
+  const jobId = required(formData.get('jobId'), 'งาน', 80);
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job) throw new Error('ไม่พบงาน');
+  if (!job.personId) throw new Error('กรุณาเลือก Client in Charge ก่อน');
+  if (job.surrenderStatus === 'PENDING') throw new Error('กรุณาระบุสถานะ Surrender BL ก่อน');
+
+  const [invoice] = await db.select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.jobId, jobId), eq(files.category, 'INVOICE_GOODS'), eq(files.isCurrent, true)))
+    .limit(1);
+  if (!invoice) throw new Error('กรุณาอัปโหลด Invoice สินค้าก่อน');
+
+  await db.update(jobs).set({
+    customerConfirmedAt: new Date(), customerConfirmedBy: user.id,
+    updatedBy: user.id, updatedAt: new Date(),
+  }).where(eq(jobs.id, jobId));
+  await recordStatus(jobId, job.status, 'CUSTOMER_CONFIRMED', text(formData.get('note'), 500), user.id);
+  await logActivity(user.id, 'CONFIRM_CUSTOMER_INFO', 'JOB', jobId, {});
+
+  revalidatePath('/nam/customer');
+  revalidatePath('/nam/release');
+}
+
+/**
+ * PAINT ส่งชุดปล่อย E-Office ให้ Partner
+ *
+ * ต้องมีไฟล์ชุดปล่อยที่เซ็นแล้วก่อน ตรวจฝั่งเซิร์ฟเวอร์ด้วยไม่พึ่งแค่ปุ่มบนหน้าจอ
+ * เพราะฟอร์มถูกยิงตรงได้ และไฟล์อาจถูกเปลี่ยนจากหน้าอื่นระหว่างนั้น
+ */
+async function sendEofficeToPartnerImpl(formData: FormData) {
+  const user = await requireActiveSession(['PAINT']);
+  const jobId = required(formData.get('jobId'), 'งาน', 80);
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job) throw new Error('ไม่พบงาน');
+  if (job.eofficeSentAt) throw new Error('ส่ง Partner ไปแล้ว');
+
+  const [signed] = await db.select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.jobId, jobId), eq(files.category, 'EOFFICE_SIGNED'), eq(files.isCurrent, true)))
+    .limit(1);
+  if (!signed) throw new Error('ยังไม่มีไฟล์ชุดปล่อยที่เซ็นแล้ว');
+
+  await db.update(jobs).set({
+    eofficeSentAt: new Date(), eofficeSentBy: user.id,
+    updatedBy: user.id, updatedAt: new Date(),
+  }).where(eq(jobs.id, jobId));
+  await recordStatus(jobId, job.status, 'EOFFICE_SENT_PARTNER',
+    text(formData.get('note'), 500) || 'ส่งชุดปล่อย E-Office ให้ Partner', user.id);
+  await logActivity(user.id, 'SEND_EOFFICE_PARTNER', 'JOB', jobId, {});
+
+  revalidatePath('/paint/eoffice-signed');
+  revalidatePath('/pending');
+}
+
 /** ปล่อยสินค้า — ต้องมี E-Office และ Surrender เคลียร์แล้วเท่านั้น */
 async function releaseJobImpl(formData: FormData) {
   const user = await requireActiveSession(['NAMKANG']);
@@ -315,6 +400,18 @@ export async function saveDoHandoff(formData: FormData) {
 
 export async function updateSurrender(formData: FormData) {
   return runAction(() => updateSurrenderImpl(formData));
+}
+
+export async function saveClientInCharge(formData: FormData) {
+  return runAction(() => saveClientInChargeImpl(formData));
+}
+
+export async function confirmCustomerInfo(formData: FormData) {
+  return runAction(() => confirmCustomerInfoImpl(formData));
+}
+
+export async function sendEofficeToPartner(formData: FormData) {
+  return runAction(() => sendEofficeToPartnerImpl(formData));
 }
 
 export async function releaseJob(formData: FormData) {

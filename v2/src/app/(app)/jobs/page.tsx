@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { eq, ne } from 'drizzle-orm';
 import { jobs } from '@/db/schema';
 import { requireUser } from '@/lib/auth';
@@ -36,16 +37,14 @@ const filesColumn = (): Column => ({
     return (
       <span className="chip-row">
         {categories.map((category) => (
-          <a
+          <Link
             key={category}
             className="badge approved file-link"
-            href={`/files/${current[category].id}`}
-            target="_blank"
-            rel="noreferrer"
+            href={`/file/${current[category].id}`}
             title={current[category].fileName}
           >
             {fileLabel(category)}
-          </a>
+          </Link>
         ))}
       </span>
     );

@@ -25,6 +25,38 @@ export const BUNDLE_PARTS: Array<{ label: string; categories: string[] }> = [
 
 export const MERGED_CATEGORY = 'EOFFICE_MERGED';
 
+/**
+ * ชุดแลก D/O — ลำดับเดียวกับที่ยื่นจริง
+ * เอกสารอื่น ๆ ต่อท้ายได้ เพราะมีหลายใบไม่แน่นอน
+ */
+export const DO_BUNDLE_PARTS: Array<{ label: string; categories: string[] }> = [
+  { label: 'จดหมายแลก DO', categories: ['DO_LETTER'] },
+  { label: 'Invoice DO', categories: ['INVOICE_DO'] },
+  { label: 'Slip โอนเงิน', categories: ['DO_SLIP'] },
+  { label: 'เอกสารอื่น ๆ', categories: ['DO_OTHER'] },
+];
+
+export const DO_MERGED_CATEGORY = 'DO_MERGED';
+
+/** ตั้งค่าของชุดเอกสารแต่ละแบบ ใช้ร่วมกับ buildBundle ตัวเดียวกัน */
+export type BundleKind = 'eoffice' | 'do';
+
+const BUNDLE_KINDS: Record<BundleKind, {
+  parts: Array<{ label: string; categories: string[] }>;
+  mergedCategory: string;
+  title: string;
+  action: string;
+}> = {
+  eoffice: {
+    parts: BUNDLE_PARTS, mergedCategory: MERGED_CATEGORY,
+    title: 'ชุด E-Office', action: 'MERGE_EOFFICE',
+  },
+  do: {
+    parts: DO_BUNDLE_PARTS, mergedCategory: DO_MERGED_CATEGORY,
+    title: 'ชุดแลก DO', action: 'MERGE_DO',
+  },
+};
+
 const A4 = { width: 595.28, height: 841.89 };
 
 function isPdf(body: Buffer) {
@@ -94,7 +126,9 @@ export async function buildBundle(
   jobId: string,
   userId: string,
   onStep?: (step: BundleStep) => void | Promise<void>,
+  kind: BundleKind = 'eoffice',
 ) {
+  const cfg = BUNDLE_KINDS[kind];
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
 
@@ -108,10 +142,10 @@ export async function buildBundle(
   const merged = await PDFDocument.create();
   const used: string[] = [];
   const skipped: string[] = [];
-  const total = BUNDLE_PARTS.length + 1;
+  const total = cfg.parts.length + 1;
 
   // ออกคำร้องไว้แล้วแต่ยังไม่มีไฟล์ ให้ระบบสร้างก่อนเริ่มรวม
-  if (!byCategory.has('EOFFICE_REQUEST')) {
+  if (kind === 'eoffice' && !byCategory.has('EOFFICE_REQUEST')) {
     const [req] = await db.select({ id: eofficeRequests.id }).from(eofficeRequests)
       .where(eq(eofficeRequests.jobId, jobId)).limit(1);
     if (req) {
@@ -128,7 +162,7 @@ export async function buildBundle(
   }
 
   // Final Invoice เป็น Excel แต่ยังไม่มีตัว PDF ให้แปลงก่อนเริ่มรวม
-  if (!byCategory.has('FINAL_INVOICE_PDF') && byCategory.has('FINAL_INVOICE')) {
+  if (kind === 'eoffice' && !byCategory.has('FINAL_INVOICE_PDF') && byCategory.has('FINAL_INVOICE')) {
     const source = byCategory.get('FINAL_INVOICE')!;
     if (!source.storageKey.startsWith('drive:') && /\.xlsx?$/i.test(source.fileName)) {
       try {
@@ -145,8 +179,8 @@ export async function buildBundle(
     }
   }
 
-  for (let i = 0; i < BUNDLE_PARTS.length; i += 1) {
-    const part = BUNDLE_PARTS[i];
+  for (let i = 0; i < cfg.parts.length; i += 1) {
+    const part = cfg.parts[i];
     const record = part.categories.map((c) => byCategory.get(c)).find(Boolean);
     await onStep?.({ index: i, total, label: part.label, status: 'reading' });
 
@@ -184,30 +218,30 @@ export async function buildBundle(
     throw new Error(`ไม่มีไฟล์ที่รวมได้เลย — ${skipped.join(' · ')}`);
   }
 
-  await onStep?.({ index: BUNDLE_PARTS.length, total, label: 'บันทึกชุดที่รวมแล้ว', status: 'saving' });
+  await onStep?.({ index: cfg.parts.length, total, label: 'บันทึกชุดที่รวมแล้ว', status: 'saving' });
 
   const bytes = Buffer.from(await merged.save());
-  const fileName = `${job.jobNo} [รวมชุด E-Office].pdf`;
+  const fileName = `${job.jobNo} [รวม${cfg.title}].pdf`;
   const id = newId('FIL');
-  const key = buildKey(jobId, MERGED_CATEGORY, id, fileName);
+  const key = buildKey(jobId, cfg.mergedCategory, id, fileName);
 
   await ensureBucket();
   await uploadFile(key, bytes, 'application/pdf');
 
-  const previous = byCategory.get(MERGED_CATEGORY);
+  const previous = byCategory.get(cfg.mergedCategory);
   const version = (previous?.version ?? 0) + 1;
   await db.update(files).set({ isCurrent: false, supersededBy: id })
-    .where(and(eq(files.jobId, jobId), eq(files.category, MERGED_CATEGORY), eq(files.isCurrent, true)));
+    .where(and(eq(files.jobId, jobId), eq(files.category, cfg.mergedCategory), eq(files.isCurrent, true)));
 
   await db.insert(files).values({
-    id, jobId, category: MERGED_CATEGORY, version,
+    id, jobId, category: cfg.mergedCategory, version,
     storageKey: key, fileName, mimeType: 'application/pdf',
     sizeBytes: bytes.length, uploadedBy: userId,
     note: `รวม ${used.length} ชิ้น: ${used.join(' → ')}`,
   });
-  await logActivity(userId, 'MERGE_EOFFICE', 'JOB', jobId, { used, skipped });
+  await logActivity(userId, cfg.action, 'JOB', jobId, { used, skipped });
 
-  const summary = `รวมชุด E-Office แล้ว ${used.length} ชิ้น (${used.join(' → ')})`;
+  const summary = `รวม${cfg.title} แล้ว ${used.length} ชิ้น (${used.join(' → ')})`;
   const message = skipped.length ? `${summary} · ยังขาด: ${skipped.join(' · ')}` : summary;
 
   await onStep?.({ index: total, total, label: 'เสร็จแล้ว', status: 'done', detail: message });

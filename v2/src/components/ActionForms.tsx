@@ -1,6 +1,7 @@
 import {
-  decideApproval, fileCustomsEntry, rejectDraft, releaseJob,
-  requestApproval, saveDoHandoff, submitDraftForReview, updateBlInfo, updateSurrender,
+  confirmCustomerInfo, decideApproval, fileCustomsEntry, rejectDraft, releaseJob,
+  requestApproval, saveDoHandoff, sendEofficeToPartner, submitDraftForReview,
+  updateBlInfo, updateSurrender,
 } from '@/lib/actions/jobs';
 import { acknowledgeInvoice, uploadJobFile } from '@/lib/actions/files';
 import { submitCustomsTask, submitDraftTask } from '@/lib/actions/automation';
@@ -99,6 +100,69 @@ export function SurrenderForm({ jobId, current }: { jobId: string; current: stri
         <SubmitButton label="บันทึก" tone="primary" />
       </form>
     </details>
+  );
+}
+
+/** ส่งชุดปล่อย E-Office ให้ Partner — ต้องมีไฟล์ที่เซ็นแล้วก่อน */
+export function SendEofficeButton({ jobId, ready }: { jobId: string; ready: boolean }) {
+  if (!ready) return <span className="badge pending">ยังไม่มีไฟล์ชุดปล่อย</span>;
+  return (
+    <form action={sendEofficeToPartner} className="inline-form">
+      <input type="hidden" name="jobId" value={jobId} />
+      <ConfirmSubmit
+        label="ส่ง Partner"
+        tone="ok"
+        confirm="ส่งชุดปล่อย E-Office ให้ Partner ใช่ไหม"
+        detail="ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน และรายการจะออกจากหน้านี้"
+      />
+    </form>
+  );
+}
+
+/**
+ * ขออนุมัติแก้ไขรายการที่ล็อกไปแล้ว
+ *
+ * ยังไม่ได้ต่อสายอนุมัติ — ปุ่มนี้ทำหน้าที่เป็นที่ยึดของหน้าจอไว้ก่อน
+ * ให้ผู้ใช้เห็นว่าแก้เองไม่ได้แล้ว และต้องขอสิทธิ์ผ่านช่องทางนี้
+ * เมื่อกำหนดผู้อนุมัติแล้วค่อยเปลี่ยนปุ่มนี้ให้ยิง action จริง
+ */
+export function RequestEditButton({ jobId }: { jobId: string }) {
+  return (
+    <details className="disclosure">
+      <summary className="button tiny">ขออนุมัติแก้ไข</summary>
+      <div className="popover">
+        <PopoverHead title="ขออนุมัติแก้ไข" />
+        <p className="popover-note">
+          รายการนี้ยืนยันไปแล้วจึงแก้ไขเองไม่ได้ · ยังไม่ได้เปิดใช้สายอนุมัติ
+          กรุณาแจ้งผู้ดูแลระบบเพื่อปลดล็อกก่อน
+        </p>
+        <input type="hidden" value={jobId} readOnly />
+        <PopoverCancel />
+      </div>
+    </details>
+  );
+}
+
+/**
+ * ยืนยันข้อมูลลูกค้า — ครบสามอย่างแล้วจึงกดได้
+ *
+ * บอกด้วยว่ายังขาดอะไร ผู้ใช้จะได้ไม่ต้องเดาว่าทำไมปุ่มกดไม่ได้
+ */
+export function ConfirmCustomerButton({
+  jobId, missing, confirmed,
+}: { jobId: string; missing: string[]; confirmed: boolean }) {
+  if (confirmed) return <span className="badge approved">ยืนยันแล้ว</span>;
+  if (missing.length) return <span className="badge pending">ยังขาด: {missing.join(' · ')}</span>;
+  return (
+    <form action={confirmCustomerInfo} className="inline-form">
+      <input type="hidden" name="jobId" value={jobId} />
+      <ConfirmSubmit
+        label="ยืนยันข้อมูล"
+        tone="ok"
+        confirm="ยืนยันข้อมูลลูกค้าของงานนี้ใช่ไหม"
+        detail="งานจะย้ายไปแท็บ อัปเดต/อัปโหลดแล้ว"
+      />
+    </form>
   );
 }
 

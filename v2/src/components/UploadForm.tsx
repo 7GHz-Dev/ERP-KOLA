@@ -15,15 +15,25 @@ import { PopoverHead } from '@/components/Interactions';
  * หน้าจึงยังเป็นข้อมูลเดิมจนกว่าผู้ใช้จะกดรีเฟรชเอง
  */
 export function UploadForm({
-  jobId, category, label, requireReason,
-}: { jobId: string; category: string; label: string; requireReason?: boolean }) {
+  jobId, category, label, requireReason, thenOpen,
+}: {
+  jobId: string;
+  category: string;
+  label: string;
+  requireReason?: boolean;
+  /**
+   * เส้นทางที่ให้ไปต่อหลังอัปโหลดสำเร็จ แทนแผงดูไฟล์ปกติ
+   * เช่น Slip แลก DO ที่ต้องเปิดแผงเทียบยอดกับ Invoice DO แทน
+   */
+  thenOpen?: string;
+}) {
   const router = useRouter();
   const details = useRef<HTMLDetailsElement>(null);
   const [percent, setPercent] = useState<number | null>(null);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
-  const finish = (form: HTMLFormElement) => {
+  const finish = (form: HTMLFormElement, fileId?: string) => {
     setPercent(100);
     setDone(true);
     startTransition(() => {
@@ -34,6 +44,12 @@ export function UploadForm({
         setPercent(null);
         setDone(false);
         details.current?.removeAttribute('open');
+        /*
+         * เปิดแผงดูไฟล์ที่เพิ่งอัปให้เลย ผู้ใช้จะได้เห็นว่าอัปถูกใบไหม
+         * push ไม่ replace เพื่อให้กดปิดแผงแล้วกลับมาที่ตารางได้ตามปกติ
+         */
+        const target = thenOpen ?? (fileId ? `/file/${fileId}` : null);
+        if (target) router.push(target);
       }, 700);
     });
   };
@@ -59,9 +75,10 @@ export function UploadForm({
     xhr.addEventListener('load', () => {
       let detail = 'อัปโหลดไม่สำเร็จ';
       try {
-        const body = JSON.parse(xhr.responseText) as { ok?: boolean; detail?: string };
+        const body = JSON.parse(xhr.responseText) as
+          { ok?: boolean; detail?: string; fileId?: string };
         if (xhr.status < 400 && body.ok) {
-          finish(form);
+          finish(form, body.fileId);
           return;
         }
         detail = body.detail ?? detail;

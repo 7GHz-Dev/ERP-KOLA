@@ -19,7 +19,22 @@ type Step = {
   detail?: string;
 };
 
-export function MergeEofficeButton({ jobId }: { jobId: string }) {
+export function MergeEofficeButton({
+  jobId, kind = 'eoffice',
+}: {
+  jobId: string;
+  /** ชุดเอกสารที่จะรวม — ปุ่มและลำดับชิ้นงานเปลี่ยนตามนี้ */
+  kind?: 'eoffice' | 'do';
+}) {
+  const cfg = kind === 'do'
+    ? {
+        title: 'รวมชุดแลก DO',
+        order: 'จดหมายแลก DO → Invoice DO → Slip → เอกสารอื่น ๆ',
+      }
+    : {
+        title: 'รวมชุด E-Office',
+        order: 'คำร้อง → ใบขนสินค้า → Final Invoice → Arrival Notice / BL',
+      };
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -37,7 +52,7 @@ export function MergeEofficeButton({ jobId }: { jobId: string }) {
       const res = await fetch('/api/eoffice/merge', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jobId }),
+        body: JSON.stringify({ jobId, kind }),
       });
       if (!res.body) throw new Error('เซิร์ฟเวอร์ไม่ส่งข้อมูลกลับ');
 
@@ -76,12 +91,12 @@ export function MergeEofficeButton({ jobId }: { jobId: string }) {
   return (
     <>
       <button type="button" className="button tiny ok" onClick={() => dialog.current?.showModal()}>
-        รวมชุด E-Office
+        {cfg.title}
       </button>
 
       <dialog ref={dialog} className="confirm-dialog wide">
         <div className="popover-head">
-          <b>รวมชุด E-Office</b>
+          <b>{cfg.title}</b>
           <button
             type="button"
             className="popover-close"
@@ -96,7 +111,7 @@ export function MergeEofficeButton({ jobId }: { jobId: string }) {
         {!percent && !done && !error ? (
           <>
             <p className="confirm-text">รวมเอกสารเป็น PDF ไฟล์เดียวตามลำดับที่ยื่นจริงใช่ไหม</p>
-            <p className="confirm-detail">คำร้อง → ใบขนสินค้า → Final Invoice → Arrival Notice / BL</p>
+            <p className="confirm-detail">{cfg.order}</p>
           </>
         ) : null}
 

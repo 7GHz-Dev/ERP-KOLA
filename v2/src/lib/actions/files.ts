@@ -22,6 +22,11 @@ const UPLOAD_ROLES: Record<string, string[]> = {
   FINAL_INVOICE_PDF: ['PAINT'],
   EOFFICE: ['PAINT'],
   EOFFICE_REQUEST: ['PAINT'],
+  EOFFICE_SIGNED: ['PAINT'],
+  DO_LETTER: ['ANN', 'ADMIN'],
+  DO_SLIP: ['ANN', 'ADMIN'],
+  DO_OTHER: ['ANN', 'ADMIN'],
+  DO_MERGED: ['ANN', 'ADMIN'],
   INVOICE_GOODS: ['NAMKANG'],
   SURRENDER: ['NAMKANG'],
   INVOICE_DO: ['FAH'],
@@ -108,6 +113,11 @@ async function uploadJobFileImpl(formData: FormData) {
   revalidatePath('/fah/fn');
   revalidatePath('/nam/customer');
   revalidatePath('/nam/release');
+  revalidatePath('/paint/eoffice-signed');
+  revalidatePath('/do-exchange');
+
+  // คืน id ให้หน้าเว็บเปิดแผงดูไฟล์ที่เพิ่งอัปได้ทันที
+  return { fileId: id };
 }
 
 /** รับทราบว่า Invoice สินค้าถูกเปลี่ยนใหม่ — แถวจะหายแดง */

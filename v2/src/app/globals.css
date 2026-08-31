@@ -877,3 +877,117 @@ label.mini span { font-size: 12px; }
 .do-row { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
 .do-buttons { grid-column: 1 / -1; justify-content: flex-end; margin-top: 2px; }
 table.data td.col-wrap:has(.do-row) { min-width: 430px; }
+
+/*
+ * ชื่อไฟล์ Invoice DO — ช่องแคบลงและชื่อยาวขึ้นบรรทัดใหม่
+ *
+ * .badge เดิมตั้ง white-space: nowrap ไว้ ชื่อไฟล์ยาว ๆ จึงดันคอลัมน์กว้างจนล้น
+ * ตรงนี้ทับเฉพาะชิปไฟล์ในคอลัมน์นี้ ไม่แตะ .badge ตัวอื่นทั้งระบบ
+ * overflow-wrap: anywhere จำเป็นเพราะชื่อไฟล์มักไม่มีช่องว่างให้ตัดบรรทัด
+ */
+table.data td.col-wrap.col-file, table.data th.col-file { width: 190px; min-width: 170px; }
+
+/* ช่องเลือก Client in Charge ในตาราง — ต้องกว้างพอให้เห็นชื่อเต็ม */
+table.data td.col-wrap.col-client, table.data th.col-client { width: 200px; min-width: 180px; }
+.client-cell { display: block; }
+.client-cell input { font-size: 12px; min-height: 28px; padding: 3px 6px; }
+.client-cell-note { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); }
+.client-cell-note.ok { color: var(--green); }
+.client-cell-note.bad { color: var(--red); }
+/* รายการที่กางออกมาต้องทับแถวอื่นได้ ไม่ถูกตัดด้วยกรอบตาราง */
+table.data td.col-client { overflow: visible; }
+
+/* แถว Invoice DO ที่ส่ง Partner แล้ว — แสดงค่าอย่างเดียว */
+.do-row.readonly .do-cell b {
+  display: block; font-size: 12px; font-weight: 600; min-height: 20px; padding: 3px 0;
+}
+
+/* แผงดูไฟล์ที่เพิ่งอัปโหลด */
+/* บอกว่าใครกดรับทราบ Invoice ที่ถูกเปลี่ยน */
+.ack-note {
+  margin: 0 0 14px; padding: 8px 12px; border-radius: 8px;
+  background: var(--green-soft); color: var(--green);
+  font-size: 12px; line-height: 1.5;
+}
+
+/* ตัวอย่างจดหมายในหน้าตั้งค่าฟอร์ม */
+.doc-preview {
+  display: block; width: 100%; height: 70vh;
+  border: 1px solid var(--line); border-radius: 8px; background: #f4f6f8;
+}
+.doc-preview-note { margin: 0 0 8px; font-size: 11px; color: var(--muted); }
+
+/* ตัวไฟล์เต็มพื้นที่เนื้อในแผง หัวแผงบอกชื่อไฟล์อยู่แล้ว */
+/*
+ * แผงดูไฟล์กว้างกว่าแผงสรุปงาน เพราะต้องอ่านเอกสารทั้งใบ ไม่ใช่อ่านค่าเป็นแถว ๆ
+ * ยกเว้นแผงเทียบยอดที่มีสองช่องอยู่แล้ว และตัวอย่างตอนรับงาน AN/BL ที่เป็นตารางรูปย่อ
+ */
+.job-drawer.wide { width: min(1180px, 98vw); }
+
+.file-preview-view {
+  display: block; width: 100%; height: 100%; min-height: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: #f4f6f8; object-fit: contain;
+}
+/* ในแผงให้เนื้อในสูงเต็มช่อง รูปจะได้ไม่ลอยอยู่ครึ่งบน */
+/* เนื้อในไม่เลื่อนเอง ปล่อยให้ตัวอ่าน PDF จัดการ ไฟล์จึงเต็มความสูงแผงพอดี */
+.job-drawer .drawer-content:has(> .file-preview-view) {
+  display: flex; padding: 12px; overflow: hidden;
+}
+
+/* ผลการอ่าน Slip ด้วย OCR */
+.slip-read { display: flex; flex-direction: column; gap: 8px; }
+.slip-read-out {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.slip-read-amount { display: flex; align-items: baseline; gap: 10px; }
+.slip-read-amount span { font-size: 11px; font-weight: 700; color: var(--muted); }
+.slip-read-amount b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.slip-read-meta {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 12px;
+}
+.slip-read-meta dt { color: var(--muted); }
+.slip-read-meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+.slip-read-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+
+/* แผงเทียบยอด Invoice DO กับ Slip — วางคู่กันเพื่อดูพร้อมกัน */
+.slip-check { display: flex; flex-direction: column; gap: 10px; }
+.slip-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.slip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 900px) { .slip-grid { grid-template-columns: 1fr; } }
+.slip-pane {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+}
+.slip-pane-head {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border-bottom: 1px solid var(--line); font-weight: 700; font-size: 12px;
+}
+.slip-pane-head span { flex: 1; }
+.slip-view { width: 100%; height: 62vh; border: 0; background: #f4f6f8; object-fit: contain; }
+.slip-pane-foot {
+  padding: 6px 10px; border-top: 1px solid var(--line);
+  font-size: 10px; color: var(--muted); word-break: break-all;
+}
+.slip-empty { padding: 28px 12px; text-align: center; color: var(--muted); font-size: 12px; }
+
+/* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
+table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }
+.shipline-cell b { display: block; font-size: 12px; font-weight: 600; line-height: 1.35; }
+
+/* ข้อความอธิบายในแผงเล็ก เช่นเหตุผลที่แก้ไขเองไม่ได้ */
+.popover-note {
+  margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 260px;
+}
+.file-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.file-cell .badge.file-link {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: left;
+  line-height: 1.35;
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 7px;
+}

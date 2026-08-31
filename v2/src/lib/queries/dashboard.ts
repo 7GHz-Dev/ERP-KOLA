@@ -43,14 +43,55 @@ export async function navCounts() {
         where ${jobs.draftStatus} = 'SUBMITTED'
           and ${jobs.customsTaskId} is null
           and ${jobs.customsStatus} <> 'FILED')::int`,
-      openJobs: sql<number>`count(*) filter (where ${jobs.releaseStatus} <> 'RELEASED')::int`,
-      edoc: sql<number>`count(*) filter (where ${jobs.customsStatus} = 'FILED')::int`,
+      /*
+       * ต้องเท่ากับผลรวมของแท็บ 1-4 ในหน้างานคงค้าง
+       *
+       * เดิมนับ "งานที่ยังไม่ปล่อย" ทั้งหมด ซึ่งรวมงานที่ไม่ได้รออะไรจาก PAINT แล้ว
+       * เช่นงานที่รวมชุด E-Office ครบและรอฝั่งอื่นทำต่อ ตัวเลขจึงสูงกว่าที่เห็นในแท็บมาก
+       * เงื่อนไขแต่ละก้อนตรงกับ pendingTabCounts ตัวต่อตัว
+       */
+      openJobs: sql<number>`count(*) filter (
+        where (${an.status} is null or ${an.status} = 'REJECTED')
+           or (${an.status} = 'APPROVED'
+               and (${fn.status} is null or ${fn.status} = 'REJECTED'))
+           or (${fn.status} = 'APPROVED'
+               and (${jobs.draftStatus} is null
+                    or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))
+           or (${jobs.customsStatus} = 'FILED'
+               and merged.job_id is null and signed.job_id is null))::int`,
+      // ต้องตรงกับ QUEUE.pendingEdoc — ตัดงานที่ได้ชุดปล่อยเซ็นแล้วออก
+      edoc: sql<number>`count(*) filter (
+        where ${jobs.customsStatus} = 'FILED' and signed.job_id is null)::int`,
+      // ต้องตรงกับ QUEUE.eofficeSigned('wait') — ยังไม่ได้กดส่ง Partner
+      eofficeSignedWait: sql<number>`count(*) filter (
+        where ${jobs.customsStatus} = 'FILED' and ${jobs.eofficeSentAt} is null)::int`,
+      // ต้องตรงกับ QUEUE.doExchange — ส่ง Partner แล้วแต่ยังไม่ได้รวมชุดแลก DO
+      doExchangeWait: sql<number>`count(*) filter (
+        where ${jobs.eofficeSentAt} is not null and ${jobs.doLetterAt} is null)::int`,
       queue: sql<number>`(select count(*) from automation_tasks
                           where status in ('QUEUED', 'PROCESSING'))::int`,
+      // ต้องตรงกับ QUEUE.fahDo('wait') — งานที่ผ่าน AN แล้วแต่ยังไม่ได้กดส่ง Partner
+      fahDoWait: sql<number>`count(*) filter (
+        where ${an.status} = 'APPROVED'
+          and not exists (select 1 from do_handoffs dh
+                           where dh.job_id = ${jobs.id} and dh.sent_at is not null))::int`,
+      // ต้องตรงกับ QUEUE.namCustomer('wait') — ยังไม่ได้กดยืนยันข้อมูลลูกค้า
+      namCustomerWait: sql<number>`count(*) filter (
+        where ${an.status} = 'APPROVED' and ${jobs.customerConfirmedAt} is null)::int`,
     })
     .from(jobs)
     .leftJoin(an, eq(an.jobId, jobs.id))
     .leftJoin(fn, eq(fn.jobId, jobs.id))
+    .leftJoin(
+      sql`(select distinct job_id from files
+             where category = 'EOFFICE_MERGED' and is_current = true) as merged`,
+      sql`merged.job_id = ${jobs.id}`,
+    )
+    .leftJoin(
+      sql`(select distinct job_id from files
+             where category = 'EOFFICE_SIGNED' and is_current = true) as signed`,
+      sql`signed.job_id = ${jobs.id}`,
+    )
     .where(eq(jobs.isArchived, false));
   return row;
 }
@@ -76,7 +117,8 @@ export async function pendingTabCounts() {
           and (${jobs.draftStatus} is null
                or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))::int`,
       edoc: sql<number>`count(*) filter (
-        where ${jobs.customsStatus} = 'FILED' and merged.job_id is null)::int`,
+        where ${jobs.customsStatus} = 'FILED'
+          and merged.job_id is null and signed.job_id is null)::int`,
     })
     .from(jobs)
     .leftJoin(an, eq(an.jobId, jobs.id))
@@ -85,6 +127,11 @@ export async function pendingTabCounts() {
       sql`(select distinct job_id from files
              where category = 'EOFFICE_MERGED' and is_current = true) as merged`,
       sql`merged.job_id = ${jobs.id}`,
+    )
+    .leftJoin(
+      sql`(select distinct job_id from files
+             where category = 'EOFFICE_SIGNED' and is_current = true) as signed`,
+      sql`signed.job_id = ${jobs.id}`,
     )
     .where(eq(jobs.isArchived, false));
   return row;

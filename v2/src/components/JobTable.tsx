@@ -24,6 +24,8 @@ export type Column = {
   align?: 'left' | 'center' | 'right';
   /** actions = คอลัมน์ปุ่ม ดันไปไว้ท้ายตาราง · wrap = ยอมให้ข้อความขึ้นบรรทัดใหม่ */
   kind?: 'text' | 'actions' | 'wrap';
+  /** คลาสเพิ่มเติมของคอลัมน์ ใส่ทั้งหัวตารางและช่องข้อมูล เช่นกำหนดความกว้าง */
+  className?: string;
   render: (row: JobRow) => React.ReactNode;
 };
 
@@ -109,7 +111,8 @@ export function JobTable({
               {columns.map((c) => (
                 <th
                   key={c.label}
-                  className={c.kind === 'actions' ? 'col-actions' : undefined}
+                  className={[c.kind === 'actions' ? 'col-actions' : null, c.className]
+                    .filter(Boolean).join(' ') || undefined}
                   style={c.align ? { textAlign: c.align } : undefined}
                 >
                   {c.sortKey ? (
@@ -174,11 +177,12 @@ export function JobTable({
                   {columns.map((c) => (
                     <td
                       key={c.label}
-                      className={
+                      className={[
                         c.kind === 'actions' ? 'col-actions'
                           : c.kind === 'wrap' ? 'col-wrap'
-                            : undefined
-                      }
+                            : null,
+                        c.className,
+                      ].filter(Boolean).join(' ') || undefined}
                       style={c.align ? { textAlign: c.align } : undefined}
                     >
                       {c.render(row)}
@@ -238,16 +242,13 @@ export function ApprovalBadge({ status }: { status: string | null }) {
 
 export function FileChip({ file }: { file?: { id: string; fileName: string } }) {
   if (!file) return <span className="badge pending">รอดำเนินการ</span>;
-  // เปิดผ่านเส้นทางของแอปเสมอ เพราะ bucket เป็นแบบส่วนตัว
+  /*
+   * กดชื่อไฟล์แล้วกางแผงดูไฟล์ทับหน้าเดิม ไม่เด้งแท็บใหม่
+   * ในแผงมีปุ่มเปิดแท็บใหม่ให้อีกที เผื่อต้องการดูเต็มจอหรือสั่งพิมพ์
+   */
   return (
-    <a
-      className="badge approved file-link"
-      href={`/files/${file.id}`}
-      target="_blank"
-      rel="noreferrer"
-      title={file.fileName}
-    >
+    <Link className="badge approved file-link" href={`/file/${file.id}`} title={file.fileName}>
       {file.fileName}
-    </a>
+    </Link>
   );
 }

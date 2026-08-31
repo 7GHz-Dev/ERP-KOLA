@@ -14,9 +14,9 @@ export const maxDuration = 60;
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    await uploadJobFile(formData);
+    const result = await uploadJobFile(formData);
     revalidatePath('/pending');
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, fileId: result?.fileId });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'อัปโหลดไม่สำเร็จ';
     // action ที่ห่อด้วย runAction จะโยน NEXT_REDIRECT ออกมาเมื่อมีข้อผิดพลาดของผู้ใช้

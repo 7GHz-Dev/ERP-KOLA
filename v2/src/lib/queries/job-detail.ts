@@ -36,6 +36,7 @@ export type JobFile = {
   id: string; category: string; version: number; fileName: string;
   sizeBytes: number | null; note: string | null; changeReason: string | null;
   isCurrent: boolean; isAcknowledged: boolean; uploadedAt: string; uploaderName: string | null;
+  acknowledgedAt: string | null; acknowledgedByName: string | null;
 };
 
 export type JobDetail = {
@@ -125,9 +126,12 @@ export async function loadJobDetail(jobId: string): Promise<JobDetail | null> {
         select f.id, f.category, f.version, f.file_name as "fileName",
                f.size_bytes as "sizeBytes", f.note, f.change_reason as "changeReason",
                f.is_current as "isCurrent", f.is_acknowledged as "isAcknowledged",
-               f.uploaded_at as "uploadedAt", uploader.display_name as "uploaderName"
+               f.uploaded_at as "uploadedAt", uploader.display_name as "uploaderName",
+               f.acknowledged_at as "acknowledgedAt",
+               acker.display_name as "acknowledgedByName"
         from files f
         left join users uploader on uploader.id = f.uploaded_by
+        left join users acker on acker.id = f.acknowledged_by
         where f.job_id = ${jobId}
         order by f.category, f.version desc
       ) t), '[]'::jsonb) as files,
@@ -218,6 +222,11 @@ export const FILE_LABELS: Record<string, string> = {
   EOFFICE: 'ชุดตรวจปล่อย (E-Office)',
   EOFFICE_REQUEST: 'คำร้อง E-Office',
   EOFFICE_MERGED: 'ชุด E-Office รวม',
+  EOFFICE_SIGNED: 'ชุดปล่อย E-Office (เซ็นแล้ว)',
+  DO_LETTER: 'จดหมายแลก DO',
+  DO_SLIP: 'Slip โอนเงิน',
+  DO_OTHER: 'เอกสารแลก DO อื่น ๆ',
+  DO_MERGED: 'ชุดแลก DO รวม',
   OTHER: 'อื่น ๆ',
 };
 
@@ -228,5 +237,6 @@ export function fileLabel(category: string) {
 /** ลำดับการแสดง เรียงตามขั้นงานจริง ไม่ใช่ตามตัวอักษร */
 export const FILE_ORDER = [
   'ARRIVAL_NOTICE', 'BL', 'INVOICE_GOODS', 'FINAL_INVOICE', 'FINAL_INVOICE_PDF', 'INVOICE_DO', 'SURRENDER',
-  'DRAFT_ENTRY', 'CUSTOMS_ENTRY_DOC', 'EOFFICE', 'EOFFICE_REQUEST', 'EOFFICE_MERGED', 'OTHER',
+  'DRAFT_ENTRY', 'CUSTOMS_ENTRY_DOC', 'EOFFICE', 'EOFFICE_REQUEST', 'EOFFICE_MERGED', 'EOFFICE_SIGNED',
+  'DO_LETTER', 'DO_SLIP', 'DO_OTHER', 'DO_MERGED', 'OTHER',
 ];

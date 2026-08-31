@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { db } from '@/db';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
@@ -109,6 +109,12 @@ export async function listJobs(filter: JobFilter = {}) {
       shipperName: sql<string | null>`shipper.name`,
       consigneeName: sql<string | null>`consignee.name`,
       personName: sql<string | null>`person.name`,
+      personId: jobs.personId,
+      customerConfirmedAt: jobs.customerConfirmedAt,
+      eofficeSentAt: jobs.eofficeSentAt,
+      doShippingLine: jobs.doShippingLine,
+      shipline: jobs.shipline,
+      doLetterAt: jobs.doLetterAt,
       jobTypeName: sql<string | null>`job_type.name`,
       portName: sql<string | null>`port.name`,
       portCode: sql<string | null>`port.code`,
@@ -205,10 +211,45 @@ export const QUEUE = {
       ? or(isNull(jobs.draftStatus), sql`${jobs.draftStatus} not in ('SUBMITTED','FILED')`)
       : and(eq(jobs.draftStatus, 'SUBMITTED'), ne(jobs.customsStatus, 'FILED')),
   ],
-  pendingEdoc: () => () => [eq(jobs.customsStatus, 'FILED')],
+  /*
+   * แท็บ 4 เตรียมเอกสารเดิน E — ตัดงานที่ได้ชุดปล่อยเซ็นแล้วออก
+   *
+   * PAINT อัปโหลดไฟล์ที่เดินพิธีการจนได้ลายเซ็นกลับมาที่หน้า "Upload ชุดปล่อย E-Office"
+   * งานที่มีไฟล์นั้นแล้วถือว่าจบขั้นเตรียมเอกสาร จึงไม่ต้องค้างในคิวนี้อีก
+   */
+  pendingEdoc: () => () => [
+    eq(jobs.customsStatus, 'FILED'),
+    sql`not exists (select 1 from files f
+                     where f.job_id = ${jobs.id}
+                       and f.category = 'EOFFICE_SIGNED'
+                       and f.is_current = true)`,
+  ],
+
+  /*
+   * PAINT — Upload ชุดปล่อย E-Office ที่เซ็นแล้ว แล้วส่งให้ Partner
+   *
+   * แยกสองแท็บด้วยเวลาที่กดส่ง Partner
+   * แท็บแรกทำงานจบในตัว: อัปโหลดไฟล์แล้วกดส่งได้เลยในแถวเดียวกัน
+   */
+  eofficeSigned: (sub: 'wait' | 'sent') => () => [
+    eq(jobs.customsStatus, 'FILED'),
+    sub === 'sent' ? isNotNull(jobs.eofficeSentAt) : isNull(jobs.eofficeSentAt),
+  ],
 
   /** FAH */
-  fahDo: () => ({ an }: JoinContext) => [eq(an.status, 'APPROVED')],
+  /*
+   * Invoice DO แยกสองแท็บด้วยเวลาที่ส่ง Partner
+   *
+   * do_handoffs มีได้แถวเดียวต่องาน แต่ยังไม่ได้ join ไว้ใน listJobs
+   * ใช้ EXISTS แทนการ join เพราะต้องการแค่ตรวจว่ามี sent_at หรือยัง
+   * ไม่ได้เอาค่ามาแสดง และไม่ทำให้แถวงานซ้ำ
+   */
+  fahDo: (sub: 'wait' | 'sent') => ({ an }: JoinContext) => [
+    eq(an.status, 'APPROVED'),
+    sub === 'sent'
+      ? sql`exists (select 1 from do_handoffs dh where dh.job_id = ${jobs.id} and dh.sent_at is not null)`
+      : sql`not exists (select 1 from do_handoffs dh where dh.job_id = ${jobs.id} and dh.sent_at is not null)`,
+  ],
   fahFn: () => ({ fn }: JoinContext) => [eq(fn.status, 'PENDING')],
   fahDraftReview: () => () => [
     eq(jobs.draftStatus, 'SUBMITTED'),
@@ -221,8 +262,23 @@ export const QUEUE = {
   ],
   fahDraftDone: () => () => [eq(jobs.customsStatus, 'FILED')],
 
+  /*
+   * จัดการแลก DO — งานเข้ามาเมื่อ PAINT กดส่ง Partner ที่หน้าชุดปล่อย E-Office
+   *
+   * หน้าเดียวจบ ไม่แยกแท็บ เพราะทำจดหมาย · อัปโหลด Slip · รวมชุด
+   * เป็นงานของคนเดียวกันบนงานเดียวกัน แยกแท็บแล้วต้องเด้งไปมา
+   */
+  doExchange: () => () => [isNotNull(jobs.eofficeSentAt)],
+
   /** NAMKANG */
   namApprove: () => ({ an }: JoinContext) => [eq(an.status, 'PENDING')],
-  namCustomer: () => ({ an }: JoinContext) => [eq(an.status, 'APPROVED')],
+  /*
+   * ใส่ Client in Charge — แยกสองแท็บด้วยเวลาที่กดยืนยันข้อมูล
+   * เก็บเป็นคอลัมน์ในตาราง jobs เพราะต้องใช้เป็นเงื่อนไขกรองและนับบนเมนู
+   */
+  namCustomer: (sub: 'wait' | 'done') => ({ an }: JoinContext) => [
+    eq(an.status, 'APPROVED'),
+    sub === 'done' ? isNotNull(jobs.customerConfirmedAt) : isNull(jobs.customerConfirmedAt),
+  ],
   namRelease: () => ({ an }: JoinContext) => [eq(an.status, 'APPROVED')],
 } as const;

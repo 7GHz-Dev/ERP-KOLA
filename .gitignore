@@ -24,3 +24,6 @@ angsana.ttc
 v2/.next/
 v2/.env.local
 .env.local
+
+# ไฟล์ขยะของ macOS Finder
+.DS_Store

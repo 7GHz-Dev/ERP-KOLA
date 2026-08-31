@@ -121,6 +121,16 @@ export const jobs = pgTable('jobs', {
   detDays: integer('det_days').default(0).notNull(),
   releasePartner: text('release_partner'),
   customerNote: text('customer_note'),
+  /** NAMKANG กดยืนยันข้อมูลลูกค้าแล้ว — ใช้แยกแท็บรออัปเดต/อัปเดตแล้ว */
+  customerConfirmedAt: timestamp('customer_confirmed_at', { withTimezone: true }),
+  customerConfirmedBy: text('customer_confirmed_by'),
+  /** PAINT ส่งชุดปล่อย E-Office ให้ Partner แล้ว — ใช้แยกแท็บรอส่ง/ส่งแล้ว */
+  eofficeSentAt: timestamp('eoffice_sent_at', { withTimezone: true }),
+  eofficeSentBy: text('eoffice_sent_by'),
+  /** ขั้นแลก DO — สายเรือที่ใช้เลือกแบบฟอร์มจดหมาย และเวลาที่ทำจดหมายเสร็จ */
+  doShippingLine: text('do_shipping_line'),
+  doLetterAt: timestamp('do_letter_at', { withTimezone: true }),
+  doLetterBy: text('do_letter_by'),
 
   draftRefNo: text('draft_ref_no'),
   draftStatus: text('draft_status'),

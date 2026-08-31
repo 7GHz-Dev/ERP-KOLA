@@ -4,3 +4,6 @@ node_modules/
 .env.local
 drizzle/meta/
 *.log
+
+# เอกสารตัวอย่างสำหรับทดสอบ เก็บไว้ในเครื่องเท่านั้น ไม่ต้องขึ้น git
+test/

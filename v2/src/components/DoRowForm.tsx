@@ -13,7 +13,7 @@ export type Choice = { id: string; code: string | null; name: string };
 
 export function DoRowForm({
   jobId, eta, portId, terminalId, partnerName,
-  ports, terminals, partners, sentAt,
+  ports, terminals, partners, sentAt, defaultPartnerId, readOnly,
 }: {
   jobId: string;
   eta: string | null;
@@ -24,8 +24,14 @@ export function DoRowForm({
   terminals: Choice[];
   partners: Choice[];
   sentAt: string | null;
+  /** งานที่ยังไม่เคยเลือก Partner ให้ตั้งค่าเริ่มต้นไว้ก่อน ผู้ใช้เปลี่ยนได้ */
+  defaultPartnerId?: string | null;
+  /** ส่ง Partner แล้ว — แสดงค่าอย่างเดียว แก้ไม่ได้ */
+  readOnly?: boolean;
 }) {
-  const partnerId = partners.find((p) => p.name === partnerName)?.id ?? '';
+  const partnerId =
+    partners.find((p) => p.name === partnerName)?.id ?? defaultPartnerId ?? '';
+  // ยังกดส่งไม่ได้จนกว่าจะบันทึก เพราะค่าเริ่มต้นเป็นแค่ค่าที่เห็นบนจอ ยังไม่ได้ลงฐานข้อมูล
   const ready = Boolean(eta && partnerName);
 
   const options = (list: Choice[], placeholder: string) => (
@@ -44,6 +50,22 @@ export function DoRowForm({
    * React จะใช้ DOM เดิมและไม่แตะค่าที่เลือกอยู่ ช่องจึงเด้งกลับไปเป็นค่าก่อนบันทึก
    * เปลี่ยน key เมื่อค่าเปลี่ยน React จะสร้างช่องใหม่พร้อมค่าที่ถูกต้อง
    */
+
+  if (readOnly) {
+    const nameOf = (list: Choice[], id: string | null) => {
+      const hit = list.find((c) => c.id === id);
+      return hit ? (hit.code ? `${hit.code} · ${hit.name}` : hit.name) : '-';
+    };
+    return (
+      <div className="do-row readonly">
+        <div className="do-cell"><span>ETA official</span><b>{eta ?? '-'}</b></div>
+        <div className="do-cell"><span>Port of Discharge</span><b>{nameOf(ports, portId)}</b></div>
+        <div className="do-cell"><span>Terminal</span><b>{nameOf(terminals, terminalId)}</b></div>
+        <div className="do-cell"><span>Port Release Partner</span><b>{partnerName ?? '-'}</b></div>
+        <div className="do-buttons"><span className="badge approved">ส่งแล้ว</span></div>
+      </div>
+    );
+  }
 
   return (
     <form action={saveDoHandoff} className="do-row">
