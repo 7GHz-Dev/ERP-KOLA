@@ -117,6 +117,11 @@ export default async function DoLetterFormPage({
             <div className="doc-form-bar">
               <span>ฟอนต์ Angsana New · กระดาษ A4 แนวตั้ง</span>
               <FormPreviewPane
+                src={`/api/do-letter/preview?grid=1${line ? `&line=${encodeURIComponent(line)}` : ''}`}
+                title={`ตัวอย่างพร้อมเส้นพิกัด${line ? ` · ${line}` : ''}`}
+                label="ดูตัวอย่างพร้อมเส้นพิกัด"
+              />
+              <FormPreviewPane
                 src={`/api/do-letter/preview${line ? `?line=${encodeURIComponent(line)}` : ''}`}
                 title={`ตัวอย่างจดหมาย${line ? ` · ${line}` : ' (ค่ากลาง)'}`}
                 label="ดูตัวอย่าง PDF"

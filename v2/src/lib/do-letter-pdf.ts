@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DETAIL_LABELS, blockCode, loadDoLetterForm, type DoLetterForm } from '@/lib/do-letter';
 import { downloadFile } from '@/lib/storage';
+import { drawCoordinateGrid } from '@/lib/pdf-grid';
 
 /**
  * ออกไฟล์ PDF จดหมายขอแลก D/O
@@ -111,9 +112,15 @@ function wrapBy(
   return out;
 }
 
+export type RenderOptions = {
+  /** วาดเส้นตารางพิกัดทับให้ด้วย ใช้ตอนตั้งตำแหน่งบล็อกบนกระดาษ */
+  grid?: boolean;
+};
+
 export async function renderDoLetterPdf(
   data: DoLetterData,
   form?: DoLetterForm,
+  options: RenderOptions = {},
 ): Promise<Buffer> {
   const f = form ?? await loadDoLetterForm();
   const line = data.shippingLine;
@@ -207,6 +214,9 @@ export async function renderDoLetterPdf(
       x += c.advance;
     }
   };
+
+  // วาดเส้นตารางก่อน ข้อความจะได้อยู่ทับเส้น ไม่ถูกเส้นบัง
+  if (options.grid) drawCoordinateGrid(page, latin.regular, PAGE_W, PAGE_H, rgb);
 
   // ---------- หัวจดหมาย ----------
   // มีพื้นหลังแล้วหัวจดหมายอยู่ในไฟล์ ไม่ต้องวาดซ้ำให้ทับกัน

@@ -5,6 +5,7 @@ import {
 } from '@/lib/eoffice-form';
 import { downloadFile } from '@/lib/storage';
 import { clustersOf } from '@/lib/thai-text';
+import { drawCoordinateGrid } from '@/lib/pdf-grid';
 
 /**
  * ออกไฟล์ PDF ของคำร้องขอนำของเข้าเขตปลอดอากร (ปะหน้าชุด E-Office)
@@ -207,35 +208,6 @@ async function renderOnTemplate(
  * ตั้งตำแหน่งด้วยการเดาตัวเลขแล้วกดดูใหม่ไปเรื่อย ๆ ช้ามาก
  * มีเส้นกับตัวเลขกำกับให้อ่านพิกัดจากกระดาษได้ตรง ๆ จะจบในรอบสองรอบ
  */
-function drawCoordinateGrid(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  page: any, font: any, pageW: number, pageH: number, rgb: (r: number, g: number, b: number) => any,
-) {
-  const faint = rgb(0.62, 0.78, 0.9);
-  const strong = rgb(0.15, 0.45, 0.72);
-
-  for (let x = 0; x <= pageW; x += 20) {
-    const major = x % 100 === 0;
-    page.drawLine({
-      start: { x, y: 0 }, end: { x, y: pageH },
-      thickness: major ? 0.5 : 0.25, color: major ? strong : faint, opacity: major ? 0.55 : 0.3,
-    });
-    if (major && x > 0) {
-      page.drawText(String(x), { x: x + 2, y: pageH - 10, size: 7, font, color: strong });
-    }
-  }
-  for (let y = 0; y <= pageH; y += 20) {
-    const major = y % 100 === 0;
-    page.drawLine({
-      start: { x: 0, y: pageH - y }, end: { x: pageW, y: pageH - y },
-      thickness: major ? 0.5 : 0.25, color: major ? strong : faint, opacity: major ? 0.55 : 0.3,
-    });
-    if (major && y > 0) {
-      page.drawText(String(y), { x: 2, y: pageH - y + 2, size: 7, font, color: strong });
-    }
-  }
-}
-
 /** โหมดวาดเองทั้งใบ ใช้เมื่อยังไม่ได้อัปโหลดแบบฟอร์มพื้นหลัง */
 async function renderDrawn(
   req: EofficeRequestData,
