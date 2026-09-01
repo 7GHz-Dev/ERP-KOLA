@@ -65,9 +65,12 @@ export async function navCounts() {
       // ต้องตรงกับ QUEUE.eofficeSigned('wait') — ยังไม่ได้กดส่ง Partner
       eofficeSignedWait: sql<number>`count(*) filter (
         where ${jobs.customsStatus} = 'FILED' and ${jobs.eofficeSentAt} is null)::int`,
-      // ต้องตรงกับ QUEUE.doExchange — ส่ง Partner แล้วแต่ยังไม่ได้รวมชุดแลก DO
+      // ต้องตรงกับ QUEUE.doExchange — ส่ง Partner แล้ว (ทางใดทางหนึ่ง) แต่ยังไม่ได้ทำจดหมาย
       doExchangeWait: sql<number>`count(*) filter (
-        where ${jobs.eofficeSentAt} is not null and ${jobs.doLetterAt} is null)::int`,
+        where ${jobs.doLetterAt} is null
+          and (${jobs.eofficeSentAt} is not null
+               or exists (select 1 from do_handoffs dh
+                           where dh.job_id = ${jobs.id} and dh.sent_at is not null)))::int`,
       queue: sql<number>`(select count(*) from automation_tasks
                           where status in ('QUEUED', 'PROCESSING'))::int`,
       // ต้องตรงกับ QUEUE.fahDo('wait') — งานที่ผ่าน AN แล้วแต่ยังไม่ได้กดส่ง Partner

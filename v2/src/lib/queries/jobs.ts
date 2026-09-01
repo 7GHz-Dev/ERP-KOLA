@@ -264,12 +264,24 @@ export const QUEUE = {
   fahDraftDone: () => () => [eq(jobs.customsStatus, 'FILED')],
 
   /*
-   * จัดการแลก DO — งานเข้ามาเมื่อ PAINT กดส่ง Partner ที่หน้าชุดปล่อย E-Office
+   * จัดการแลก DO — งานเข้ามาเมื่อถูกส่งให้ Partner แล้ว ไม่ว่าจะส่งจากทางไหน
+   *
+   * ส่ง Partner ได้สองทางและเป็นคนละแผนกกัน
+   *   PAINT ที่หน้า "Upload ชุดปล่อย E-Office" → บันทึกที่ jobs.eoffice_sent_at
+   *   FAH   ที่หน้า "Upload InvDO / ETA Official / Terminal / Send Partner" → บันทึกที่ do_handoffs.sent_at
+   * ANN เป็นพนักงาน SHIPME ที่รับงานต่อจาก Partner จึงต้องเห็นทั้งสองทาง
+   * เดิมดูแค่ทางของ PAINT งานที่ FAH ส่งไปแล้วจึงตกหล่นไม่เข้าคิวนี้เลย
    *
    * หน้าเดียวจบ ไม่แยกแท็บ เพราะทำจดหมาย · อัปโหลด Slip · รวมชุด
    * เป็นงานของคนเดียวกันบนงานเดียวกัน แยกแท็บแล้วต้องเด้งไปมา
    */
-  doExchange: () => () => [isNotNull(jobs.eofficeSentAt)],
+  doExchange: () => () => [
+    or(
+      isNotNull(jobs.eofficeSentAt),
+      sql`exists (select 1 from do_handoffs dh
+                   where dh.job_id = ${jobs.id} and dh.sent_at is not null)`,
+    ),
+  ],
 
   /** NAMKANG */
   namApprove: () => ({ an }: JoinContext) => [eq(an.status, 'PENDING')],
