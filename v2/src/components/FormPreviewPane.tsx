@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * แผงตัวอย่างที่กางอยู่ข้างฟอร์ม ปรับค่าแล้วดูผลได้โดยไม่ต้องสลับแท็บ
@@ -10,20 +10,36 @@ import { useCallback, useEffect, useState } from 'react';
  * แผงนี้เปิดค้างไว้ได้ กดโหลดใหม่หลังบันทึกก็เห็นผลทันที
  *
  * ตัวอย่างมาจากเซิร์ฟเวอร์ จึงเป็นค่าที่บันทึกแล้วเสมอ ไม่ใช่ค่าที่กำลังพิมพ์
+ * บันทึกเสร็จเมื่อไร React จะส่ง src ชุดใหม่ลงมา แผงจึงโหลดตัวอย่างใหม่ให้เอง
  */
 export function FormPreviewPane({
-  src, title, label,
+  src, title, label, reloadKey,
 }: {
   src: string;
   title: string;
   /** ข้อความบนปุ่มเปิด */
   label: string;
+  /** ค่าที่เปลี่ยนทุกครั้งที่บันทึก — เปลี่ยนเมื่อไรแผงโหลดตัวอย่างใหม่เอง */
+  reloadKey?: string | number;
 }) {
   const [open, setOpen] = useState(false);
   // เปลี่ยนค่านี้เพื่อบังคับให้ <object> โหลดไฟล์ใหม่ ไม่ใช้ของที่ cache ไว้
   const [stamp, setStamp] = useState(0);
 
   const close = useCallback(() => setOpen(false), []);
+
+  /*
+   * บันทึกเสร็จแล้วโหลดตัวอย่างใหม่ให้เอง ไม่ต้องให้ผู้ใช้กด "โหลดใหม่"
+   *
+   * revalidatePath ทำให้หน้าถูกเรนเดอร์ใหม่ ค่า reloadKey ที่ส่งลงมาจึงเปลี่ยนตาม
+   * ข้ามรอบแรกไว้ เพราะตอนเพิ่งเปิดแผงก็โหลดอยู่แล้ว ไม่ต้องโหลดซ้ำ
+   */
+  const seen = useRef(reloadKey);
+  useEffect(() => {
+    if (seen.current === reloadKey) return;
+    seen.current = reloadKey;
+    if (open) setStamp(Date.now());
+  }, [reloadKey, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -73,7 +89,7 @@ export function FormPreviewPane({
             </p>
           </object>
           <p className="preview-pane-note">
-            เป็นค่าที่บันทึกไว้ล่าสุด · แก้แล้วกด <b>บันทึก</b> จากนั้นกด <b>โหลดใหม่</b>
+            เป็นค่าที่บันทึกไว้ล่าสุด · กด <b>บันทึก</b> แล้วตัวอย่างจะอัปเดตให้เอง
           </p>
         </aside>
       ) : null}

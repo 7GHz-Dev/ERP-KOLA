@@ -3,7 +3,6 @@ import { col, readParams } from '@/lib/columns';
 import { JobTable, FileChip, type Column } from '@/components/JobTable';
 import { MergeEofficeButton, UploadForm } from '@/components/ActionForms';
 import { DoLetterButton } from '@/components/DoLetterButton';
-import { OriginPortCell } from '@/components/OriginPortCell';
 import { matchShippingLine } from '@/lib/do-letter';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
 
@@ -34,11 +33,6 @@ export default async function DoExchangePage({
           </div>
         );
       },
-    },
-    {
-      // เมืองต้นทางมีที่ใช้ที่เดียวคือจดหมาย จึงกรอกตรงนี้แทนการเพิ่มช่องตอนรับงาน
-      label: 'เมืองต้นทาง', kind: 'wrap', className: 'col-origin',
-      render: (r) => <OriginPortCell jobId={r.id} originPort={r.originPort} />,
     },
     {
       label: 'จดหมายแลก DO', kind: 'wrap', className: 'col-file',

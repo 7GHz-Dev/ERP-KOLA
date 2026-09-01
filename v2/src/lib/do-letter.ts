@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { masterRecords } from '@/db/schema';
 
@@ -23,6 +23,44 @@ export const SHIPPING_LINES = [
   'FUJITRANS', 'SEALS', 'EASTERN', 'JJ', 'CU LINES',
 ] as const;
 
+/**
+ * ชื่อบริษัทตัวแทนสายเรือ — ต่อท้าย "จัดการแผนกขาเข้า บริษัท" บนบรรทัด "เรียน"
+ *
+ * คัดจากไฟล์ต้นทางของผู้ใช้ ชีตละสายเรือ จึงเป็นชื่อที่ใช้ยื่นจริงกับแต่ละสาย
+ * ตัวแทนของบางสายเป็นคนละบริษัทกับชื่อสายเรือ เช่น CNC ยื่นที่ CMA CGM
+ * และ RCL ยื่นที่ NGOW HOCK จึงต้องเก็บเป็นตารางแทนการเดาจากชื่อสายเรือ
+ *
+ * เป็นแค่ค่าตั้งต้น — ผู้ดูแลทับรายสายเรือได้ที่ /master/do-letter เหมือนช่องอื่น
+ * สายเรือที่ยังไม่มีชื่อในตารางนี้ปล่อยว่าง ให้กรอกเองบนหน้าตั้งค่า
+ */
+export const SHIPPING_LINE_COMPANIES: Record<string, string> = {
+  'CNC': 'CMA CGM (THAILAND)Co.,Ltd',
+  'WAN HAI': 'WAN HAI LINES LTD.',
+  'MAERSK': 'MAERSK LINE (THAILAND) LTD.',
+  'ONE': 'Ocean Network Express (Thailand). Ltd.',
+  'NEX': 'NEX CONTAINER LINE CO., LTD.',
+  'TOKO LINE': 'EASTERN SHIPPING AGENCIES CO., LTD.',
+  'NAMSUNG': 'NAMSUNG SHIPPING CO.,LTD.',
+  'OOCL': 'OOCL CO.,LTD.',
+  'RCL': 'NGOW HOCK CO., LTD.',
+  'CEVA': 'CEVA FREIGHT (THAILAND) LTD.',
+  'KOLA YANG MING': 'Yang Ming Marine Transport Corp.',
+  'ALPINE': 'ALPINE SHIPPING (THAILAND) CO.,LTD.',
+  'ENTERPRISE': 'ENTERPRISE TRANSPORT INTERNATIONAL CO., LTD',
+  'PILOT': 'PILOT CONSOLIDATOR CO., LTD.',
+  'M+R FORWARDING': 'M+R FORWARDING (THAILAND) CO., LTD. (Head Office)',
+  'TOLL GLOBAL': 'Toll Global Forwarding (Thailand) Limited',
+  'K LINE': 'K LINE (THAILAND) LTD.',
+  'KMTC': 'KOREA MARINE TRANSPORT CO.,LTD',
+  'COSCO': 'COSCO SHIPPING LINE (THAILAND) CO.,LTD.',
+  'SINOKOR': 'SINOKOR MERCHANT MARINE CO., LTD. C/O',
+  'FUJITRANS': 'FUJITRANS (THAILAND) CO., LTD',
+  'SEALS': 'SEALS THAI INTER CO., LTD.',
+  'EASTERN': 'Eastern Shipping Agencies Co., Ltd.',
+  'JJ': 'JINJIANG SHIPPING AGENCY CO.,LTD.',
+  'CU LINES': 'CU LINES (THAILAND) CO., LTD.',
+};
+
 export type FormField = {
   key: string;
   label: string;
@@ -34,7 +72,7 @@ export type FormField = {
   sharedOnly?: boolean;
 };
 
-export const DO_LETTER_GROUPS = ['หัวจดหมาย', 'เนื้อความ', 'ผู้ลงนาม'] as const;
+export const DO_LETTER_GROUPS = ['หัวจดหมาย', 'เนื้อความ', 'ป้ายกำกับ', 'ผู้ลงนาม', 'ข้อความเพิ่มเติม'] as const;
 
 /**
  * จดหมายหนึ่งงานออกสองใบ — ใบของ KOLA และใบของ MAESOT FREEZONE
@@ -51,6 +89,29 @@ export const COMPANY_FIELDS = ['companyName', 'companyAddress', 'signerName'] as
 
 export const companyKey = (co: CompanyNo, field: string) => `co${co}.${field}`;
 
+/**
+ * ตำแหน่งผู้ลงนามแยกตามใบ — ใบที่ 2 เลื่อนเองได้ไม่ผูกกับใบที่ 1
+ *
+ * สองบริษัทเซ็นคนละคน ชื่อยาวไม่เท่ากันและกระดาษหัวจดหมายเว้นที่ต่างกัน
+ * เดิมใช้บล็อกเดียวกันทั้งสองใบ ขยับใบหนึ่งอีกใบก็ขยับตาม จึงแยกบล็อกให้คนละชุด
+ */
+export const signerBlock = (co: CompanyNo) => `signer${co}`;
+export const signerTitleBlock = (co: CompanyNo) => `signerTitle${co}`;
+
+/**
+ * ช่องข้อความอิสระที่ผู้ดูแลเพิ่มเองได้ — เนื้อความและตำแหน่งกำหนดเองทั้งคู่
+ *
+ * บางสายเรือขอให้แนบหมายเหตุหรือตราประทับเฉพาะของตัวเอง ซึ่งไม่มีในโครงจดหมายเดิม
+ * ให้ช่องว่างไว้ 4 ช่อง ช่องที่ไม่ได้กรอกข้อความจะไม่ถูกวาด จึงไม่กินที่บนกระดาษ
+ * แยกรายสายเรือได้เหมือนช่องอื่น — ค่ากลางกรอกไว้ สายเรือไหนไม่ใช้ก็เว้นว่าง
+ */
+export const CUSTOM_NOTES = [1, 2, 3, 4] as const;
+export type CustomNoteNo = (typeof CUSTOM_NOTES)[number];
+
+/** คีย์ข้อความของช่องอิสระ — ตำแหน่งใช้บล็อกชื่อเดียวกัน */
+export const customNoteKey = (n: CustomNoteNo) => `note${n}`;
+export const customNoteBlock = (n: CustomNoteNo) => `note${n}`;
+
 export const DO_LETTER_FIELDS: FormField[] = [
   { key: companyKey(1, 'companyName'), label: 'ชื่อบริษัท ใบที่ 1', group: 'หัวจดหมาย',
     fallback: 'KOLA SHIPPING CO.,LTD', wide: true },
@@ -66,7 +127,10 @@ export const DO_LETTER_FIELDS: FormField[] = [
   { key: 'subject', label: 'เรื่อง', group: 'เนื้อความ', fallback: 'ขอแลก D/O', wide: true },
   { key: 'attention', label: 'เรียน', group: 'เนื้อความ',
     fallback: 'จัดการแผนกขาเข้า บริษัท', wide: true,
-    hint: 'ระบบจะต่อท้ายด้วยชื่อบริษัทสายเรือให้เอง' },
+    hint: 'ระบบจะต่อท้ายด้วยชื่อบริษัทตัวแทนสายเรือให้เอง' },
+  { key: 'attentionCompany', label: 'ชื่อบริษัทตัวแทนสายเรือ', group: 'เนื้อความ',
+    fallback: '', wide: true,
+    hint: 'ต่อท้ายบรรทัด "เรียน" · เว้นว่าง = ใช้ชื่อตามสายเรือที่เลือกไว้ให้แล้ว' },
   { key: 'notice', label: 'ข้อความแจ้งจากผู้ส่งออก', group: 'เนื้อความ', wide: true,
     fallback: 'เนื่องด้วยทางบริษัท {company} ได้รับแจ้งจากผู้ส่งออกที่ต้นทางว่า\nบี / แอล ต้นฉบับได้ทำเป็นลักษณะ:',
     hint: '{company} จะถูกแทนด้วยชื่อบริษัทของใบนั้น' },
@@ -78,12 +142,34 @@ export const DO_LETTER_FIELDS: FormField[] = [
   { key: 'closingLine', label: 'บรรทัดปิดท้าย', group: 'เนื้อความ', wide: true,
     fallback: 'จึงเรียนเพื่อโปรดดำเนินการ' },
 
+  { key: 'label.subject', label: 'ป้าย "เรื่อง"', group: 'ป้ายกำกับ', fallback: 'เรื่อง' },
+  { key: 'label.attention', label: 'ป้าย "เรียน"', group: 'ป้ายกำกับ', fallback: 'เรียน' },
+  { key: 'label.blNo', label: 'ป้ายเลขใบตราส่ง', group: 'ป้ายกำกับ', fallback: 'ใบตราส่งสินค้าเลขที่' },
+  { key: 'label.origin', label: 'ป้ายเมืองต้นทาง', group: 'ป้ายกำกับ', fallback: 'เมืองต้นทาง' },
+  { key: 'label.destination', label: 'ป้ายเมืองปลายทาง', group: 'ป้ายกำกับ', fallback: 'เมืองปลายทาง' },
+  { key: 'label.vessel', label: 'ป้ายชื่อเรือ', group: 'ป้ายกำกับ', fallback: 'ชื่อเรือ' },
+  { key: 'label.eta', label: 'ป้ายวันที่เรือเข้า', group: 'ป้ายกำกับ', fallback: 'วันที่เรือเข้า' },
+  { key: 'label.date', label: 'ป้ายวันที่บนหัวจดหมาย', group: 'ป้ายกำกับ', fallback: 'วันที่',
+    hint: 'ระบบเว้นวรรคก่อนวันที่ให้เอง' },
+  { key: 'optionMark', label: 'เครื่องหมายหน้าตัวเลือก B/L', group: 'ป้ายกำกับ', fallback: '(  )' },
+
   { key: 'closing', label: 'คำลงท้าย', group: 'ผู้ลงนาม', fallback: 'ขอแสดงความนับถือ', wide: true },
   { key: companyKey(1, 'signerName'), label: 'ชื่อผู้ลงนาม ใบที่ 1', group: 'ผู้ลงนาม',
     fallback: 'TANAKORN   TASALEE', hint: 'ระบบใส่วงเล็บครอบให้เอง' },
   { key: companyKey(2, 'signerName'), label: 'ชื่อผู้ลงนาม ใบที่ 2', group: 'ผู้ลงนาม',
     fallback: 'อัครเดช ตาสะทึ', hint: 'ระบบใส่วงเล็บครอบให้เอง' },
   { key: 'signerTitle', label: 'ตำแหน่ง (ใช้ทั้งสองใบ)', group: 'ผู้ลงนาม', fallback: 'DIRECTOR' },
+
+  ...CUSTOM_NOTES.map((n) => ({
+    key: customNoteKey(n),
+    label: `ข้อความเพิ่มเติมที่ ${n}`,
+    group: 'ข้อความเพิ่มเติม',
+    fallback: '',
+    wide: true,
+    hint: n === 1
+      ? 'เว้นว่าง = ไม่วาดบนจดหมาย · ขึ้นบรรทัดใหม่ได้ · ตั้งตำแหน่งในตารางพิกัดด้านล่าง'
+      : undefined,
+  })),
 ];
 
 /**
@@ -114,7 +200,25 @@ export const LETTER_BLOCKS: LetterBlock[] = [
   { key: 'request', label: 'ข้อความขออนุมัติ', x: 85, y: 545, gap: 25 },
   { key: 'closingLine', label: 'บรรทัดปิดท้าย', x: 85, y: 630, gap: 25 },
   { key: 'closing', label: 'คำลงท้าย (ขอแสดงความนับถือ)', x: 400, y: 700 },
-  { key: 'signer', label: 'ชื่อผู้ลงนาม และตำแหน่ง', x: 400, y: 745, gap: 26 },
+  ...LETTER_COMPANIES.map((co) => ({
+    key: signerBlock(co),
+    label: `ชื่อผู้ลงนาม ใบที่ ${co} (ในวงเล็บ)`,
+    x: 400,
+    y: 745,
+  })),
+  ...LETTER_COMPANIES.map((co) => ({
+    key: signerTitleBlock(co),
+    label: `ตำแหน่งผู้ลงนาม ใบที่ ${co}`,
+    x: 400,
+    y: 771,
+  })),
+  ...CUSTOM_NOTES.map((n) => ({
+    key: customNoteBlock(n),
+    label: `ข้อความเพิ่มเติมที่ ${n}`,
+    x: 85,
+    y: 790 + (n - 1) * 18,
+    gap: 22,
+  })),
 ];
 
 const BLOCK_BY_KEY = new Map(LETTER_BLOCKS.map((b) => [b.key, b]));
@@ -122,14 +226,45 @@ const BLOCK_BY_KEY = new Map(LETTER_BLOCKS.map((b) => [b.key, b]));
 /** โค้ดที่ใช้เก็บพิกัดของแต่ละบล็อกใน master_records */
 export const blockCode = (key: string, part: 'x' | 'y' | 'gap') => `pos.${key}.${part}`;
 
-/** ป้ายกำกับรายละเอียดงานในจดหมาย — ตามต้นฉบับที่ใช้อยู่ */
-export const DETAIL_LABELS = {
-  blNo: 'ใบตราส่งสินค้าเลขที่',
-  origin: 'เมืองต้นทาง',
-  destination: 'เมืองปลายทาง',
-  vessel: 'ชื่อเรือ',
-  eta: 'วันที่เรือเข้า',
-} as const;
+/**
+ * ลำดับบรรทัดรายละเอียดงาน — ข้อความป้ายมาจากช่อง label.* ที่ผู้ดูแลแก้ได้
+ *
+ * เดิมป้ายฝังไว้ในโค้ด สายเรือที่เรียกชื่อช่องต่างออกไปจึงต้องแก้โค้ดตาม
+ * ตอนนี้เหลือแค่ลำดับกับคีย์ ส่วนถ้อยคำอ่านจากแบบฟอร์มเหมือนบรรทัดอื่นในจดหมาย
+ */
+export const DETAIL_ROWS = ['blNo', 'origin', 'destination', 'vessel', 'eta'] as const;
+export type DetailRow = (typeof DETAIL_ROWS)[number];
+
+/** คีย์ของป้ายกำกับในแบบฟอร์ม */
+export const labelKey = (field: string) => `label.${field}`;
+
+/**
+ * ชื่อท่าปลายทางที่จดหมายใช้ — ทุกงานลงที่แหลมฉบัง
+ *
+ * ค่าท่าปลายทางมาได้หลายทาง ทั้งชื่อไทยจากตารางท่าเรือ ("ท่าเรือแหลมฉบัง (Laem Chabang Port)")
+ * และชื่ออังกฤษหลายแบบที่อ่านจากเอกสาร ("Laem Chabang", "LAEMCHABANG", "LCB")
+ * จดหมายต้องขึ้นแบบเดียวเสมอ จึงรวบทุกแบบให้เป็นข้อความเดียวตามต้นฉบับ
+ */
+export const LAEM_CHABANG = 'LAEM CHABANG, THAILAND';
+
+/** คำที่สื่อถึงแหลมฉบัง — เทียบแบบตัดช่องว่างและอักขระพิเศษทิ้ง */
+const LAEM_CHABANG_HINTS = ['LAEMCHABANG', 'LAEMCHABANGPORT', 'LCB', 'THLCH'];
+
+/**
+ * ทำชื่อท่าปลายทางให้เป็นรูปแบบเดียว
+ *
+ * เจอคำที่สื่อถึงแหลมฉบัง (รวมชื่อไทย) ก็คืนข้อความมาตรฐาน
+ * ท่าอื่นคืนเป็นตัวพิมพ์ใหญ่ไปตามเดิม ไม่ไปดัดแปลงชื่อที่ไม่รู้จัก
+ */
+export function normalizeDestination(value: string | null): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+  if (raw.includes('แหลมฉบัง')) return LAEM_CHABANG;
+
+  const key = raw.toUpperCase().replace(/[^A-Z]/g, '');
+  if (LAEM_CHABANG_HINTS.some((h) => key.includes(h))) return LAEM_CHABANG;
+  return raw.toUpperCase();
+}
 
 /** เดือนภาษาอังกฤษตัวพิมพ์ใหญ่ — จดหมายต้นฉบับใช้รูปแบบ 27 AUGUST 2026 */
 const EN_MONTHS = [
@@ -186,6 +321,8 @@ export type DoLetterForm = {
   coValue: (co: CompanyNo, field: string, line?: string) => string;
   /** ตำแหน่งของบล็อกหนึ่ง ผสมกับค่าเริ่มต้นแล้ว — ของสายเรือทับค่ากลางได้ */
   block: (key: string, line?: string) => Required<LetterBlock>;
+  /** ชื่อบริษัทตัวแทนที่ต่อท้ายบรรทัด "เรียน" — ที่ตั้งเอง → ชื่อตามสายเรือ */
+  attentionCompany: (line?: string) => string;
 };
 
 export async function loadDoLetterForm(): Promise<DoLetterForm> {
@@ -210,6 +347,12 @@ export async function loadDoLetterForm(): Promise<DoLetterForm> {
     raw,
     value,
     coValue: (co, field, line) => value(companyKey(co, field), line),
+    /*
+     * ค่าที่ตั้งเองมาก่อนเสมอ ไม่งั้นตารางในโค้ดจะไปทับสิ่งที่ผู้ดูแลตั้งใจแก้
+     * เว้นว่างไว้จึงค่อยหยิบชื่อตัวแทนของสายเรือนั้นมาเติมให้
+     */
+    attentionCompany: (line) =>
+      value('attentionCompany', line) || (line ? SHIPPING_LINE_COMPANIES[line] ?? '' : ''),
     block: (key, line) => {
       const base = BLOCK_BY_KEY.get(key);
       if (!base) throw new Error(`ไม่รู้จักบล็อก ${key}`);
@@ -228,25 +371,34 @@ export async function loadDoLetterForm(): Promise<DoLetterForm> {
   };
 }
 
-/** บันทึกค่าเดียว — ว่าง = ลบทิ้งเพื่อกลับไปใช้ค่าที่สืบทอดมา */
-export async function saveDoLetterValue(key: string, value: string, newIdFor: () => string) {
-  const [existing] = await db
-    .select({ id: masterRecords.id })
-    .from(masterRecords)
-    .where(and(eq(masterRecords.type, DO_LETTER_TYPE), eq(masterRecords.code, key)))
-    .limit(1);
+/**
+ * บันทึกทั้งแบบฟอร์มในคราวเดียว — ว่าง = ลบทิ้งเพื่อกลับไปใช้ค่าที่สืบทอดมา
+ *
+ * เดิมบันทึกทีละช่อง ช่องละ SELECT แล้วค่อย UPDATE/INSERT รวมกว่าร้อยรอบต่อการกดหนึ่งครั้ง
+ * ฐานข้อมูลอยู่คนละทวีป แต่ละรอบจึงเสียเวลาเดินทางไปกลับ กดบันทึกทีรอหลายวินาที
+ * ตรงนี้ยิงสองคำสั่ง — ลบช่องที่ถูกล้าง แล้ว upsert ที่เหลือเป็นชุดเดียว
+ * อาศัย unique index (type, code) ให้ ON CONFLICT ตัดสินว่าจะเพิ่มหรือทับ
+ */
+export async function saveDoLetterValues(
+  entries: Map<string, string>,
+  newIdFor: () => string,
+) {
+  const cleared = [...entries].filter(([, v]) => !v).map(([k]) => k);
+  const kept = [...entries].filter(([, v]) => v);
 
-  if (!value) {
-    if (existing) await db.delete(masterRecords).where(eq(masterRecords.id, existing.id));
-    return;
+  if (cleared.length) {
+    await db.delete(masterRecords)
+      .where(and(eq(masterRecords.type, DO_LETTER_TYPE), inArray(masterRecords.code, cleared)));
   }
-  if (existing) {
-    await db.update(masterRecords)
-      .set({ value, updatedAt: new Date() })
-      .where(eq(masterRecords.id, existing.id));
-  } else {
-    await db.insert(masterRecords).values({
-      id: newIdFor(), type: DO_LETTER_TYPE, code: key, name: key, value, isActive: true,
-    });
+
+  if (kept.length) {
+    await db.insert(masterRecords)
+      .values(kept.map(([code, value]) => ({
+        id: newIdFor(), type: DO_LETTER_TYPE, code, name: code, value, isActive: true,
+      })))
+      .onConflictDoUpdate({
+        target: [masterRecords.type, masterRecords.code],
+        set: { value: sql`excluded.value`, updatedAt: new Date() },
+      });
   }
 }

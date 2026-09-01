@@ -1,10 +1,50 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { files, jobs, masterRecords } from '@/db/schema';
-import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
+import { buildKey, downloadFile, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId } from '@/lib/actions/common';
 import { renderDoLetterPdf } from '@/lib/do-letter-pdf';
-import { matchShippingLine } from '@/lib/do-letter';
+import { matchShippingLine, normalizeDestination } from '@/lib/do-letter';
+import { extractPdfTextServer, parsePortOfLoading } from '@/lib/port-of-loading';
+
+/**
+ * เมืองต้นทางของงาน — ที่กรอกไว้ก่อน แล้วค่อยอ่านจากไฟล์ BL / Arrival Notice
+ *
+ * ค่าที่ผู้ใช้กรอกเองมาก่อนเสมอ ตัวอ่านไม่มีสิทธิ์ทับของที่คนตั้งใจใส่
+ * ไม่มีค่ากรอกไว้จึงไปเปิดไฟล์ที่แนบกับงานนั้นแล้วหา Port of Loading
+ * อ่านไม่ออกก็คืนค่าว่าง ปล่อยช่องนั้นบนจดหมายให้เขียนด้วยมือเหมือนเดิม
+ *
+ * อ่าน BL ก่อน Arrival Notice เพราะ BL เป็นต้นฉบับของข้อมูลขนส่ง
+ */
+async function resolveOriginPort(jobId: string, saved: string | null): Promise<string | null> {
+  const typed = (saved ?? '').trim();
+  if (typed) return typed.toUpperCase();
+
+  const attached = await db
+    .select({ category: files.category, key: files.storageKey, name: files.fileName })
+    .from(files)
+    .where(and(
+      eq(files.jobId, jobId),
+      eq(files.isCurrent, true),
+      inArray(files.category, ['BL', 'ARRIVAL_NOTICE']),
+    ));
+
+  const ordered = [
+    ...attached.filter((f) => f.category === 'BL'),
+    ...attached.filter((f) => f.category !== 'BL'),
+  ].filter((f) => /\.pdf$/i.test(f.name));
+
+  for (const file of ordered) {
+    try {
+      const { body } = await downloadFile(file.key);
+      const found = parsePortOfLoading(await extractPdfTextServer(body));
+      if (found) return found;
+    } catch {
+      // ไฟล์เดียวมีปัญหาไม่ควรทำให้ออกจดหมายไม่ได้ ลองใบถัดไป
+    }
+  }
+  return null;
+}
 
 /** ออกจดหมายแลก D/O แล้วเก็บเป็นไฟล์ของงาน พร้อมบันทึกว่าทำจดหมายแล้ว */
 export async function storeDoLetterPdf(jobId: string, userId: string) {
@@ -26,14 +66,17 @@ export async function storeDoLetterPdf(jobId: string, userId: string) {
         .from(masterRecords).where(eq(masterRecords.id, job.portId)).limit(1)
     : [undefined];
 
+  const originName = await resolveOriginPort(jobId, job.originPort);
+
   const bytes = await renderDoLetterPdf({
     shippingLine: line,
     blNo: job.blNo,
     vessel: job.vessel,
     voyage: job.voyage,
     eta: job.eta,
-    portName: port?.name ?? null,
-    originName: job.originPort,
+    // ทุกงานลงแหลมฉบัง เขียนได้หลายแบบจึงรวบให้เป็นข้อความเดียวก่อนวาด
+    portName: normalizeDestination(port?.name ?? null) || null,
+    originName,
   });
 
   // ไฟล์เดียวมีสองหน้า — ใบของ KOLA และใบของ MAESOT FREEZONE

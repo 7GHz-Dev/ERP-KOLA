@@ -944,6 +944,53 @@ body.has-preview-pane .slot-table td { width: 72px; }
   body.has-preview-pane .main { padding-right: 0; }
 }
 
+/*
+ * แผงตัดหน้า AN/BL ที่กางคู่กับฟอร์มรับงาน
+ *
+ * ต่างจากแผงอ่านอย่างเดียวตรงที่ไม่มีฉากหลังทึบและไม่กินคลิกของฟอร์มข้างหลัง
+ * เพราะคนกรอกต้องเปิดเอกสารดูไปกรอกไป — ปิดแผงทุกครั้งที่จะดูค่าถัดไปคือเสียจังหวะ
+ * ตัวแผงเองยังรับคลิกปกติ เลยดักไว้ที่ชั้นนอกชั้นเดียว
+ */
+.trim-root { pointer-events: none; }
+.trim-drawer { pointer-events: auto; }
+
+/*
+ * แผงแคบกว่าแผงอ่านอย่างเดียว เพราะต้องแบ่งที่ให้ฟอร์มที่กรอกไปพร้อมกัน
+ * ยึดตามสัดส่วนจอ ต่ำสุด 638px พอวางรูปย่อสามใบต่อแถว มากสุด 1042px
+ * กว้างขึ้นอีก 40% ให้เอกสารตอนกางเต็มแผงอ่านได้เท่าขนาดจริง
+ */
+.trim-drawer { width: clamp(638px, 70vw, 1042px); }
+
+/*
+ * เปิดแผงแล้วบีบฟอร์มให้แคบลงและชิดซ้าย ไม่ให้ช่องกรอกไปอยู่ใต้แผง
+ * ช่องจึงเรียงลงมาเป็นแถวแคบ ๆ กรอกได้ครบทุกหัวข้อขณะแผงกางอยู่
+ */
+body.has-trim-pane .main {
+  padding-right: calc(clamp(638px, 70vw, 1042px) + 16px);
+  margin-right: 0;
+}
+body.has-trim-pane .intake { max-width: 100%; }
+/* ที่แคบลงทำให้สองคอลัมน์บีบจนอ่านป้ายไม่ออก เหลือคอลัมน์เดียวชัดกว่า */
+body.has-trim-pane .extract-grid { grid-template-columns: minmax(0, 1fr); }
+body.has-trim-pane .extract-field.wide { grid-column: 1 / -1; }
+
+/* ยืนยันว่าการตัดถูกบันทึกแล้ว ทั้งที่แผงยังกางอยู่ */
+/* ต้องเจาะจงกว่า .trimmer-foot span ไม่งั้นสีเทาของแถบล่างทับสีเขียวนี้ */
+.trimmer-foot span.trim-applied { color: var(--green); font-weight: 700; }
+
+/*
+ * จอแคบกว่านี้แบ่งสองฝั่งไม่ไหว เหลือที่กรอกไม่ถึง 300px
+ * จึงให้แผงทับหน้าไปเลยแบบเดิม เปิดดูเอกสารเต็มจอแล้วปิดแผงตอนจะกรอก
+ *
+ * เกณฑ์ขยับขึ้นตามแผงที่กว้างขึ้น — แผง 1042px กับแถบเมนู 250px
+ * ทำให้จอต่ำกว่า 1648px แบ่งแล้วเหลือที่กรอกไม่พอ (จอ 1440 เหลือแค่ ~126px)
+ * แผงยังกว้าง 70vw เท่าที่ตั้งไว้ แค่ไม่เบียดฟอร์มให้ใช้ไม่ได้
+ */
+@media (max-width: 1648px) {
+  .trim-drawer { width: min(1042px, 96vw); }
+  body.has-trim-pane .main { padding-right: 0; }
+}
+
 /* ตัวอย่างจดหมายในหน้าตั้งค่าฟอร์ม */
 .doc-preview {
   display: block; width: 100%; height: 70vh;
@@ -1007,7 +1054,6 @@ body.has-preview-pane .slot-table td { width: 72px; }
 
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }
-table.data td.col-wrap.col-origin, table.data th.col-origin { width: 140px; min-width: 120px; }
 .shipline-cell b { display: block; font-size: 12px; font-weight: 600; line-height: 1.35; }
 
 /* ข้อความอธิบายในแผงเล็ก เช่นเหตุผลที่แก้ไขเองไม่ได้ */

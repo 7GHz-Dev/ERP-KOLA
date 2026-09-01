@@ -319,28 +319,6 @@ async function updateBlInfoImpl(formData: FormData) {
 }
 
 /**
- * ANN กรอกเมืองต้นทางที่จะพิมพ์ลงจดหมายแลก DO
- *
- * ท่าต้นทางเป็นเมืองต่างประเทศ ไม่มีใน Master Data และไม่ได้ใช้ที่อื่นนอกจากจดหมาย
- * จึงเก็บเป็นข้อความอิสระ ให้พิมพ์ตามที่ระบุใน Arrival Notice ได้ตรง ๆ
- */
-async function saveOriginPortImpl(formData: FormData) {
-  const user = await requireActiveSession(['ANN']);
-  const jobId = required(formData.get('jobId'), 'งาน', 80);
-  const originPort = text(formData.get('originPort'), 120);
-
-  const [job] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
-  if (!job) throw new Error('ไม่พบงาน');
-
-  await db.update(jobs)
-    .set({ originPort: originPort || null, updatedBy: user.id, updatedAt: new Date() })
-    .where(eq(jobs.id, jobId));
-  await logActivity(user.id, 'SET_ORIGIN_PORT', 'JOB', jobId, { originPort });
-
-  revalidatePath('/do-exchange');
-}
-
-/**
  * PAINT ส่ง Draft ที่สร้างเสร็จแล้วให้ FAH ตรวจ
  *
  * ก่อนหน้านี้ไม่มีขั้นนี้ Draft ที่ automate สร้างเสร็จจะค้างที่ CREATED
@@ -452,9 +430,6 @@ export async function submitDraftForReview(formData: FormData) {
   return runAction(() => submitDraftForReviewImpl(formData));
 }
 
-export async function saveOriginPort(formData: FormData) {
-  return runAction(() => saveOriginPortImpl(formData));
-}
 
 export async function updateBlInfo(formData: FormData) {
   return runAction(() => updateBlInfoImpl(formData));

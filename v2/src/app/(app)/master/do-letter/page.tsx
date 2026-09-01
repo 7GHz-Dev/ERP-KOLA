@@ -27,6 +27,8 @@ export default async function DoLetterFormPage({
   const line = SHIPPING_LINES.includes(asked as (typeof SHIPPING_LINES)[number]) ? asked : '';
 
   const [form, counts] = await Promise.all([loadDoLetterForm(), masterCounts()]);
+  // เปลี่ยนทุกครั้งที่หน้าถูกเรนเดอร์ใหม่ (คือหลังกดบันทึก) ให้แผงตัวอย่างโหลดเอง
+  const reloadKey = Date.now();
   const fields = DO_LETTER_FIELDS.filter((f) => !line || !f.sharedOnly);
   const groups = DO_LETTER_GROUPS.filter((g) => fields.some((f) => f.group === g));
 
@@ -69,11 +71,13 @@ export default async function DoLetterFormPage({
                 src={`/api/do-letter/preview?grid=1${line ? `&line=${encodeURIComponent(line)}` : ''}`}
                 title={`ตัวอย่างพร้อมเส้นพิกัด${line ? ` · ${line}` : ''}`}
                 label="ดูตัวอย่างพร้อมเส้นพิกัด"
+                reloadKey={reloadKey}
               />
               <FormPreviewPane
                 src={`/api/do-letter/preview${line ? `?line=${encodeURIComponent(line)}` : ''}`}
                 title={`ตัวอย่างจดหมาย${line ? ` · ${line}` : ' (ค่ากลาง)'}`}
                 label="ดูตัวอย่าง PDF"
+                reloadKey={reloadKey}
               />
               <button className="button primary" type="submit">บันทึก</button>
             </div>
@@ -84,8 +88,11 @@ export default async function DoLetterFormPage({
                   {fields.filter((f) => f.group === group).map((f) => {
                     const own = line ? form.raw(lineKey(line, f.key)) : form.raw(f.key);
                     // ช่องของสายเรือที่ว่างอยู่ ให้เห็นค่าที่จะถูกใช้จริงเป็น placeholder
-                    const inherited = line ? form.value(f.key) : f.fallback;
-                    const long = ['notice', 'options', 'request'].includes(f.key);
+                    // ชื่อบริษัทตัวแทนมีค่าตั้งต้นตามสายเรือ จึงต้องถามผ่านตัวช่วยของฟอร์ม
+                    const inherited = f.key === 'attentionCompany'
+                      ? (line ? form.attentionCompany(line) : '')
+                      : (line ? form.value(f.key) : f.fallback);
+                    const long = ['notice', 'options', 'request'].includes(f.key) || f.key.startsWith('note');
                     return (
                       <label key={f.key} className={f.wide ? 'doc-field wide' : 'doc-field'}>
                         <span>{f.label}</span>
@@ -105,8 +112,9 @@ export default async function DoLetterFormPage({
             <fieldset className="doc-form-group">
               <legend>ตำแหน่งบนกระดาษ (พอยต์ นับจากมุมบนซ้าย)</legend>
               <p className="meta slot-hint">
-                กด <b>ดูตัวอย่าง PDF</b> แล้วเทียบระยะเอา · 1 ซม. เท่ากับ 28.35 พอยต์ ·
-                นับจากมุมบนซ้ายของกระดาษ · ระยะบรรทัดใช้กับบล็อกที่มีหลายบรรทัดเท่านั้น
+                กด <b>ดูตัวอย่างพร้อมเส้นพิกัด</b> แล้วเทียบระยะเอา · 1 ซม. เท่ากับ 28.35 พอยต์ ·
+                นับจากมุมบนซ้ายของกระดาษ · ระยะบรรทัดใช้กับบล็อกที่มีหลายบรรทัดเท่านั้น ·
+                บล็อก <b>ข้อความเพิ่มเติม</b> จะวาดก็ต่อเมื่อกรอกข้อความไว้
               </p>
               <div className="table-wrap slot-wrap">
                 <table className="data slot-table">

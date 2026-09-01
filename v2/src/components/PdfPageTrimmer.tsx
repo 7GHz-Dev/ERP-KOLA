@@ -13,6 +13,10 @@ import { keepPages } from '@/lib/pdf-pages';
  *
  * ทำงานในเบราว์เซอร์ทั้งหมด ไฟล์ยังไม่ถูกส่งขึ้นเซิร์ฟเวอร์จนกว่าจะกดบันทึกงาน
  * เหมือนกับตอนอ่านข้อมูลจาก PDF
+ *
+ * แผงกางค้างไว้ระหว่างกรอกฟอร์มได้ ตัดหน้าเสร็จก็ไม่ปิดตัวเอง
+ * เพราะคนกรอกต้องเปิดเอกสารดูไปกรอกไป ไม่ใช่ดูจบแล้วปิดทีเดียว
+ * จึงไม่มีฉากหลังทึบและไม่ล็อกการเลื่อนของหน้าหลักเหมือนแผงอ่านอย่างเดียว
  */
 
 /** ความกว้างของภาพตัวอย่างแต่ละหน้า กว้างกว่านี้ช้าโดยไม่ได้อ่านง่ายขึ้น */
@@ -34,6 +38,16 @@ export function PdfPageTrimmer({
   const [dropped, setDropped] = useState<Set<number>>(new Set());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /** ข้อความยืนยันหลังกดใช้ไฟล์ — แผงยังกางอยู่ ต้องบอกให้รู้ว่าบันทึกการตัดแล้ว */
+  const [applied, setApplied] = useState('');
+  /*
+   * โหมดดูเต็มแผง — ที่อยู่ของไฟล์เฉพาะหน้าที่เหลือ
+   *
+   * รูปย่อไว้เลือกว่าจะตัดหน้าไหน แต่ตัวหนังสือเล็กเกินกว่าจะอ่านทวนได้จริง
+   * โหมดนี้จึงประกอบไฟล์ใหม่จากหน้าที่เหลือแล้วให้ตัวอ่าน PDF ของเบราว์เซอร์กางเต็มแผง
+   * เป็น blob ในเครื่อง ไฟล์ยังไม่ถูกส่งขึ้นเซิร์ฟเวอร์เหมือนเดิม
+   */
+  const [previewUrl, setPreviewUrl] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -70,25 +84,51 @@ export function PdfPageTrimmer({
     return () => { cancelled = true; };
   }, [file]);
 
+  /*
+   * ปิดด้วย Esc ได้ แต่ไม่ล็อกการเลื่อนของหน้าหลัก
+   *
+   * แผงนี้กางคู่กับฟอร์มที่กำลังกรอก ถ้าล็อกการเลื่อนไว้จะเลื่อนไปกรอกช่องล่าง ๆ ไม่ได้
+   * และต้องไม่ขโมย Esc ไปจากช่องกรอก เพราะบางช่องใช้ Esc ยกเลิกการพิมพ์ของตัวเอง
+   */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previous;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'Escape') onClose();
     };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const toggle = (page: number) => setDropped((set) => {
-    const next = new Set(set);
-    if (next.has(page)) next.delete(page); else next.add(page);
-    return next;
-  });
+  // เปิดแผงแล้วบีบฟอร์มให้แคบลง เพื่อให้กรอกไปพร้อมดูเอกสารได้
+  useEffect(() => {
+    document.body.classList.add('has-trim-pane');
+    return () => document.body.classList.remove('has-trim-pane');
+  }, []);
+
+  // คืนหน่วยความจำของ blob เดิมเสมอ ไม่งั้นเปิดดูหลายรอบแล้วค้างสะสม
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+
+  const toggle = (page: number) => {
+    // เลือกใหม่แล้วผลเดิมใช้ไม่ได้ ต้องกด "ใช้หน้าที่เลือก" ซ้ำถึงจะมีผล
+    setApplied('');
+    setPreviewUrl('');
+    setDropped((set) => {
+      const next = new Set(set);
+      if (next.has(page)) next.delete(page); else next.add(page);
+      return next;
+    });
+  };
 
   const kept = total - dropped.size;
 
+  /**
+   * บันทึกการตัดหน้า แล้วกางตัวอย่างเต็มแผงต่อทันที
+   *
+   * สองอย่างนี้คนใช้ทำติดกันเสมอ — ตัดเสร็จก็อยากเห็นว่าไฟล์ที่จะบันทึกหน้าตาเป็นยังไง
+   * จึงรวมเป็นปุ่มเดียว และประกอบไฟล์ครั้งเดียวใช้ทั้งบันทึกและแสดงตัวอย่าง
+   * ไม่ประกอบสองรอบ เพราะไฟล์หลายหน้าใช้เวลาพอสมควร
+   */
   const apply = useCallback(async () => {
     if (!total) return;
     const keep: number[] = [];
@@ -97,20 +137,30 @@ export function PdfPageTrimmer({
       setError('ต้องเหลืออย่างน้อย 1 หน้า');
       return;
     }
-    if (keep.length === total) {
-      onApply(null, total, total);
-      return;
-    }
 
     setBusy(true);
     setError('');
     try {
-      const bytes = await keepPages(new Uint8Array(await file.arrayBuffer()), keep);
+      // ไม่ได้ตัดหน้าไหนเลยก็ใช้ไฟล์เดิม ไม่ต้องเสียเวลาประกอบใหม่
+      const bytes = keep.length === total
+        ? new Uint8Array(await file.arrayBuffer())
+        : await keepPages(new Uint8Array(await file.arrayBuffer()), keep);
+
       onApply(
-        new File([bytes as BlobPart], file.name, { type: 'application/pdf' }),
+        keep.length === total
+          ? null
+          : new File([bytes as BlobPart], file.name, { type: 'application/pdf' }),
         keep.length,
         total,
       );
+      setApplied(keep.length === total
+        ? `ใช้ทั้ง ${total} หน้า`
+        : `ตัดเหลือ ${keep.length} จาก ${total} หน้าแล้ว`);
+
+      // กางตัวอย่างจากไฟล์ชุดเดียวกับที่เพิ่งบันทึก ที่เห็นจึงตรงกับที่จะถูกอัปโหลดจริง
+      setPreviewUrl(URL.createObjectURL(
+        new Blob([bytes as BlobPart], { type: 'application/pdf' }),
+      ));
     } catch (e) {
       setError(`ตัดหน้าไม่สำเร็จ: ${e instanceof Error ? e.message : 'ไม่ทราบสาเหตุ'}`);
     } finally {
@@ -119,9 +169,9 @@ export function PdfPageTrimmer({
   }, [dropped, file, onApply, total]);
 
   return (
-    <div className="drawer-root">
-      <button type="button" className="drawer-backdrop" aria-label="ปิดตัวอย่างไฟล์" onClick={onClose} />
-      <aside className="job-drawer open" role="dialog" aria-modal="true" aria-label={`ตัวอย่าง ${file.name}`}>
+    <div className="drawer-root trim-root">
+      {/* ไม่มีฉากหลังทึบ เพราะฟอร์มข้างหลังต้องกดกรอกได้ขณะแผงกางอยู่ */}
+      <aside className="job-drawer open trim-drawer" aria-label={`ตัวอย่าง ${file.name}`}>
         <header className="drawer-header">
           <div>
             <small>{title}</small>
@@ -135,6 +185,17 @@ export function PdfPageTrimmer({
           </div>
         </header>
 
+        {previewUrl ? (
+          /* กางเต็มแผง ใช้คลาสเดียวกับแผงดูไฟล์ของงาน จะได้สูงเต็มช่องเหมือนกัน */
+          <div className="drawer-content">
+            <object className="file-preview-view" data={previewUrl} type="application/pdf">
+              <p className="drawer-note warn">
+                เบราว์เซอร์นี้แสดง PDF ในหน้าไม่ได้ ·{' '}
+                <a href={previewUrl} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
+              </p>
+            </object>
+          </div>
+        ) : (
         <div className="drawer-content">
           {error ? <p className="drawer-note warn">{error}</p> : null}
           <p className="drawer-status meta">
@@ -168,17 +229,25 @@ export function PdfPageTrimmer({
               : null}
           </div>
         </div>
+        )}
 
         <div className="trimmer-foot">
-          <span>
-            {dropped.size
+          <span className={applied ? 'trim-applied' : undefined}>
+            {applied || (dropped.size
               ? `ตัดออก ${dropped.size} หน้า เหลือ ${kept} หน้า`
-              : 'ยังไม่ได้ตัดหน้าไหนออก'}
+              : 'ยังไม่ได้ตัดหน้าไหนออก')}
           </span>
-          <button type="button" className="button" onClick={onClose} disabled={busy}>ยกเลิก</button>
-          <button type="button" className="button primary" onClick={() => void apply()} disabled={busy || !total}>
-            {busy ? 'กำลังตัด…' : 'ใช้ไฟล์นี้'}
-          </button>
+          <button type="button" className="button" onClick={onClose} disabled={busy}>ปิดแผง</button>
+          {previewUrl ? (
+            /* ดูแล้วอยากแก้ ก็กลับไปหน้ารูปย่อเพื่อเลือกใหม่ได้ */
+            <button type="button" className="button primary" onClick={() => setPreviewUrl('')}>
+              เลือกหน้าใหม่
+            </button>
+          ) : (
+            <button type="button" className="button primary" onClick={() => void apply()} disabled={busy || !total}>
+              {busy ? 'กำลังตัด…' : 'ใช้หน้าที่เลือก'}
+            </button>
+          )}
         </div>
       </aside>
     </div>

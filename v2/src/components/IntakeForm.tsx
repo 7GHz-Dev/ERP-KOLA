@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import type { Option } from '@/lib/queries/master';
 import { extractPdfText, parseArrivalText } from '@/lib/parse-arrival';
+import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect } from '@/components/SearchSelect';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 
@@ -15,7 +16,7 @@ import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 
 type Options = {
   shippers: Option[]; consignees: Option[]; notify: Option[]; people: Option[];
-  ports: Option[]; terminals: Option[]; jobTypes: Option[];
+  ports: Option[]; originPorts: Option[]; terminals: Option[]; jobTypes: Option[];
   containerTypes: Option[]; packageTypes: Option[];
 };
 
@@ -82,13 +83,20 @@ export function IntakeForm({
     try {
       const result = parseArrivalText(await extractPdfText(file));
       const filled: Record<string, string> = {};
-      (['blNo', 'blType', 'vessel', 'voyage', 'eta', 'grossWeight', 'unitAmount'] as const)
+      (['blNo', 'blType', 'vessel', 'voyage', 'eta', 'grossWeight', 'unitAmount', 'portOfLoading'] as const)
         .forEach((k) => { if (result[k]) filled[k] = result[k]; });
       if (result.carrier) filled.shipline = result.carrier;
       setParsed(filled);
 
-      if (result.blNo) {
-        setBlRows((rows) => [{ ...rows[0], blNo: result.blNo }, ...rows.slice(1)]);
+      // จับชื่อผู้ส่งออกที่อ่านได้กับรายชื่อใน Master Data — ไม่มั่นใจก็ปล่อยให้เลือกเอง
+      const shipper = matchShipper(result.shipperName, options.shippers);
+      if (result.blNo || shipper) {
+        setBlRows((rows) => [{
+          ...rows[0],
+          blNo: result.blNo || rows[0].blNo,
+          shipperId: shipper?.id ?? rows[0].shipperId,
+          shipperName: shipper?.name ?? rows[0].shipperName,
+        }, ...rows.slice(1)]);
       }
       if (result.containers.length) {
         setContainerRows(result.containers.map((c, i) => ({
@@ -98,11 +106,15 @@ export function IntakeForm({
         })));
       }
 
+      // ซีลที่อ่านได้จริง — บางใบมีตู้ครบแต่ไม่มีเลขซีลในเอกสาร
+      const sealCount = result.seals.filter((v) => v).length;
       const found = Object.keys(filled).length + (result.containers.length ? 1 : 0);
       setStatusTone(found ? 'ok' : 'error');
       setReadStatus(found
         ? `อ่านได้ ${found} รายการ${result.carrier ? ` · สายเรือ ${result.carrier}` : ''}` +
-          `${result.containers.length ? ` · ตู้ ${result.containers.length} ตู้` : ''} — กรุณาตรวจทานก่อนบันทึก`
+          `${result.containers.length ? ` · ตู้ ${result.containers.length} ตู้` : ''}` +
+          `${sealCount ? ` · ซีล ${sealCount} เลข` : ''}` +
+          `${shipper ? ` · Shipper ${shipper.name}` : ''} — กรุณาตรวจทานก่อนบันทึก`
         : 'อ่านไฟล์ได้แต่ไม่พบข้อมูลที่รู้จัก กรุณากรอกเอง');
     } catch (error) {
       setStatusTone('error');
@@ -180,7 +192,7 @@ export function IntakeForm({
           </select>
         </Field>
         <Field label="PRODUCT">
-          <input name="product" defaultValue="USED CAR" />
+          <input name="product" defaultValue="รถยนต์เก่าใช้แล้ว" />
         </Field>
         <Field label="BL TYPE">
           <select name="blType" key={parsed.blType} defaultValue={parsed.blType ?? 'SWB'}>
@@ -295,6 +307,19 @@ export function IntakeForm({
             onChange={setPersonId}
           />
         </Field>
+        <Field label="PORT OF LOADING">
+          {/* เมืองต้นทาง อ่านจากไฟล์ให้ก่อน เลือกจากรายการที่ตั้งไว้หรือพิมพ์เองก็ได้ */}
+          <input
+            name="originPort"
+            list="origin-port-list"
+            key={parsed.portOfLoading}
+            defaultValue={parsed.portOfLoading ?? ''}
+            placeholder="เช่น NAGOYA"
+          />
+          <datalist id="origin-port-list">
+            {options.originPorts.map((o) => <option key={o.id} value={o.name} />)}
+          </datalist>
+        </Field>
         <Field label="PORT OF DISCHARGE">
           <select name="portId" defaultValue={defaults.portId ?? ''}>
             <Options list={options.ports} />
@@ -332,10 +357,10 @@ export function IntakeForm({
         file={pickedFile}
         title={`ตัวอย่าง ${sourceType === 'AN' ? 'ARRIVAL NOTICE' : 'BILL OF LADING'}`}
         onClose={() => setShowPreview(false)}
+        // ตัดเสร็จแล้วไม่ปิดแผง คนกรอกยังต้องเปิดเอกสารดูไปกรอกไป
         onApply={(trimmed, kept, total) => {
           setTrimmedFile(trimmed);
           setPageInfo({ kept, total });
-          setShowPreview(false);
         }}
       />
     ) : null}

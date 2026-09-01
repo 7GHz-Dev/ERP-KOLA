@@ -143,6 +143,8 @@ async function createJobFromIntakeImpl(formData: FormData) {
       consigneeId: text(formData.get('consigneeId'), 80) || null,
       notifyPartyId: text(formData.get('notifyPartyId'), 80) || null,
       portId: text(formData.get('portId'), 80) || null,
+      // เมืองต้นทางใช้บนจดหมายแลก D/O ซึ่งเขียนเป็นตัวพิมพ์ใหญ่ทั้งหมด
+      originPort: text(formData.get('originPort'), 120).toUpperCase() || null,
       terminalId: text(formData.get('terminalId'), 80) || null,
       personId: text(formData.get('personId'), 80) || null,
       jobTypeId,

@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  DETAIL_LABELS, LETTER_COMPANIES, letterDate, loadDoLetterForm,
+  CUSTOM_NOTES, DETAIL_ROWS, LETTER_COMPANIES, customNoteBlock, customNoteKey,
+  labelKey, letterDate, loadDoLetterForm, signerBlock, signerTitleBlock,
   type CompanyNo, type DoLetterForm,
 } from '@/lib/do-letter';
 import { drawCoordinateGrid } from '@/lib/pdf-grid';
@@ -178,13 +179,17 @@ export async function renderDoLetterPdf(
   const PAGE_H = 841.89;
 
   // รายละเอียดงานเหมือนกันทั้งสองใบ คิดครั้งเดียวแล้วใช้ซ้ำ
-  const details: Array<[string, string | null]> = [
-    [DETAIL_LABELS.blNo, data.blNo],
-    [DETAIL_LABELS.origin, data.originName],
-    [DETAIL_LABELS.destination, data.portName],
-    [DETAIL_LABELS.vessel, [data.vessel, data.voyage].filter(Boolean).join('  V. ') || null],
-    [DETAIL_LABELS.eta, letterDate(data.eta ?? null) || null],
-  ];
+  const detailValues: Record<(typeof DETAIL_ROWS)[number], string | null> = {
+    blNo: data.blNo,
+    origin: data.originName,
+    destination: data.portName,
+    vessel: [data.vessel, data.voyage].filter(Boolean).join('  V. ') || null,
+    eta: letterDate(data.eta ?? null) || null,
+  };
+  // ป้ายกำกับมาจากแบบฟอร์ม ผู้ดูแลจึงเปลี่ยนถ้อยคำได้โดยไม่ต้องแก้โค้ด
+  const details: Array<[string, string | null]> = DETAIL_ROWS.map(
+    (row) => [f.value(labelKey(row), line), detailValues[row]],
+  );
 
   /**
    * วาดจดหมายหนึ่งใบของบริษัทหนึ่ง
@@ -248,7 +253,7 @@ export async function renderDoLetterPdf(
     // ---------- วันที่ (ชิดขวาจากจุดที่ตั้งไว้) ----------
     const dateAt = b('date');
     const dateValue = letterDate(data.letterDate ?? new Date());
-    const dateLabel = 'วันที่ ';
+    const dateLabel = `${f.value(labelKey('date'), line)} `;
     // ค่าเป็นตัวหนา ป้ายเป็นตัวธรรมดา วัดรวมกันก่อนเพื่อให้ท้ายบรรทัดชิดขวาพอดี
     const dateWidth = widthOf(dateLabel, size(16)) + widthOf(dateValue, size(16), true);
     const dateX = dateAt.x - dateWidth;
@@ -257,19 +262,27 @@ export async function renderDoLetterPdf(
 
     // ---------- เรื่อง · เรียน ----------
     // ป้ายสองบรรทัดนี้กว้างเท่ากัน ค่าจึงเริ่มที่คอลัมน์เดียวกัน
-    const headTag = Math.max(widthOf('เรื่อง', size(16)), widthOf('เรียน', size(16))) + size(24);
+    const subjectLabel = f.value(labelKey('subject'), line);
+    const attnTag = f.value(labelKey('attention'), line);
+    const headTag = Math.max(widthOf(subjectLabel, size(16)), widthOf(attnTag, size(16))) + size(24);
 
     const subjectAt = b('subject');
-    draw('เรื่อง', subjectAt);
+    draw(subjectLabel, subjectAt);
     draw(f.value('subject', line), { x: subjectAt.x + headTag, y: subjectAt.y });
 
     const attnAt = b('attention');
-    draw('เรียน', attnAt);
+    draw(attnTag, attnAt);
     const attnLabel = `${f.value('attention', line)} `;
     draw(attnLabel, { x: attnAt.x + headTag, y: attnAt.y });
-    // ชื่อสายเรือเป็นค่าที่เปลี่ยนทุกงาน ทำตัวหนาให้เห็นชัดเหมือนต้นฉบับ
+    /*
+     * ต่อท้ายด้วยชื่อบริษัทตัวแทนของสายเรือ ไม่ใช่รหัสสายเรือ
+     *
+     * จดหมายยื่นกับตัวแทนซึ่งบางสายเป็นคนละบริษัทกับชื่อสาย เช่น CNC ยื่นที่ CMA CGM
+     * สายที่ยังไม่มีชื่อตัวแทนก็ถอยไปใช้รหัสสายเรือ ดีกว่าปล่อยบรรทัดนี้ห้วน
+     */
+    const attnCompany = f.attentionCompany(line) || line;
     draw(
-      line,
+      attnCompany,
       { x: attnAt.x + headTag + widthOf(attnLabel, size(16)), y: attnAt.y },
       { bold: true },
     );
@@ -306,7 +319,7 @@ export async function renderDoLetterPdf(
 
     // ---------- ตัวเลือกลักษณะ B/L ----------
     const optionsAt = b('options');
-    const mark = '(  )';
+    const mark = f.value('optionMark', line);
     const markWidth = widthOf(mark, size(16), true) + size(18);
     let oy = optionsAt.y;
     for (const option of f.value('options', line).split('\n')) {
@@ -342,13 +355,28 @@ export async function renderDoLetterPdf(
     const closeAt = b('closing');
     draw(f.value('closing', line), closeAt, { bold: true });
 
-    const signAt = b('signer');
+    // แต่ละใบมีบล็อกผู้ลงนามของตัวเอง เลื่อนใบที่ 2 ได้โดยใบที่ 1 ไม่ขยับตาม
+    const signAt = b(signerBlock(co));
     const signer = f.coValue(co, 'signerName', line);
-    const title = f.value('signerTitle', line);
-    let sy = signAt.y;
     // ชื่อผู้ลงนามอยู่ในวงเล็บตามต้นฉบับ ผู้ดูแลจึงกรอกแค่ชื่อ
-    if (signer) { draw(`(${signer})`, { x: signAt.x, y: sy }, { bold: true }); sy += signAt.gap; }
-    if (title) draw(title, { x: signAt.x, y: sy }, { bold: true });
+    if (signer) draw(`(${signer})`, { x: signAt.x, y: signAt.y }, { bold: true });
+
+    // ตำแหน่งมีบล็อกของตัวเอง เพราะบางใบต้องเลื่อนแยกจากชื่อ
+    const titleAt = b(signerTitleBlock(co));
+    draw(f.value('signerTitle', line), { x: titleAt.x, y: titleAt.y }, { bold: true });
+
+    // ---------- ข้อความเพิ่มเติมที่ผู้ดูแลกรอกเอง ----------
+    // ช่องที่เว้นว่างไม่ถูกวาด จึงไม่กินที่บนกระดาษของใบที่ไม่ได้ใช้
+    for (const n of CUSTOM_NOTES) {
+      const note = f.value(customNoteKey(n), line);
+      if (!note.trim()) continue;
+      const noteAt = b(customNoteBlock(n));
+      let cy = noteAt.y;
+      for (const text of note.split('\n')) {
+        if (text.trim()) draw(text, { x: noteAt.x, y: cy }, { bold: true });
+        cy += noteAt.gap;
+      }
+    }
   };
 
   for (const co of LETTER_COMPANIES) drawLetter(co);
