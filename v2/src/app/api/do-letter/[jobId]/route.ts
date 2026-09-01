@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
  * ออกจดหมายแลก D/O แล้วส่ง PDF กลับให้เปิดดูทันที
  *
  * เก็บไฟล์ไว้กับงานด้วย เพราะต้องใช้ตอนรวมชุดแลก DO ในขั้นถัดไป
+ *
+ * ?json=1 คืนแค่ id กับชื่อไฟล์แทนตัว PDF
+ * ใช้ตอนกดปุ่มบนตาราง เพื่อเอา id ไปเปิดแผงดูไฟล์ต่อ ไม่ต้องเด้งแท็บใหม่
  */
 export async function GET(
   _request: Request,
@@ -19,8 +22,12 @@ export async function GET(
   }
 
   const { jobId } = await params;
+  const wantsJson = new URL(_request.url).searchParams.get('json') === '1';
   try {
-    const { fileName, bytes } = await storeDoLetterPdf(jobId, user.id);
+    const { id, fileName, bytes } = await storeDoLetterPdf(jobId, user.id);
+    if (wantsJson) {
+      return Response.json({ id, fileName });
+    }
     return new Response(new Uint8Array(bytes), {
       headers: {
         'content-type': 'application/pdf',
@@ -30,6 +37,7 @@ export async function GET(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'ออกจดหมายไม่สำเร็จ';
+    if (wantsJson) return Response.json({ error: message }, { status: 400 });
     return new Response(message, { status: 400 });
   }
 }

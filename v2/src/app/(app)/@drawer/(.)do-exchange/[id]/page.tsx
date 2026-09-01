@@ -24,6 +24,7 @@ export default async function SlipDrawer({ params }: { params: Promise<{ id: str
       fileName={data.slip?.fileName ?? 'ยังไม่มีไฟล์ Slip'}
       meta={`งาน ${data.job.jobNo}`}
       viewHref={data.slip ? `/files/${data.slip.id}` : '#'}
+      wide
     >
       <SlipCheckPanel jobId={id} invoiceDo={data.invoiceDo} slip={data.slip} />
     </FileDrawerShell>
