@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
  * ปิดด้วย × หรือ Esc แล้ว router.back() กลับหน้าเดิมพร้อมแท็บและคำค้นเดิม
  */
 export function FileDrawerShell({
-  title, fileName, meta, viewHref, wide, dockLeft, children,
+  title, fileName, meta, viewHref, wide, children,
 }: {
   title: string;
   fileName: string;
@@ -19,24 +19,9 @@ export function FileDrawerShell({
   viewHref: string;
   /** แผงกว้างพิเศษ สำหรับดูเอกสารทั้งใบ */
   wide?: boolean;
-  /**
-   * จอดแผงชิดซ้ายและไม่มีฉากหลังทึบ สำหรับหน้าที่ต้องดูเอกสารไปกรอกตารางไป
-   * ตารางถูกดันไปทางขวาแทนที่จะถูกแผงทับ จึงยังกดกรอกได้ขณะแผงกางอยู่
-   */
-  dockLeft?: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
-
-  /*
-   * แผงที่จอดซ้ายต้องบีบเนื้อหน้าให้หลบ ไม่งั้นตารางจะอยู่ใต้แผงและกดไม่ได้
-   * ทำด้วยคลาสที่ body เพราะตัวที่ต้องขยับอยู่คนละต้นไม้กับแผง (parallel route)
-   */
-  useEffect(() => {
-    if (!dockLeft) return;
-    document.body.classList.add('has-dock-pane');
-    return () => document.body.classList.remove('has-dock-pane');
-  }, [dockLeft]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -49,20 +34,17 @@ export function FileDrawerShell({
   }, [router]);
 
   return (
-    <div className={`drawer-root${dockLeft ? ' dock-root' : ''}`}>
-      {/* แผงที่จอดซ้ายไม่มีฉากหลัง เพราะตารางข้างหลังต้องกดกรอกได้ขณะแผงกางอยู่ */}
-      {dockLeft ? null : (
-        <button
-          type="button"
-          className="drawer-backdrop"
-          aria-label="ปิดแผงดูไฟล์"
-          onClick={() => router.back()}
-        />
-      )}
+    <div className="drawer-root">
+      <button
+        type="button"
+        className="drawer-backdrop"
+        aria-label="ปิดแผงดูไฟล์"
+        onClick={() => router.back()}
+      />
       <aside
-        className={`job-drawer open${wide ? ' wide' : ''}${dockLeft ? ' dock-left' : ''}`}
+        className={`job-drawer open${wide ? ' wide' : ''}`}
         role="dialog"
-        aria-modal={dockLeft ? undefined : true}
+        aria-modal="true"
         aria-label={`ดูไฟล์ ${fileName}`}
       >
         <header className="drawer-header">

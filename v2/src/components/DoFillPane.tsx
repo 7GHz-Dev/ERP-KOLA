@@ -37,10 +37,10 @@ export function DoFillPane({
   sentAt: string | null;
   onClose: () => void;
 }) {
-  // เปิดแผงแล้วดันตารางไปทางขวา ไม่ให้แผงทับจนคลิกสลับแถวไม่ได้
+  // เปิดแผงแล้วบีบตารางให้หลบไปทางซ้าย ไม่ให้แผงทับจนกดสลับแถวไม่ได้
   useEffect(() => {
-    document.body.classList.add('has-dock-pane');
-    return () => document.body.classList.remove('has-dock-pane');
+    document.body.classList.add('has-fill-pane');
+    return () => document.body.classList.remove('has-fill-pane');
   }, []);
 
   useEffect(() => {
@@ -56,9 +56,9 @@ export function DoFillPane({
   const src = job.invoiceFileId ? `/files/${job.invoiceFileId}` : '';
 
   return (
-    <div className="drawer-root dock-root">
-      {/* ไม่มีฉากหลังทึบ เพราะตารางข้างหลังต้องคลิกสลับแถวได้ขณะแผงกางอยู่ */}
-      <aside className="job-drawer open wide dock-left" aria-label={`กรอกข้อมูล DO งาน ${job.jobNo}`}>
+    <div className="drawer-root fill-root">
+      {/* ไม่มีฉากหลังทึบ เพราะตารางข้างหลังต้องกดสลับแถวได้ขณะแผงกางอยู่ */}
+      <aside className="job-drawer open wide" aria-label={`กรอกข้อมูล DO งาน ${job.jobNo}`}>
         <header className="drawer-header">
           <div>
             <small>Invoice DO · งาน {job.jobNo}</small>

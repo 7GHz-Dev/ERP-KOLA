@@ -66,7 +66,7 @@ export function DoRowForm({
           {/* ฝั่งรอส่งก็ใช้มุมมองอ่านอย่างเดียวนี้ ป้ายจึงต้องบอกตามจริงว่ายังไม่ได้ส่ง */}
           {sentAt
             ? <span className="badge approved">ส่งแล้ว</span>
-            : <span className="badge pending">คลิกแถวเพื่อกรอก</span>}
+            : <span className="badge pending">ยังไม่ได้ส่ง</span>}
         </div>
       </div>
     );

@@ -933,7 +933,6 @@ table.data td.col-client { overflow: visible; }
 .do-pane-form .do-cell span { font-size: 11px; }
 
 /* แถวที่กำลังกรอกอยู่ ต้องเห็นชัดว่าแผงซ้ายเป็นของแถวไหน */
-.do-board tbody tr[data-open-job] { cursor: pointer; }
 .do-board tbody tr.do-active,
 .do-board tbody tr.do-active:hover { background: var(--blue-soft); }
 .do-board tbody tr.do-active td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
@@ -1054,38 +1053,29 @@ body.has-trim-pane .extract-field.wide { grid-column: 1 / -1; }
 .job-drawer.wide { width: var(--doc-drawer-w); }
 
 /*
- * ---------- แผงที่จอดชิดซ้าย (ดูเอกสารไปกรอกตารางไป) ----------
+ * ---------- แผงกรอก DO (ดูไฟล์ไปกรอกไป) ----------
  *
- * หน้า Upload InvDO ต้องเปิด Invoice DO อ่านยอดแล้วกรอก ETA · Port ·
- * Terminal · Partner ในตารางไปพร้อมกัน แผงแบบเดิมกางทับตารางและมีฉากหลัง
- * ทับอีกชั้น กรอกไม่ได้จนกว่าจะปิดแผง ซึ่งพอปิดก็ไม่เห็นยอดที่จะกรอกแล้ว
- *
- * แผงนี้จอดชิดซ้ายถัดจากแถบเมนู แล้วดันตารางไปทางขวาแทนการทับ
- * ทั้งสองฝั่งจึงใช้งานพร้อมกันได้
+ * อยู่ทางขวาเหมือนแผงอื่นทั้งระบบ แต่ไม่มีฉากหลังทึบ
+ * เพราะตารางข้างหลังต้องกดปุ่มสลับไปกรอกงานถัดไปได้ขณะแผงยังกางอยู่
+ * แล้วบีบเนื้อหน้าให้หลบไปทางซ้ายแทนการถูกทับ
  */
-.dock-root { pointer-events: none; }
-.dock-root .job-drawer { pointer-events: auto; }
+.fill-root { pointer-events: none; }
+.fill-root .job-drawer { pointer-events: auto; }
 
-.job-drawer.dock-left {
-  /* ชิดซ้ายของเนื้อหน้า ไม่ทับแถบเมนูที่ต้องกดสลับหน้าได้ตลอด */
-  inset: 0 auto 0 var(--sidebar-w);
-  transform: translateX(-105%);
-  box-shadow: 14px 0 40px rgba(15, 35, 49, .22);
-}
-.job-drawer.dock-left.open { transform: translateX(0); }
-
-/* ดันเนื้อหน้าให้พ้นแผง ตารางจึงยังกดกรอกได้ครบทุกช่อง */
-body.has-dock-pane .main { padding-left: calc(var(--doc-drawer-w) + 16px); }
+body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 
 /*
- * จอแคบแบ่งสองฝั่งไม่ไหว — ตารางเหลือที่ไม่พอกรอก
- * ให้แผงทับไปเลยแบบเดิม เปิดดูยอดแล้วปิดแผงตอนจะกรอก
+ * จอแคบแบ่งสองฝั่งไม่ไหว — ตารางเหลือที่ไม่พอ
+ * ให้แผงทับไปเลย ปิดแผงแล้วค่อยกดแถวถัดไป
  * เกณฑ์เดียวกับแผงตัดหน้า AN/BL ที่กว้างเท่ากัน
  */
 @media (max-width: 1648px) {
-  .job-drawer.dock-left { width: var(--doc-drawer-w-narrow); }
-  body.has-dock-pane .main { padding-left: 0; }
+  body.has-fill-pane .main { padding-right: 0; }
 }
+
+/* ปุ่มเปิดแผงกรอกในแถว */
+.fill-open { white-space: nowrap; }
+.fill-open[data-open='1'] { background: var(--blue); border-color: var(--blue); color: #fff; }
 
 .file-preview-view {
   display: block; width: 100%; height: 100%; min-height: 0;

@@ -60,12 +60,18 @@ export default async function FahDoPage({
           <FileChip file={r.currentFiles?.INVOICE_DO} />
           {/*
             ส่ง Partner แล้วล็อกไว้ ต้องขออนุมัติก่อนจึงแก้ได้
-            stayHere เพราะแผงกรอกของหน้านี้แสดงไฟล์อยู่แล้ว
-            ไม่ต้องเปิดแผงดูไฟล์ซ้อนขึ้นมาอีกชั้น
+
+            อัปหรือเปลี่ยนไฟล์เสร็จให้กลับมาที่หน้าเดิมพร้อม ?fill=<งาน>
+            แผงกรอกคู่กับไฟล์จะเปิดให้เอง ได้กรอกต่อทันทีโดยไม่ต้องกดปุ่มอีกที
+            ไม่ใช้แผงดูไฟล์ปกติ เพราะแผงของหน้านี้แสดงไฟล์อยู่แล้ว
           */}
           {sent ? null : (
-            <UploadForm jobId={r.id} category="INVOICE_DO" stayHere
-              label={r.currentFiles?.INVOICE_DO ? 'เปลี่ยนไฟล์' : 'อัปโหลด'} />
+            <UploadForm
+              jobId={r.id}
+              category="INVOICE_DO"
+              thenOpen={`/fah/do?${new URLSearchParams({ ...carry, tab, fill: r.id })}`}
+              label={r.currentFiles?.INVOICE_DO ? 'เปลี่ยนไฟล์' : 'อัปโหลด'}
+            />
           )}
         </div>
       ),
@@ -101,7 +107,19 @@ export default async function FahDoPage({
           label: 'จัดการ', kind: 'actions' as const,
           render: (r: JobRow) => <RequestEditButton jobId={r.id} />,
         }]
-      : []),
+      : [{
+          /*
+           * ปุ่มเปิดแผงกรอกคู่กับไฟล์
+           * เป็นปุ่มเปล่า ๆ ที่ตารางเรนเดอร์ฝั่งเซิร์ฟเวอร์ได้ ส่วนตัวจัดการคลิก
+           * อยู่ที่ DoFillBoard ซึ่งดักจาก data-fill-job ที่ชั้นนอกทีเดียว
+           */
+          label: 'กรอกข้อมูล', kind: 'actions' as const,
+          render: (r: JobRow) => (
+            <button type="button" className="button tiny fill-open" data-fill-job={r.id}>
+              กรอกข้อมูล
+            </button>
+          ),
+        }]),
   ];
 
   const table = (
@@ -112,7 +130,7 @@ export default async function FahDoPage({
       empty={tab === 'sent' ? 'ยังไม่มีงานที่ส่ง Partner แล้ว' : 'ไม่มีงานรอส่ง Partner'}
       hint={sent
         ? 'ขอแก้ไขได้ที่ปุ่มท้ายแถว'
-        : 'คลิกที่แถวเพื่อเปิดแผงกรอกคู่กับ Invoice DO · Port · Terminal · Partner มาจาก Master Data'}
+        : 'กดปุ่ม "กรอกข้อมูล" เพื่อเปิดแผงกรอกคู่กับ Invoice DO · ดับเบิลคลิกที่แถวเพื่อดูสรุปงาน · อัปไฟล์แล้วแผงเปิดให้เอง'}
     />
   );
 
@@ -143,6 +161,7 @@ export default async function FahDoPage({
           defaultPortId={defaultPortId}
           defaultPartnerId={defaultPartnerId}
           sentAt={Object.fromEntries(sentMap)}
+          openFor={one('fill') || null}
         >
           {table}
         </DoFillBoard>
