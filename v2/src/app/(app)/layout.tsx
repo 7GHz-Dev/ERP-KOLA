@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { ActionAlert } from '@/components/ActionAlert';
 import { DisclosureBehavior } from '@/components/Interactions';
 import { SideNav } from '@/components/SideNav';
-import { currentUser, logout } from '@/lib/auth';
+import { currentUser, logout, roleAllows } from '@/lib/auth';
 import { navCounts } from '@/lib/queries/dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -66,6 +66,46 @@ const NAV: NavGroup[] = [
   },
 ];
 
+/** โครงเมนูที่ยังไม่มีตัวเลข ใช้แสดงทันทีระหว่างรอ navCounts() */
+function groupsWithoutCounts(visible: NavGroup[]) {
+  return visible.map((group) => ({
+    label: group.label,
+    color: group.color,
+    items: group.items.map((item) => ({
+      href: item.href,
+      label: item.label,
+      count: 0,
+      countKey: item.count,
+    })),
+  }));
+}
+
+/**
+ * เมนูพร้อมตัวเลขงานค้าง
+ *
+ * แยกออกมาเป็น component ของตัวเองเพื่อให้ await อยู่ใต้ Suspense
+ * เดิม layout await navCounts() ก่อนคืน JSX ทำให้ query ของ layout กับของหน้า
+ * ต่อคิวกันแทนที่จะวิ่งขนานกัน ทุกหน้าจึงช้าขึ้นเท่ากับเวลาของ navCounts()
+ */
+async function NavWithCounts({ visible }: { visible: NavGroup[] }) {
+  const counts = await navCounts();
+  return (
+    <SideNav
+      groups={visible.map((group) => ({
+        label: group.label,
+        color: group.color,
+        items: group.items.map((item) => ({
+          href: item.href,
+          label: item.label,
+          count: item.count ? counts[item.count] : 0,
+          // ส่งชื่อค่าไปด้วย เมนูจะได้ดึงตัวเลขใหม่เองหลังข้อมูลเปลี่ยน
+          countKey: item.count,
+        })),
+      }))}
+    />
+  );
+}
+
 async function signOut() {
   'use server';
   await logout();
@@ -83,9 +123,8 @@ export default async function AppLayout({
   if (!user) redirect('/login');
 
   const visible = NAV.filter(
-    (g) => g.roles.length === 0 || user.role === 'ADMIN' || g.roles.includes(user.role),
+    (g) => g.roles.length === 0 || roleAllows(user.role, g.roles),
   );
-  const counts = await navCounts();
 
   return (
     <div className="app-shell">
@@ -98,21 +137,13 @@ export default async function AppLayout({
           </div>
         </div>
 
-        {/* useSearchParams ใน SideNav ต้องอยู่ใต้ Suspense เสมอ */}
-        <Suspense fallback={null}>
-          <SideNav
-            groups={visible.map((group) => ({
-              label: group.label,
-              color: group.color,
-              items: group.items.map((item) => ({
-                href: item.href,
-                label: item.label,
-                count: item.count ? counts[item.count] : 0,
-                // ส่งชื่อค่าไปด้วย เมนูจะได้ดึงตัวเลขใหม่เองหลังข้อมูลเปลี่ยน
-                countKey: item.count,
-              })),
-            }))}
-          />
+        {/*
+          * useSearchParams ใน SideNav ต้องอยู่ใต้ Suspense เสมอ
+          * และ Suspense ตรงนี้ยังกัน navCounts() ไม่ให้ถ่วงการเรนเดอร์ของตัวหน้าด้วย
+          * เมนูขึ้นก่อนโดยยังไม่มีตัวเลข แล้วตัวเลขค่อยตามมาเมื่อ query เสร็จ
+          */}
+        <Suspense fallback={<SideNav groups={groupsWithoutCounts(visible)} />}>
+          <NavWithCounts visible={visible} />
         </Suspense>
 
         <div className="sidebar-user">

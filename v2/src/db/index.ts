@@ -8,10 +8,32 @@ loadEnv();
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('ยังไม่ได้ตั้ง DATABASE_URL — คัดลอก .env.example เป็น .env.local แล้วใส่ค่าจาก Supabase');
 
-// Next.js dev รีโหลดโมดูลบ่อย ถ้าไม่ cache ไว้จะเปิด connection ใหม่ทุกครั้งจนเต็ม pool
+/*
+ * Next.js dev รีโหลดโมดูลบ่อย ถ้าไม่ cache ไว้จะเปิด connection ใหม่ทุกครั้งจนเต็ม pool
+ * บน Vercel ก็ cache เหมือนกัน เพราะแต่ละ instance ถูกใช้ซ้ำหลาย request
+ * ถ้าเปิด pool ใหม่ทุกครั้งจะเสียเวลา handshake (~350ms) ก่อน query แรกเสมอ
+ */
 const globalForDb = globalThis as unknown as { kolaSql?: ReturnType<typeof postgres> };
-const sql = globalForDb.kolaSql ?? postgres(url, { prepare: false, max: 10 });
-if (process.env.NODE_ENV !== 'production') globalForDb.kolaSql = sql;
+
+const sql = globalForDb.kolaSql ?? postgres(url, {
+  prepare: false,
+
+  /*
+   * ต่อผ่าน transaction pooler (พอร์ต 6543) ซึ่งแจก connection ต่อ transaction อยู่แล้ว
+   * ฝั่งเราจึงเปิดค้างไว้น้อย ๆ พอ — instance บน Vercel มีหลายตัวพร้อมกัน
+   * ถ้าตัวละ 10 connection จะกิน quota ของ pooler จนตัวอื่นต้องรอคิว
+   */
+  max: 5,
+
+  // ปิด connection ที่ว่างนานเกินไป กัน pooler ตัดทิ้งข้างเดียวแล้วเราเพิ่งมารู้ตอนใช้
+  idle_timeout: 20,
+  max_lifetime: 60 * 30,
+
+  // ยอมรอต่อ connection ไม่เกินเท่านี้ ดีกว่าค้างยาวจนผู้ใช้กดใหม่ซ้ำ
+  connect_timeout: 10,
+});
+
+globalForDb.kolaSql = sql;
 
 export const db = drizzle(sql, { schema });
 export { schema };

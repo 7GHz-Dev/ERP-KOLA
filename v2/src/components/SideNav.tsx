@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * เมนูซ้าย
@@ -22,6 +22,8 @@ export function SideNav({ groups }: { groups: NavGroupView[] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [live, setLive] = useState<Record<string, number> | null>(null);
+  // ค่าที่เซิร์ฟเวอร์เพิ่งส่งมาพร้อมหน้ายังสดอยู่ ไม่ต้องยิงซ้ำตอนโหลดครั้งแรก
+  const firstRender = useRef(true);
 
   /*
    * ดึงใหม่ทุกครั้งที่เส้นทางหรือ query เปลี่ยน
@@ -42,7 +44,12 @@ export function SideNav({ groups }: { groups: NavGroupView[] }) {
         /* ดึงไม่ได้ก็ใช้ค่าที่เซิร์ฟเวอร์ส่งมาต่อไป ไม่ต้องรบกวนผู้ใช้ */
       }
     };
-    void load();
+    /*
+     * ข้ามรอบแรกไป เพราะ layout เพิ่งเรนเดอร์ตัวเลขชุดเดียวกันมาให้แล้ว
+     * เดิมยิงทุกครั้งที่หน้าโหลด เท่ากับนับงานค้างซ้ำอีกรอบต่อการเปิดหน้าหนึ่งครั้ง
+     */
+    if (firstRender.current) firstRender.current = false;
+    else void load();
     window.addEventListener('focus', load);
     return () => {
       alive = false;

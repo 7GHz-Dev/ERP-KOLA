@@ -22,6 +22,23 @@ export class AppError extends Error {
   }
 }
 
+/**
+ * EMPLOYEE — พนักงานที่ทำได้ทุกงานปฏิบัติการ แต่แตะ Master Data ไม่ได้
+ *
+ * ADMIN ผ่านทุกด่านเพราะเป็นผู้ดูแลระบบ ส่วน EMPLOYEE ผ่านเฉพาะงานของฝ่ายต่าง ๆ
+ * ด่านที่หวงไว้ให้ ADMIN อย่างเดียว (เช่น Master Data) จะระบุ roles เป็น ['ADMIN']
+ * ซึ่งไม่มี EMPLOYEE อยู่ในนั้น จึงถูกปฏิเสธตามที่ตั้งใจ
+ */
+const OPERATIONAL_ROLES = ['PAINT', 'FAH', 'NAMKANG', 'ANN'];
+
+/** ผู้ใช้ role นี้ผ่านด่านที่ต้องการ roles ชุดนี้หรือไม่ */
+export function roleAllows(role: string, roles: string[]) {
+  if (role === 'ADMIN') return true;
+  if (roles.includes(role)) return true;
+  // EMPLOYEE ยืนแทนฝ่ายปฏิบัติการได้ทุกฝ่าย แต่ไม่ได้สิทธิ์ของ ADMIN
+  return role === 'EMPLOYEE' && roles.some((r) => OPERATIONAL_ROLES.includes(r));
+}
+
 export type SessionUser = {
   id: string;
   username: string;
@@ -159,7 +176,7 @@ export async function requireActiveSession(roles?: string[]): Promise<SessionUse
 
   if (!row) throw new AppError('SESSION_EXPIRED', 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่');
   if (!row.isActive) throw new AppError('ACCOUNT_DISABLED', 'บัญชีนี้ถูกระงับการใช้งาน');
-  if (roles && row.role !== 'ADMIN' && !roles.includes(row.role)) {
+  if (roles && !roleAllows(row.role, roles)) {
     throw new AppError('FORBIDDEN', 'คุณไม่มีสิทธิ์ดำเนินการนี้');
   }
   return {
@@ -174,7 +191,7 @@ export async function requireActiveSession(roles?: string[]): Promise<SessionUse
 export async function requireUser(roles?: string[]): Promise<SessionUser> {
   const user = await currentUser();
   if (!user) throw new AppError('UNAUTHENTICATED', 'กรุณาเข้าสู่ระบบ');
-  if (roles && user.role !== 'ADMIN' && !roles.includes(user.role)) {
+  if (roles && !roleAllows(user.role, roles)) {
     throw new AppError('FORBIDDEN', 'คุณไม่มีสิทธิ์ดำเนินการนี้');
   }
   return user;

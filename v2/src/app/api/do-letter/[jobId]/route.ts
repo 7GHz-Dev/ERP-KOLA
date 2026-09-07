@@ -1,4 +1,4 @@
-import { currentUser } from '@/lib/auth';
+import { currentUser, roleAllows } from '@/lib/auth';
 import { storeDoLetterPdf } from '@/lib/do-letter-store';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ export async function GET(
 ) {
   const user = await currentUser();
   if (!user) return new Response('unauthorized', { status: 401 });
-  if (!['ANN', 'ADMIN'].includes(user.role)) {
+  if (!roleAllows(user.role, ['ANN'])) {
     return new Response('forbidden', { status: 403 });
   }
 

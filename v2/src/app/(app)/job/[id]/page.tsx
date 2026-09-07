@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { JobSummary } from '@/components/JobSummary';
-import { requireUser } from '@/lib/auth';
+import { requireUser, roleAllows } from '@/lib/auth';
 import { loadJobDetail } from '@/lib/queries/job-detail';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
       <div className="sum-page">
-        <JobSummary detail={detail} canAck={['PAINT', 'FAH', 'ADMIN'].includes(user.role)} />
+        <JobSummary detail={detail} canAck={roleAllows(user.role, ['PAINT', 'FAH'])} />
       </div>
     </>
   );

@@ -14,7 +14,10 @@ const MAX_BYTES = 8 * 1024 * 1024;
 /** นามสกุลที่ไม่รับ เพราะเป็นไฟล์สั่งงานได้ ไม่ใช่เอกสาร */
 const BLOCKED = /\.(exe|cmd|bat|com|js|mjs|vbs|ps1|sh|jar|msi)$/i;
 
-/** ใครอัปโหลดหมวดไหนได้ — ยกกติกามาจากระบบเดิม */
+/**
+ * ใครอัปโหลดหมวดไหนได้ — ยกกติกามาจากระบบเดิม
+ * ไม่ต้องใส่ ADMIN กับ EMPLOYEE ตรงนี้ roleAllows() ปล่อยผ่านให้อยู่แล้ว
+ */
 const UPLOAD_ROLES: Record<string, string[]> = {
   ARRIVAL_NOTICE: ['PAINT'],
   BL: ['PAINT'],
@@ -23,10 +26,10 @@ const UPLOAD_ROLES: Record<string, string[]> = {
   EOFFICE: ['PAINT'],
   EOFFICE_REQUEST: ['PAINT'],
   EOFFICE_SIGNED: ['PAINT'],
-  DO_LETTER: ['ANN', 'ADMIN'],
-  DO_SLIP: ['ANN', 'ADMIN'],
-  DO_OTHER: ['ANN', 'ADMIN'],
-  DO_MERGED: ['ANN', 'ADMIN'],
+  DO_LETTER: ['ANN'],
+  DO_SLIP: ['ANN'],
+  DO_OTHER: ['ANN'],
+  DO_MERGED: ['ANN'],
   INVOICE_GOODS: ['NAMKANG'],
   SURRENDER: ['NAMKANG'],
   INVOICE_DO: ['FAH'],

@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { DrawerShell } from '@/components/DrawerShell';
 import { JobSummary } from '@/components/JobSummary';
-import { requireUser } from '@/lib/auth';
+import { requireUser, roleAllows } from '@/lib/auth';
 import { loadJobDetail } from '@/lib/queries/job-detail';
 
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,7 @@ export default async function JobDrawer({ params }: { params: Promise<{ id: stri
 
   return (
     <DrawerShell jobId={id} jobNo={detail.job.jobNo}>
-      <JobSummary detail={detail} canAck={['PAINT', 'FAH', 'ADMIN'].includes(user.role)} />
+      <JobSummary detail={detail} canAck={roleAllows(user.role, ['PAINT', 'FAH'])} />
     </DrawerShell>
   );
 }

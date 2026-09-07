@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { files } from '@/db/schema';
-import { currentUser } from '@/lib/auth';
+import { currentUser, roleAllows } from '@/lib/auth';
 import { downloadFile } from '@/lib/storage';
 import { driveOcrConfigured, driveOcrText } from '@/lib/drive-ocr';
 import { parseText } from '@/lib/slip-parse';
@@ -18,7 +18,7 @@ export const maxDuration = 60;
 export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) return Response.json({ ok: false, detail: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
-  if (!['ANN', 'ADMIN'].includes(user.role)) {
+  if (!roleAllows(user.role, ['ANN'])) {
     return Response.json({ ok: false, detail: 'ไม่มีสิทธิ์' }, { status: 403 });
   }
   if (!driveOcrConfigured()) {
