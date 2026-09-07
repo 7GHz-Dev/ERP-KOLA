@@ -99,6 +99,16 @@ async function uploadJobFileImpl(formData: FormData) {
       .where(eq(jobs.id, jobId));
   }
 
+  /*
+   * จดหมายแลก D/O ที่อัปเข้ามาเอง ถือว่าผ่านขั้นทำจดหมายเหมือนกับที่ระบบออกให้
+   * ไม่งั้นตัวเลขข้างเมนูจะยังนับงานนี้เป็นงานค้างทั้งที่มีจดหมายแล้ว
+   */
+  if (category === 'DO_LETTER') {
+    await db.update(jobs)
+      .set({ doLetterAt: new Date(), doLetterBy: user.id, updatedAt: new Date() })
+      .where(eq(jobs.id, jobId));
+  }
+
   // Final Invoice ที่เป็น Excel แปลงเป็น PDF ให้เลย ชุด E-Office จะได้ใช้ต่อได้ทันที
   if (category === 'FINAL_INVOICE' && /\.xlsx?$/i.test(blob.name)) {
     try {

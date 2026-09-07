@@ -44,6 +44,12 @@ export default async function DoExchangePage({
             ready={Boolean(matchShippingLine(r.shipline))}
             done={Boolean(r.currentFiles?.DO_LETTER)}
           />
+          {/* สายเรือที่ยังไม่มีแบบฟอร์ม หรือจดหมายที่ทำมาจากข้างนอก ก็แนบเข้ามาเองได้ */}
+          <UploadForm
+            jobId={r.id}
+            category="DO_LETTER"
+            label={r.currentFiles?.DO_LETTER ? 'อัปโหลดแทน' : 'อัปโหลดเอง'}
+          />
         </div>
       ),
     },

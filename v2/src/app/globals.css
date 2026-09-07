@@ -1125,3 +1125,6 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
   position: absolute; right: 0; z-index: 5; width: 320px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
+
+/* ปุ่มออกจดหมายกับแก้ข้อความอยู่แถวเดียวกัน ไม่ให้ช่องตารางสูงเกินจำเป็น */
+.do-letter-buttons { display: flex; flex-wrap: wrap; gap: 4px; }

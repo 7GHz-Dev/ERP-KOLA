@@ -44,18 +44,21 @@ export function DoLetterButton({
 
   return (
     <>
-      <button
-        type="button"
-        className={`button tiny ${done ? '' : 'primary'}`}
-        onClick={() => void run()}
-        disabled={busy}
-      >
-        {busy ? 'กำลังออก…' : done ? 'ออกใหม่' : 'ออกจดหมาย'}
-      </button>
-      {/* แก้ถ้อยคำบนจดหมายทีละบรรทัดแล้วออกใหม่ ไม่ต้องไปแก้ข้อมูลงาน */}
-      <Link className="button tiny ghost" href={`/do-exchange/${jobId}/letter`}>
-        แก้ข้อความ
-      </Link>
+      {/* สองปุ่มนี้อยู่แถวเดียวกัน ช่องตารางจะได้ไม่ยืดจนแถวสูงเกินไป */}
+      <div className="do-letter-buttons">
+        <button
+          type="button"
+          className={`button tiny ${done ? '' : 'primary'}`}
+          onClick={() => void run()}
+          disabled={busy}
+        >
+          {busy ? 'กำลังออก…' : done ? 'ออกใหม่' : 'ออกจดหมาย'}
+        </button>
+        {/* แก้ถ้อยคำบนจดหมายทีละบรรทัดแล้วออกใหม่ ไม่ต้องไปแก้ข้อมูลงาน */}
+        <Link className="button tiny ghost" href={`/do-exchange/${jobId}/letter`}>
+          แก้ข้อความ
+        </Link>
+      </div>
       {error ? <small className="client-cell-note bad">{error}</small> : null}
     </>
   );
