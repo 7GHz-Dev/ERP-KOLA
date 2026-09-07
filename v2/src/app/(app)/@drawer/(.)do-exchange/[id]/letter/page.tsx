@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { FileDrawerShell } from '@/components/FileDrawerShell';
 import { DoLetterEditPanel } from '@/components/DoLetterEditPanel';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { loadDoLetterText } from '@/lib/queries/do-files';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export default async function DoLetterTextDrawer({
   params,
 }: { params: Promise<{ id: string }> }) {
-  await requireUser(['ANN']);
+  await requireUserReady(['ANN']);
   const { id } = await params;
   const data = await loadDoLetterText(id);
   if (!data) notFound();

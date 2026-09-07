@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { eq, ne } from 'drizzle-orm';
 import { jobs } from '@/db/schema';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable, Tabs, type Column } from '@/components/JobTable';
 import { listJobs } from '@/lib/queries/jobs';
@@ -56,7 +56,7 @@ export default async function JobsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
+  await requireUserReady();
   const params = await searchParams;
   const { one, search, sortBy, sortDir, carry } = readParams(params, SEARCH_KEYS);
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'all';

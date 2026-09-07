@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { eofficeRequests, files } from '@/db/schema';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { loadEofficeForm } from '@/lib/eoffice-form';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +34,7 @@ function thaiDate(value: string | null) {
 export default async function EofficeRequestPage({
   params,
 }: { params: Promise<{ jobId: string }> }) {
-  await requireUser(['PAINT']);
+  await requireUserReady(['PAINT']);
   const { jobId } = await params;
 
   const [req] = await db.select().from(eofficeRequests)

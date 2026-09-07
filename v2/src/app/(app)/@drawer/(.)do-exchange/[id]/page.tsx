@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { FileDrawerShell } from '@/components/FileDrawerShell';
 import { SlipCheckPanel } from '@/components/SlipCheckPanel';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { loadSlipCheck } from '@/lib/queries/do-files';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * เปิด URL ตรง ๆ หรือกดรีเฟรชจะได้หน้าเต็มแทน ลิงก์จึงส่งต่อให้คนอื่นได้
  */
 export default async function SlipDrawer({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser(['ANN']);
+  await requireUserReady(['ANN']);
   const { id } = await params;
   const data = await loadSlipCheck(id);
   if (!data) notFound();

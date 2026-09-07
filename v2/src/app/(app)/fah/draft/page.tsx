@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RejectDraftButton, SubmitCustomsTask } from '@/components/ActionForms';
@@ -16,7 +16,7 @@ const SEARCH_KEYS = ['shipper', 'blNo', 'refNo', 'consignee', 'entryNo'];
 export default async function FahDraftPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['FAH']);
+  await requireUserReady(['FAH']);
   const params = await searchParams;
   const { one, search, sortBy, sortDir, carry } = readParams(params, SEARCH_KEYS);
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'review';

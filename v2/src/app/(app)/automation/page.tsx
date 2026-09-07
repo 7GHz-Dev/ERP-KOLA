@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { automationTasks, jobs } from '@/db/schema';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { runTaskSimulation } from '@/lib/actions/automation';
 import { SubmitButton } from '@/components/ActionForms';
 import { Tabs } from '@/components/JobTable';
@@ -22,7 +22,7 @@ function statusBadge(status: string) {
 export default async function AutomationPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['PAINT', 'FAH']);
+  await requireUserReady(['PAINT', 'FAH']);
   const params = await searchParams;
   const raw = typeof params.tab === 'string' ? params.tab : '';
   const tab = TABS.some((t) => t.key === raw) ? raw : 'draft';

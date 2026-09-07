@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { and, eq, gt } from 'drizzle-orm';
 import { db } from '@/db';
 import { sessions, users } from '@/db/schema';
@@ -124,6 +125,46 @@ export async function login(username: string, password: string): Promise<Session
   };
 }
 
+/**
+ * ออกคุกกี้ใบใหม่ให้ session เดิม หลังข้อมูลที่ฝังอยู่ในคุกกี้เปลี่ยน
+ *
+ * คุกกี้เก็บ role กับ mustChangePassword ไว้ในตัวเพื่อให้อ่านหน้าเว็บได้โดยไม่แตะฐานข้อมูล
+ * พอค่าพวกนี้เปลี่ยน คุกกี้ใบเดิมจึงถือค่าเก่าอยู่จนกว่าจะล็อกอินใหม่
+ * ตรงนี้เขียนทับให้เลย โดยใช้ session row เดิม อายุเดิม ไม่ได้ต่ออายุให้ใหม่
+ */
+export async function refreshSessionCookie(): Promise<void> {
+  const store = await cookies();
+  const payload = decodeSession(store.get(COOKIE)?.value);
+  if (!payload) return;
+
+  const [row] = await db
+    .select({
+      username: users.username,
+      displayName: users.displayName,
+      role: users.role,
+      mustChangePassword: users.mustChangePassword,
+    })
+    .from(users).where(eq(users.id, payload.uid)).limit(1);
+  if (!row) return;
+
+  store.set(COOKIE, encodeSession({
+    sid: payload.sid,
+    uid: payload.uid,
+    username: row.username,
+    name: row.displayName,
+    role: row.role,
+    mcp: row.mustChangePassword,
+    exp: payload.exp,
+  }), {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    // อายุคุกกี้เดินตาม session เดิม ไม่ใช่เริ่มนับใหม่
+    expires: new Date(payload.exp),
+  });
+}
+
 export async function logout(): Promise<void> {
   const store = await cookies();
   const payload = decodeSession(store.get(COOKIE)?.value);
@@ -193,5 +234,17 @@ export async function requireUser(roles?: string[]): Promise<SessionUser> {
   if (roles && !roleAllows(user.role, roles)) {
     throw new AppError('FORBIDDEN', 'คุณไม่มีสิทธิ์ดำเนินการนี้');
   }
+  return user;
+}
+
+/**
+ * เหมือน requireUser แต่ไล่ไปตั้งรหัสผ่านก่อน ถ้ายังใช้รหัสที่ผู้ดูแลตั้งให้อยู่
+ *
+ * ใช้กับทุกหน้าที่เป็นงานจริง ยกเว้นหน้าตั้งรหัสผ่านเอง มิฉะนั้นจะวนกลับมาที่เดิมไม่จบ
+ * ไม่ดักที่ layout เพราะ layout ไม่รู้ว่ากำลังเปิดหน้าไหนอยู่ จึงกันหน้าตั้งรหัสไม่ได้
+ */
+export async function requireUserReady(roles?: string[]): Promise<SessionUser> {
+  const user = await requireUser(roles);
+  if (user.mustChangePassword) redirect('/account/password');
   return user;
 }

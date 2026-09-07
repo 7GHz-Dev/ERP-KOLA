@@ -1,14 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { JobSummary } from '@/components/JobSummary';
-import { requireUser, roleAllows } from '@/lib/auth';
+import { requireUserReady, roleAllows } from '@/lib/auth';
 import { loadJobDetail } from '@/lib/queries/job-detail';
 
 export const dynamic = 'force-dynamic';
 
 /** หน้าสรุปงานแบบเต็ม — เปิดตรงจาก URL หรือกดจากแผงก็ได้ ส่งลิงก์ให้กันได้ */
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser();
+  const user = await requireUserReady();
   const { id } = await params;
   const detail = await loadJobDetail(id);
   if (!detail) notFound();

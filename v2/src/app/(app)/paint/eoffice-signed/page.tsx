@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RequestEditButton, SendEofficeButton, UploadForm } from '@/components/ActionForms';
@@ -15,7 +15,7 @@ const SEARCH_KEYS = ['person', 'shipper', 'blNo', 'consignee', 'refNo', 'entryNo
 export default async function PaintEofficeSignedPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['PAINT']);
+  await requireUserReady(['PAINT']);
   const { one, search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'wait';
 

@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
 import {
@@ -152,7 +152,7 @@ export default async function PendingPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser(['PAINT']);
+  await requireUserReady(['PAINT']);
   const params = await searchParams;
   const { one, search, sortBy, sortDir, carry } = readParams(params, SEARCH_KEYS);
 

@@ -1,14 +1,14 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { SlipCheckPanel } from '@/components/SlipCheckPanel';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { loadSlipCheck } from '@/lib/queries/do-files';
 
 export const dynamic = 'force-dynamic';
 
 /** หน้าเต็มของแผงเทียบยอด — ใช้ตอนเปิด URL ตรง ๆ หรือกดรีเฟรช */
 export default async function SlipPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser(['ANN']);
+  await requireUserReady(['ANN']);
   const { id } = await params;
   const data = await loadSlipCheck(id);
   if (!data) notFound();

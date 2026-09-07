@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { masterCounts } from '@/lib/queries/master';
 import {
   DO_LETTER_FIELDS, DO_LETTER_GROUPS, LETTER_BLOCKS, SHIPPING_LINES,
@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 export default async function DoLetterFormPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['ADMIN']);
+  await requireUserReady(['ADMIN']);
   const params = await searchParams;
   const asked = typeof params.line === 'string' ? params.line.toUpperCase() : '';
   const line = SHIPPING_LINES.includes(asked as (typeof SHIPPING_LINES)[number]) ? asked : '';

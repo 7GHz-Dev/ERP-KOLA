@@ -123,11 +123,12 @@ tr.filters input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
 .login-card p.sub { margin: 0 0 18px; color: var(--muted); }
 .field { display: block; margin-bottom: 12px; }
 .field span { display: block; margin-bottom: 4px; font-weight: 600; }
-.field input {
+.field input, .field select {
   width: 100%; min-height: 36px; padding: 7px 10px; font-size: 13px;
   border: 1px solid var(--line); border-radius: 6px; font-family: inherit; color: var(--ink);
+  background: var(--surface);
 }
-.field input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+.field input:focus, .field select:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
 .error {
   background: var(--red-soft); color: var(--red); border-radius: 6px;
   padding: 9px 11px; margin-bottom: 12px; font-weight: 600;
@@ -1104,3 +1105,23 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
   background: var(--blue); color: #fff; font-size: 10px; font-style: normal; font-weight: 700;
 }
 .do-letter-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+
+/* หน้าจัดการผู้ใช้ — ฟอร์มกางในที่ของตัวเอง ไม่ต้องเปิดหน้าต่างซ้อน */
+.user-add { margin-bottom: 12px; }
+.user-add > summary, .user-edit > summary {
+  cursor: pointer; font-weight: 700; font-size: 12px;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); display: inline-block; list-style: none;
+}
+.user-add > summary::-webkit-details-marker,
+.user-edit > summary::-webkit-details-marker { display: none; }
+.user-form {
+  margin-top: 8px; padding: 12px; max-width: 420px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+/* ฟอร์มของแต่ละแถวกางทับแถวอื่นไม่ได้ จึงลอยขึ้นมาแทน */
+.data-table .user-edit { position: relative; }
+.data-table .user-edit[open] > .user-form {
+  position: absolute; right: 0; z-index: 5; width: 320px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}

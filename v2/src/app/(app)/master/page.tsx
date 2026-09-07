@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { listMaster, masterCounts, MASTER_TYPES } from '@/lib/queries/master';
 import { MasterRecordForm } from '@/components/ActionForms';
 import { MasterMenu } from '@/components/MasterMenu';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function MasterPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['ADMIN']);
+  await requireUserReady(['ADMIN']);
   const params = await searchParams;
   const one = (k: string) => (typeof params[k] === 'string' ? (params[k] as string).trim() : '');
 

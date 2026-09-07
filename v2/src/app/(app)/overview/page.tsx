@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable } from '@/components/JobTable';
 import { listJobs } from '@/lib/queries/jobs';
@@ -22,7 +22,7 @@ const CARDS: Array<{ key: keyof Awaited<ReturnType<typeof dashboardSummary>>; la
 export default async function OverviewPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser();
+  await requireUserReady();
   const { search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const [summary, { rows, total }] = await Promise.all([
     dashboardSummary(),

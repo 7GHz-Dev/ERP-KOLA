@@ -27,7 +27,18 @@ export const users = pgTable('users', {
   // ผู้ใช้ที่ย้ายมาจะถูกอัปเกรดเป็น scrypt อัตโนมัติตอนล็อกอินสำเร็จครั้งแรก
   passwordAlgo: text('password_algo').default('scrypt').notNull(),
   displayName: text('display_name').notNull(),
+  /*
+   * role คือสิ่งเดียวที่กำหนดสิทธิ์ ส่วน company/department/position เป็นข้อมูลบุคลากร
+   *
+   * แยกกันเพราะโครงองค์กรเปลี่ยนบ่อยกว่าสิทธิ์ในระบบ ย้ายแผนกหรือเลื่อนตำแหน่ง
+   * ไม่ควรทำให้สิทธิ์เปลี่ยนตามไปเอง หน้าเพิ่มผู้ใช้จึงเสนอ role ที่คู่กันให้เป็นค่าตั้งต้น
+   * แล้วผู้ดูแลยืนยันอีกที
+   */
   role: text('role').notNull(),
+  /** บริษัทต้นสังกัด — KOLA หรือบริษัท Partner */
+  company: text('company'),
+  department: text('department'),
+  position: text('position'),
   isActive: boolean('is_active').default(true).notNull(),
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
   failedAttempts: integer('failed_attempts').default(0).notNull(),

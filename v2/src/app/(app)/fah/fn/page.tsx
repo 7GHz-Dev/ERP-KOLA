@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable, FileChip } from '@/components/JobTable';
 import { ApproveReject } from '@/components/ActionForms';
@@ -10,7 +10,7 @@ const SEARCH_KEYS = ['shipper', 'blNo', 'consignee'];
 export default async function FahFnPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['FAH']);
+  await requireUserReady(['FAH']);
   const { search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const { rows, total } = await listJobs({ where: QUEUE.fahFn(), search, sortBy, sortDir });
 

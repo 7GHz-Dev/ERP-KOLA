@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, readParams, surrenderBadge } from '@/lib/columns';
 import { JobTable, FileChip } from '@/components/JobTable';
 import { ReleaseButton, UploadForm } from '@/components/ActionForms';
@@ -10,7 +10,7 @@ const SEARCH_KEYS = ['jobNo', 'blNo', 'consignee'];
 export default async function NamReleasePage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['NAMKANG']);
+  await requireUserReady(['NAMKANG']);
   const { search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const { rows, total } = await listJobs({ where: QUEUE.namRelease(), search, sortBy, sortDir });
 

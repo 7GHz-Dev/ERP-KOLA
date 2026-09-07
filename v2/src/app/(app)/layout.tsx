@@ -122,6 +122,7 @@ export default async function AppLayout({
   const user = await currentUser();
   if (!user) redirect('/login');
 
+
   const visible = NAV.filter(
     (g) => g.roles.length === 0 || roleAllows(user.role, g.roles),
   );

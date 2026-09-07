@@ -4,6 +4,7 @@ import { MASTER_TYPES } from '@/lib/queries/master';
 /** ปะหน้า E-Office ไม่ใช่ตารางอ้างอิงแบบอื่น จึงมีหน้าจอของตัวเองแทนที่จะเป็นแท็บหนึ่งใน /master */
 export const EOFFICE_FORM_MENU_KEY = 'eofficeForm';
 export const DO_LETTER_MENU_KEY = 'doLetterForm';
+export const USERS_MENU_KEY = 'users';
 
 /** เมนูซ้ายของหมวด Master Data ใช้ร่วมกันทุกหน้าในหมวดนี้ */
 export function MasterMenu({
@@ -34,6 +35,13 @@ export function MasterMenu({
         aria-current={current === DO_LETTER_MENU_KEY ? 'page' : undefined}
       >
         ฟอร์มจดหมายแลก DO
+      </Link>
+      <Link
+        href="/master/users"
+        prefetch
+        aria-current={current === USERS_MENU_KEY ? 'page' : undefined}
+      >
+        ผู้ใช้งาน
       </Link>
     </nav>
   );

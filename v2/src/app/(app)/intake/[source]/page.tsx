@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { IntakeForm } from '@/components/IntakeForm';
 import { createJobFromIntake, intakeDefaults } from '@/lib/actions/intake';
 import { intakeOptions, settingValue } from '@/lib/queries/master';
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function IntakePage({
   params,
 }: { params: Promise<{ source: string }> }) {
-  await requireUser(['PAINT']);
+  await requireUserReady(['PAINT']);
   const { source } = await params;
   if (source !== 'an' && source !== 'bl') notFound();
   const sourceType = source === 'an' ? 'AN' : 'BL';

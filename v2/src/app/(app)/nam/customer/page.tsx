@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { readParams, surrenderBadge } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import {
@@ -18,7 +18,7 @@ const SEARCH_KEYS = ['shipper', 'blNo', 'consignee', 'person'];
 export default async function NamCustomerPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['NAMKANG']);
+  await requireUserReady(['NAMKANG']);
   const { one, search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'wait';
 

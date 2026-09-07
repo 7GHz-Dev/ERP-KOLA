@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RequestEditButton, UploadForm } from '@/components/ActionForms';
@@ -17,7 +17,7 @@ const SEARCH_KEYS = ['shipper', 'blNo', 'consignee'];
 export default async function FahDoPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUser(['FAH']);
+  await requireUserReady(['FAH']);
   const params = readParams(await searchParams, SEARCH_KEYS);
   const { search, carry, one } = params;
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'wait';

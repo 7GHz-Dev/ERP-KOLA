@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUserReady } from '@/lib/auth';
 import { masterCounts } from '@/lib/queries/master';
 import {
   EOFFICE_FORM_GROUPS, EOFFICE_FORM_FIELDS, loadEofficeForm, OVERLAY_SLOTS, slotCode,
@@ -24,7 +24,7 @@ export const dynamic = 'force-dynamic';
  * ผู้ใช้จึงลบค่าที่พิมพ์ผิดทิ้งได้โดยไม่ต้องจำว่าของเดิมเป็นเท่าไร
  */
 export default async function EofficeFormPage() {
-  await requireUser(['ADMIN']);
+  await requireUserReady(['ADMIN']);
   const [form, counts] = await Promise.all([loadEofficeForm(), masterCounts()]);
 
   const templateName = form.raw(TEMPLATE_NAME);
