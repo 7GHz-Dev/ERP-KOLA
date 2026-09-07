@@ -15,7 +15,7 @@ import { PopoverHead } from '@/components/Interactions';
  * หน้าจึงยังเป็นข้อมูลเดิมจนกว่าผู้ใช้จะกดรีเฟรชเอง
  */
 export function UploadForm({
-  jobId, category, label, requireReason, thenOpen,
+  jobId, category, label, requireReason, thenOpen, stayHere,
 }: {
   jobId: string;
   category: string;
@@ -26,6 +26,11 @@ export function UploadForm({
    * เช่น Slip แลก DO ที่ต้องเปิดแผงเทียบยอดกับ Invoice DO แทน
    */
   thenOpen?: string;
+  /**
+   * อัปเสร็จแล้วอยู่หน้าเดิม ไม่เปิดแผงดูไฟล์
+   * ใช้กับหน้าที่มีแผงของตัวเองอยู่แล้ว จะได้ไม่มีแผงซ้อนกันสองชั้น
+   */
+  stayHere?: boolean;
 }) {
   const router = useRouter();
   const details = useRef<HTMLDetailsElement>(null);
@@ -48,7 +53,7 @@ export function UploadForm({
          * เปิดแผงดูไฟล์ที่เพิ่งอัปให้เลย ผู้ใช้จะได้เห็นว่าอัปถูกใบไหม
          * push ไม่ replace เพื่อให้กดปิดแผงแล้วกลับมาที่ตารางได้ตามปกติ
          */
-        const target = thenOpen ?? (fileId ? `/file/${fileId}` : null);
+        const target = stayHere ? null : thenOpen ?? (fileId ? `/file/${fileId}` : null);
         if (target) router.push(target);
       }, 700);
     });

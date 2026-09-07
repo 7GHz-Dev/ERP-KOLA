@@ -3,6 +3,7 @@ import { col, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RequestEditButton, UploadForm } from '@/components/ActionForms';
 import { DoRowForm } from '@/components/DoRowForm';
+import { DoFillBoard } from '@/components/DoFillBoard';
 import { listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
 import { doHandoffSentAt } from '@/lib/queries/dashboard';
@@ -57,20 +58,30 @@ export default async function FahDoPage({
       render: (r) => (
         <div className="file-cell">
           <FileChip file={r.currentFiles?.INVOICE_DO} />
-          {/* ส่ง Partner แล้วล็อกไว้ ต้องขออนุมัติก่อนจึงแก้ได้ */}
+          {/*
+            ส่ง Partner แล้วล็อกไว้ ต้องขออนุมัติก่อนจึงแก้ได้
+            stayHere เพราะแผงกรอกของหน้านี้แสดงไฟล์อยู่แล้ว
+            ไม่ต้องเปิดแผงดูไฟล์ซ้อนขึ้นมาอีกชั้น
+          */}
           {sent ? null : (
-            <UploadForm jobId={r.id} category="INVOICE_DO"
+            <UploadForm jobId={r.id} category="INVOICE_DO" stayHere
               label={r.currentFiles?.INVOICE_DO ? 'เปลี่ยนไฟล์' : 'อัปโหลด'} />
           )}
         </div>
       ),
     },
     {
-      // แก้ได้ในตารางเลย ทั้ง ETA · Port · Terminal · Partner แล้วกดบันทึกทีเดียว
+      /*
+       * ฝั่งรอส่งกรอกในแผงซ้ายคู่กับไฟล์ ตารางจึงเหลือไว้อ่านอย่างเดียว
+       * เดิมยัดสี่ช่องกับสองปุ่มไว้ในเซลล์เดียวจนซ้อนกันสามบรรทัด
+       * และพอเปิดไฟล์ดูยอดก็บังตารางอีก กรอกไปดูไปไม่ได้สักทาง
+       *
+       * ฝั่งที่ส่งแล้วยังเป็นแผงอ่านค่าแบบเดิม เพราะแก้อะไรไม่ได้อยู่แล้ว
+       */
       label: 'ETA official · Port · Terminal · Partner', kind: 'wrap',
       render: (r) => (
         <DoRowForm
-          readOnly={sent}
+          readOnly
           jobId={r.id}
           eta={r.eta}
           portId={r.portId ?? defaultPortId}
@@ -93,6 +104,18 @@ export default async function FahDoPage({
       : []),
   ];
 
+  const table = (
+    <JobTable
+      basePath="/fah/do"
+      columns={columns}
+      rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
+      empty={tab === 'sent' ? 'ยังไม่มีงานที่ส่ง Partner แล้ว' : 'ไม่มีงานรอส่ง Partner'}
+      hint={sent
+        ? 'ขอแก้ไขได้ที่ปุ่มท้ายแถว'
+        : 'คลิกที่แถวเพื่อเปิดแผงกรอกคู่กับ Invoice DO · Port · Terminal · Partner มาจาก Master Data'}
+    />
+  );
+
   return (
     <>
       <div className="page-head">
@@ -100,13 +123,30 @@ export default async function FahDoPage({
         <p>ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port · Terminal · Partner แล้วจึงส่ง Partner</p>
       </div>
       <Tabs basePath="/fah/do" items={TABS} active={tab} carry={carry} />
-      <JobTable
-        basePath="/fah/do"
-        columns={columns}
-        rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
-        empty={tab === 'sent' ? 'ยังไม่มีงานที่ส่ง Partner แล้ว' : 'ไม่มีงานรอส่ง Partner'}
-        hint="Port · Terminal · Partner มาจาก Master Data · กดส่ง Partner แล้วงานจะย้ายไปแท็บ ส่ง Partner แล้ว"
-      />
+      {sent ? table : (
+        <DoFillBoard
+          jobs={rows.map((r) => ({
+            id: r.id,
+            jobNo: r.jobNo,
+            blNo: r.blNo,
+            consigneeName: r.consigneeName,
+            eta: r.eta,
+            portId: r.portId,
+            terminalId: r.terminalId,
+            releasePartner: r.releasePartner,
+            invoiceFileId: r.currentFiles?.INVOICE_DO?.id ?? null,
+            invoiceFileName: r.currentFiles?.INVOICE_DO?.fileName ?? null,
+          }))}
+          ports={ports}
+          terminals={terminals}
+          partners={partners}
+          defaultPortId={defaultPortId}
+          defaultPartnerId={defaultPartnerId}
+          sentAt={Object.fromEntries(sentMap)}
+        >
+          {table}
+        </DoFillBoard>
+      )}
     </>
   );
 }

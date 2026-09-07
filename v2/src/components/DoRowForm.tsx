@@ -62,7 +62,12 @@ export function DoRowForm({
         <div className="do-cell"><span>Port of Discharge</span><b>{nameOf(ports, portId)}</b></div>
         <div className="do-cell"><span>Terminal</span><b>{nameOf(terminals, terminalId)}</b></div>
         <div className="do-cell"><span>Port Release Partner</span><b>{partnerName ?? '-'}</b></div>
-        <div className="do-buttons"><span className="badge approved">ส่งแล้ว</span></div>
+        <div className="do-buttons">
+          {/* ฝั่งรอส่งก็ใช้มุมมองอ่านอย่างเดียวนี้ ป้ายจึงต้องบอกตามจริงว่ายังไม่ได้ส่ง */}
+          {sentAt
+            ? <span className="badge approved">ส่งแล้ว</span>
+            : <span className="badge pending">คลิกแถวเพื่อกรอก</span>}
+        </div>
       </div>
     );
   }

@@ -908,6 +908,36 @@ table.data td.col-wrap.col-client, table.data th.col-client { width: 200px; min-
 /* รายการที่กางออกมาต้องทับแถวอื่นได้ ไม่ถูกตัดด้วยกรอบตาราง */
 table.data td.col-client { overflow: visible; }
 
+/*
+ * ---------- แผงกรอก DO คู่กับไฟล์ (ฝั่งรอส่ง Partner) ----------
+ *
+ * ไฟล์อยู่บน ฟอร์มอยู่ล่าง อ่านยอดแล้วสายตาไหลลงมาที่ช่องกรอกพอดี
+ * ไฟล์ยืดเต็มที่เหลือ ฟอร์มสูงเท่าที่ต้องใช้ ไม่ต้องเลื่อนหาปุ่มบันทึก
+ */
+.do-pane { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.do-pane-view {
+  flex: 1; min-height: 260px; width: 100%;
+  border: 1px solid var(--line); border-radius: 8px; background: #f4f6f8;
+}
+.do-pane-form {
+  flex: none; padding: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+/* ในแผงมีที่พอ ช่องจึงกางเต็มไม่ต้องบีบเป็นสองคอลัมน์เหมือนตอนอยู่ในตาราง */
+.do-pane-form .do-row {
+  min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.do-pane-form .do-cell input, .do-pane-form .do-cell select {
+  min-height: 34px; font-size: 13px;
+}
+.do-pane-form .do-cell span { font-size: 11px; }
+
+/* แถวที่กำลังกรอกอยู่ ต้องเห็นชัดว่าแผงซ้ายเป็นของแถวไหน */
+.do-board tbody tr[data-open-job] { cursor: pointer; }
+.do-board tbody tr.do-active,
+.do-board tbody tr.do-active:hover { background: var(--blue-soft); }
+.do-board tbody tr.do-active td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+
 /* แถว Invoice DO ที่ส่ง Partner แล้ว — แสดงค่าอย่างเดียว */
 .do-row.readonly .do-cell b {
   display: block; font-size: 12px; font-weight: 600; min-height: 20px; padding: 3px 0;
