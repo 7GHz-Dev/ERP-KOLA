@@ -523,7 +523,9 @@ label.mini span { font-size: 12px; }
 
 :root { --sidebar: #0a1530; }
 
-.app-shell { grid-template-columns: 250px minmax(0, 1fr); }
+/* ความกว้างแถบเมนูใช้ซ้ำที่แผงจอดซ้ายด้วย แก้ที่เดียวให้ตรงกันเสมอ */
+:root { --sidebar-w: 250px; }
+.app-shell { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
 
 .sidebar {
   background: var(--sidebar); color: #fff; padding: 0; gap: 0;
@@ -1020,6 +1022,40 @@ body.has-trim-pane .extract-field.wide { grid-column: 1 / -1; }
  * ผูกไว้กับตัวแปรเดียว แก้ที่เดียวได้ครบทุกแผง
  */
 .job-drawer.wide { width: var(--doc-drawer-w); }
+
+/*
+ * ---------- แผงที่จอดชิดซ้าย (ดูเอกสารไปกรอกตารางไป) ----------
+ *
+ * หน้า Upload InvDO ต้องเปิด Invoice DO อ่านยอดแล้วกรอก ETA · Port ·
+ * Terminal · Partner ในตารางไปพร้อมกัน แผงแบบเดิมกางทับตารางและมีฉากหลัง
+ * ทับอีกชั้น กรอกไม่ได้จนกว่าจะปิดแผง ซึ่งพอปิดก็ไม่เห็นยอดที่จะกรอกแล้ว
+ *
+ * แผงนี้จอดชิดซ้ายถัดจากแถบเมนู แล้วดันตารางไปทางขวาแทนการทับ
+ * ทั้งสองฝั่งจึงใช้งานพร้อมกันได้
+ */
+.dock-root { pointer-events: none; }
+.dock-root .job-drawer { pointer-events: auto; }
+
+.job-drawer.dock-left {
+  /* ชิดซ้ายของเนื้อหน้า ไม่ทับแถบเมนูที่ต้องกดสลับหน้าได้ตลอด */
+  inset: 0 auto 0 var(--sidebar-w);
+  transform: translateX(-105%);
+  box-shadow: 14px 0 40px rgba(15, 35, 49, .22);
+}
+.job-drawer.dock-left.open { transform: translateX(0); }
+
+/* ดันเนื้อหน้าให้พ้นแผง ตารางจึงยังกดกรอกได้ครบทุกช่อง */
+body.has-dock-pane .main { padding-left: calc(var(--doc-drawer-w) + 16px); }
+
+/*
+ * จอแคบแบ่งสองฝั่งไม่ไหว — ตารางเหลือที่ไม่พอกรอก
+ * ให้แผงทับไปเลยแบบเดิม เปิดดูยอดแล้วปิดแผงตอนจะกรอก
+ * เกณฑ์เดียวกับแผงตัดหน้า AN/BL ที่กว้างเท่ากัน
+ */
+@media (max-width: 1648px) {
+  .job-drawer.dock-left { width: var(--doc-drawer-w-narrow); }
+  body.has-dock-pane .main { padding-left: 0; }
+}
 
 .file-preview-view {
   display: block; width: 100%; height: 100%; min-height: 0;
