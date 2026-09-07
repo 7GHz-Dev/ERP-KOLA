@@ -2,12 +2,15 @@ import Link from 'next/link';
 import { requireUserReady } from '@/lib/auth';
 import { masterCounts } from '@/lib/queries/master';
 import {
-  DO_LETTER_FIELDS, DO_LETTER_GROUPS, LETTER_BLOCKS, SHIPPING_LINES,
+  DO_LETTER_FIELDS, DO_LETTER_GROUPS, LETTER_BLOCKS, LETTER_COMPANIES, SHIPPING_LINES,
   blockCode, lineKey, loadDoLetterForm,
+  signKey, signNameKey, stampKey, stampNameKey,
 } from '@/lib/do-letter';
 import { FormPreviewPane } from '@/components/FormPreviewPane';
 import { DO_LETTER_MENU_KEY, MasterMenu } from '@/components/MasterMenu';
-import { saveDoLetterForm } from '@/lib/actions/do-letter';
+import {
+  removeDoLetterAsset, saveDoLetterForm, uploadDoLetterAsset,
+} from '@/lib/actions/do-letter';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +64,59 @@ export default async function DoLetterFormPage({
               </Link>
             ))}
           </div>
+
+          {/*
+            * ตราและลายเซ็นใช้ร่วมกันทุกสายเรือ จึงตั้งได้เฉพาะที่แท็บค่ากลาง
+            * ไม่งั้นผู้ดูแลจะเข้าใจว่าอัปแยกรายสายเรือได้ แล้วสงสัยว่าทำไมค่าไม่แยก
+            */}
+          {line ? null : (
+            <div className="doc-form-section">
+              <h2>ตราประทับและลายเซ็น</h2>
+              <p className="meta">
+                อัปโหลดไว้แล้วจะกดปุ่ม “+ ประทับตรา” ที่หน้าจัดการแลก DO เพื่อออกฉบับที่ประทับให้เลยได้
+                · แนะนำ PNG พื้นหลังโปร่ง จะได้ไม่มีกรอบขาวทับข้อความ
+                · ตำแหน่งปรับได้ที่หัวข้อ “ป้ายกำกับ/ตำแหน่ง” ด้านล่าง
+              </p>
+              <div className="stamp-grid">
+                {LETTER_COMPANIES.map((co) => (
+                  <div className="stamp-card" key={co}>
+                    <h3>ใบที่ {co} · {form.coValue(co, 'companyName') || `บริษัทที่ ${co}`}</h3>
+                    {(['stamp', 'sign'] as const).map((kind) => {
+                      const saved = form.raw(kind === 'stamp' ? stampKey(co) : signKey(co));
+                      const name = form.raw(kind === 'stamp' ? stampNameKey(co) : signNameKey(co));
+                      return (
+                        <div className="stamp-row" key={kind}>
+                          <span className="stamp-label">
+                            {kind === 'stamp' ? 'ตราประทับ' : 'ลายเซ็น'}
+                          </span>
+                          {saved ? (
+                            <>
+                              <span className="badge approved">{name || 'อัปโหลดแล้ว'}</span>
+                              <form action={removeDoLetterAsset} className="inline-form">
+                                <input type="hidden" name="company" value={co} />
+                                <input type="hidden" name="kind" value={kind} />
+                                <button className="button tiny ghost" type="submit">เอาออก</button>
+                              </form>
+                            </>
+                          ) : (
+                            <span className="badge pending">ยังไม่มี</span>
+                          )}
+                          <form action={uploadDoLetterAsset} className="inline-form">
+                            <input type="hidden" name="company" value={co} />
+                            <input type="hidden" name="kind" value={kind} />
+                            <input type="file" name="file" accept="image/png,image/jpeg" required />
+                            <button className="button tiny" type="submit">
+                              {saved ? 'เปลี่ยนรูป' : 'อัปโหลด'}
+                            </button>
+                          </form>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <form action={saveDoLetterForm} className="doc-form">
             <input type="hidden" name="line" value={line} />

@@ -97,6 +97,8 @@ export const companyKey = (co: CompanyNo, field: string) => `co${co}.${field}`;
  */
 export const signerBlock = (co: CompanyNo) => `signer${co}`;
 export const signerTitleBlock = (co: CompanyNo) => `signerTitle${co}`;
+export const stampBlock = (co: CompanyNo) => `stamp${co}`;
+export const signBlock = (co: CompanyNo) => `sign${co}`;
 
 /**
  * ช่องข้อความอิสระที่ผู้ดูแลเพิ่มเองได้ — เนื้อความและตำแหน่งกำหนดเองทั้งคู่
@@ -105,6 +107,21 @@ export const signerTitleBlock = (co: CompanyNo) => `signerTitle${co}`;
  * ให้ช่องว่างไว้ 4 ช่อง ช่องที่ไม่ได้กรอกข้อความจะไม่ถูกวาด จึงไม่กินที่บนกระดาษ
  * แยกรายสายเรือได้เหมือนช่องอื่น — ค่ากลางกรอกไว้ สายเรือไหนไม่ใช้ก็เว้นว่าง
  */
+/**
+ * ตราประทับและลายเซ็นของแต่ละบริษัท — เก็บเป็นรูปใน storage
+ *
+ * เลือกได้ตอนออกจดหมายว่าจะประทับให้เลยหรือเว้นไว้เซ็นสด
+ * เก็บ key ของไฟล์ไว้ใน master_records เหมือนแบบฟอร์มพื้นหลังของ E-Office
+ * ไม่ได้ฝังรูปไว้ในโค้ด ผู้ดูแลจึงเปลี่ยนตราหรือลายเซ็นเองได้เมื่อมีการเปลี่ยนผู้มีอำนาจ
+ */
+export const stampKey = (co: CompanyNo) => `co${co}.stamp`;
+export const signKey = (co: CompanyNo) => `co${co}.sign`;
+export const stampNameKey = (co: CompanyNo) => `co${co}.stampName`;
+export const signNameKey = (co: CompanyNo) => `co${co}.signName`;
+
+/** ที่เก็บไฟล์ตราและลายเซ็นใน storage */
+export const DO_LETTER_ASSET_PREFIX = 'forms/do-letter';
+
 export const CUSTOM_NOTES = [1, 2, 3, 4] as const;
 export type CustomNoteNo = (typeof CUSTOM_NOTES)[number];
 
@@ -211,6 +228,27 @@ export const LETTER_BLOCKS: LetterBlock[] = [
     label: `ตำแหน่งผู้ลงนาม ใบที่ ${co}`,
     x: 400,
     y: 771,
+  })),
+  /*
+   * ตราประทับอยู่หน้าชื่อผู้ลงนาม ส่วนลายเซ็นอยู่เหนือชื่อ
+   * gap ใช้เป็นความกว้างของรูป (จุด) ความสูงคำนวณตามสัดส่วนของไฟล์เอง
+   * จะได้ไม่ต้องกรอกสองค่าและรูปไม่มีทางถูกยืดจนเพี้ยน
+   */
+  ...LETTER_COMPANIES.map((co) => ({
+    key: stampBlock(co),
+    label: `ตราประทับ ใบที่ ${co} (gap = ความกว้าง)`,
+    // อยู่หน้าชื่อผู้ลงนาม (ชื่ออยู่ราว x=383 y=700) คร่อมบรรทัดชื่อขึ้นไปด้านบน
+    x: 292,
+    y: 648,
+    gap: 95,
+  })),
+  ...LETTER_COMPANIES.map((co) => ({
+    key: signBlock(co),
+    label: `ลายเซ็น ใบที่ ${co} (gap = ความกว้าง)`,
+    // อยู่เหนือชื่อผู้ลงนาม ระหว่างคำลงท้าย (y=630) กับชื่อ (y=700)
+    x: 385,
+    y: 632,
+    gap: 150,
   })),
   ...CUSTOM_NOTES.map((n) => ({
     key: customNoteBlock(n),

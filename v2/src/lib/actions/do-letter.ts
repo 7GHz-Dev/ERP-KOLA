@@ -6,9 +6,11 @@ import { db } from '@/db';
 import { jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import {
-  DO_LETTER_FIELDS, LETTER_BLOCKS, SHIPPING_LINES,
+  DO_LETTER_ASSET_PREFIX, DO_LETTER_FIELDS, LETTER_BLOCKS, LETTER_COMPANIES, SHIPPING_LINES,
   blockCode, lineKey, saveDoLetterValues,
+  signKey, signNameKey, stampKey, stampNameKey, type CompanyNo,
 } from '@/lib/do-letter';
+import { ensureBucket, uploadFile } from '@/lib/storage';
 import { storeDoLetterPdf } from '@/lib/do-letter-store';
 import { logActivity, newId, runAction, text } from './common';
 
@@ -89,4 +91,72 @@ async function saveDoLetterTextImpl(formData: FormData) {
 
 export async function saveDoLetterText(formData: FormData) {
   return runAction(() => saveDoLetterTextImpl(formData));
+}
+
+/** ขนาดสูงสุดของรูปตราและลายเซ็น — เล็กกว่าไฟล์แนบทั่วไปเพราะเป็นรูปเดียว */
+const MAX_ASSET_BYTES = 4 * 1024 * 1024;
+
+/**
+ * อัปโหลดตราประทับหรือลายเซ็นของบริษัทหนึ่ง
+ *
+ * รับเฉพาะ PNG กับ JPEG เพราะตัววาด PDF ฝังได้แค่สองแบบนี้
+ * แนะนำ PNG พื้นหลังโปร่ง จะได้ไม่มีกรอบสี่เหลี่ยมขาวทับข้อความบนจดหมาย
+ */
+async function uploadDoLetterAssetImpl(formData: FormData) {
+  const user = await requireActiveSession(['ADMIN']);
+
+  const co = Number(text(formData.get('company'), 4)) as CompanyNo;
+  if (!LETTER_COMPANIES.includes(co)) throw new Error('ไม่พบบริษัทที่เลือก');
+  const kind = text(formData.get('kind'), 10);
+  if (kind !== 'stamp' && kind !== 'sign') throw new Error('ชนิดรูปไม่ถูกต้อง');
+
+  const blob = formData.get('file');
+  if (!(blob instanceof File) || blob.size === 0) throw new Error('กรุณาเลือกไฟล์');
+  if (blob.size > MAX_ASSET_BYTES) throw new Error('ไฟล์ต้องมีขนาดไม่เกิน 4 MB');
+
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  const isPng = bytes.subarray(1, 4).toString('latin1') === 'PNG';
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  if (!isPng && !isJpeg) throw new Error('ต้องเป็นไฟล์ PNG หรือ JPG เท่านั้น');
+
+  const key = `${DO_LETTER_ASSET_PREFIX}/${newId('IMG')}-${kind}${co}${isPng ? '.png' : '.jpg'}`;
+  await ensureBucket();
+  await uploadFile(key, bytes, isPng ? 'image/png' : 'image/jpeg');
+
+  await saveDoLetterValues(new Map([
+    [kind === 'stamp' ? stampKey(co) : signKey(co), key],
+    [kind === 'stamp' ? stampNameKey(co) : signNameKey(co), blob.name],
+  ]), () => newId('MD'));
+
+  await logActivity(user.id, 'UPLOAD_DO_LETTER_ASSET', 'doLetterForm', `${kind}${co}`,
+    { fileName: blob.name });
+  revalidatePath('/master/do-letter');
+}
+
+/** เอาตราหรือลายเซ็นออก กลับไปเว้นที่ให้เซ็นสด */
+async function removeDoLetterAssetImpl(formData: FormData) {
+  const user = await requireActiveSession(['ADMIN']);
+  const co = Number(text(formData.get('company'), 4)) as CompanyNo;
+  if (!LETTER_COMPANIES.includes(co)) throw new Error('ไม่พบบริษัทที่เลือก');
+  const kind = text(formData.get('kind'), 10);
+  if (kind !== 'stamp' && kind !== 'sign') throw new Error('ชนิดรูปไม่ถูกต้อง');
+
+  /*
+   * ล้างค่าในตารางอย่างเดียว ไม่ลบไฟล์ใน storage
+   * จดหมายที่ออกไปแล้วฝังรูปไว้ในตัว PDF จึงไม่กระทบ และถ้าเผลอลบก็ยังกู้กลับได้
+   */
+  await saveDoLetterValues(new Map([
+    [kind === 'stamp' ? stampKey(co) : signKey(co), ''],
+    [kind === 'stamp' ? stampNameKey(co) : signNameKey(co), ''],
+  ]), () => newId('MD'));
+
+  await logActivity(user.id, 'REMOVE_DO_LETTER_ASSET', 'doLetterForm', `${kind}${co}`, {});
+  revalidatePath('/master/do-letter');
+}
+
+export async function uploadDoLetterAsset(formData: FormData) {
+  return runAction(() => uploadDoLetterAssetImpl(formData));
+}
+export async function removeDoLetterAsset(formData: FormData) {
+  return runAction(() => removeDoLetterAssetImpl(formData));
 }

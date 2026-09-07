@@ -4,7 +4,10 @@ import { files, jobs, masterRecords } from '@/db/schema';
 import { buildKey, downloadFile, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId } from '@/lib/actions/common';
 import { renderDoLetterPdf } from '@/lib/do-letter-pdf';
-import { matchShippingLine, normalizeDestination } from '@/lib/do-letter';
+import {
+  LETTER_COMPANIES, loadDoLetterForm, matchShippingLine, normalizeDestination,
+  signKey, stampKey, type CompanyNo,
+} from '@/lib/do-letter';
 import { extractPdfTextServer, parsePortOfLoading } from '@/lib/port-of-loading';
 
 /**
@@ -46,8 +49,41 @@ async function resolveOriginPort(jobId: string, saved: string | null): Promise<s
   return null;
 }
 
-/** ออกจดหมายแลก D/O แล้วเก็บเป็นไฟล์ของงาน พร้อมบันทึกว่าทำจดหมายแล้ว */
-export async function storeDoLetterPdf(jobId: string, userId: string) {
+/**
+ * โหลดรูปตราและลายเซ็นของทุกบริษัทจาก storage
+ *
+ * ใบไหนยังไม่ได้อัปรูปไว้ก็ข้ามไป จดหมายใบนั้นจะเว้นที่ให้เซ็นสดเหมือนเดิม
+ * โหลดไม่สำเร็จก็ข้ามเช่นกัน ดีกว่าออกจดหมายไม่ได้ทั้งใบเพราะรูปหาย
+ */
+async function loadStampAssets() {
+  const form = await loadDoLetterForm();
+  const out: Partial<Record<CompanyNo, { stamp?: Buffer; sign?: Buffer }>> = {};
+
+  for (const co of LETTER_COMPANIES) {
+    const grab = async (key: string) => {
+      if (!key) return undefined;
+      try {
+        return (await downloadFile(key)).body;
+      } catch {
+        return undefined;
+      }
+    };
+    const [stamp, sign] = await Promise.all([
+      grab(form.raw(stampKey(co))),
+      grab(form.raw(signKey(co))),
+    ]);
+    if (stamp || sign) out[co] = { stamp, sign };
+  }
+  return out;
+}
+
+/**
+ * ออกจดหมายแลก D/O แล้วเก็บเป็นไฟล์ของงาน พร้อมบันทึกว่าทำจดหมายแล้ว
+ *
+ * withStamp = ประทับตราและลายเซ็นให้เลย เก็บเป็นไฟล์คนละใบกับแบบเปล่า
+ * ทั้งสองแบบจึงอยู่กับงานพร้อมกัน เลือกใช้ใบไหนตอนรวมชุดก็ได้
+ */
+export async function storeDoLetterPdf(jobId: string, userId: string, withStamp = false) {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
 
@@ -88,24 +124,29 @@ export async function storeDoLetterPdf(jobId: string, userId: string) {
     originName,
     // ข้อความที่ผู้ใช้แก้ไว้บนจดหมายฉบับนี้ ทับค่าที่มาจากข้อมูลงาน
     overrides,
-  });
+  }, undefined, withStamp ? { stamps: await loadStampAssets() } : {});
 
+  /*
+   * แบบมีตราเก็บแยกหมวดจากแบบเปล่า ทั้งสองใบจึงอยู่กับงานพร้อมกัน
+   * ออกใบหนึ่งใหม่ไม่ไปทับอีกใบ เพราะบางสายเรือขอฉบับเซ็นสด บางสายรับฉบับประทับ
+   */
+  const category = withStamp ? 'DO_LETTER_SIGNED' : 'DO_LETTER';
   // ไฟล์เดียวมีสองหน้า — ใบของ KOLA และใบของ MAESOT FREEZONE
-  const fileName = `${job.jobNo} [จดหมายแลก DO ${line}].pdf`;
+  const fileName = `${job.jobNo} [จดหมายแลก DO ${line}${withStamp ? ' ประทับตรา' : ''}].pdf`;
   const id = newId('FIL');
-  const key = buildKey(jobId, 'DO_LETTER', id, fileName);
+  const key = buildKey(jobId, category, id, fileName);
 
   await ensureBucket();
   await uploadFile(key, bytes, 'application/pdf');
 
   const [previous] = await db.select().from(files)
-    .where(and(eq(files.jobId, jobId), eq(files.category, 'DO_LETTER'), eq(files.isCurrent, true)))
+    .where(and(eq(files.jobId, jobId), eq(files.category, category), eq(files.isCurrent, true)))
     .limit(1);
   await db.update(files).set({ isCurrent: false, supersededBy: id })
-    .where(and(eq(files.jobId, jobId), eq(files.category, 'DO_LETTER'), eq(files.isCurrent, true)));
+    .where(and(eq(files.jobId, jobId), eq(files.category, category), eq(files.isCurrent, true)));
 
   await db.insert(files).values({
-    id, jobId, category: 'DO_LETTER', version: (previous?.version ?? 0) + 1,
+    id, jobId, category, version: (previous?.version ?? 0) + 1,
     storageKey: key, fileName, mimeType: 'application/pdf',
     sizeBytes: bytes.length, uploadedBy: userId,
     note: editedRows

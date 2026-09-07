@@ -39,10 +39,13 @@ export default async function DoExchangePage({
       render: (r) => (
         <div className="file-cell">
           <FileChip file={r.currentFiles?.DO_LETTER} />
+          {/* ฉบับประทับตราเป็นคนละไฟล์ จึงต้องเห็นคู่กันว่ามีอันไหนแล้วบ้าง */}
+          <FileChip file={r.currentFiles?.DO_LETTER_SIGNED} />
           <DoLetterButton
             jobId={r.id}
             ready={Boolean(matchShippingLine(r.shipline))}
             done={Boolean(r.currentFiles?.DO_LETTER)}
+            signedDone={Boolean(r.currentFiles?.DO_LETTER_SIGNED)}
           />
           {/* สายเรือที่ยังไม่มีแบบฟอร์ม หรือจดหมายที่ทำมาจากข้างนอก ก็แนบเข้ามาเองได้ */}
           <UploadForm

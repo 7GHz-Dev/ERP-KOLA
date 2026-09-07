@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   CUSTOM_NOTES, DETAIL_ROWS, LETTER_COMPANIES, customNoteBlock, customNoteKey,
-  labelKey, letterDate, loadDoLetterForm, signerBlock, signerTitleBlock,
+  labelKey, letterDate, loadDoLetterForm, signBlock, signerBlock, signerTitleBlock, stampBlock,
   type CompanyNo, type DoLetterForm,
 } from '@/lib/do-letter';
 import { drawCoordinateGrid } from '@/lib/pdf-grid';
@@ -115,6 +115,13 @@ function wrapBy(
 export type RenderOptions = {
   /** วาดเส้นตารางพิกัดทับให้ด้วย ใช้ตอนตั้งตำแหน่งบล็อกบนกระดาษ */
   grid?: boolean;
+  /**
+   * ประทับตราและลายเซ็นลงบนจดหมายให้เลย
+   *
+   * ต้องส่งรูปมาด้วยเพราะตัววาดไม่ได้ต่อ storage เอง คนเรียกเป็นฝ่ายโหลดมาให้
+   * ใบไหนไม่มีรูปก็ข้ามไป เว้นที่ไว้ให้เซ็นสดเหมือนเดิม
+   */
+  stamps?: Partial<Record<CompanyNo, { stamp?: Buffer; sign?: Buffer }>>;
 };
 
 export async function renderDoLetterPdf(
@@ -124,7 +131,7 @@ export async function renderDoLetterPdf(
 ): Promise<Buffer> {
   const f = form ?? await loadDoLetterForm();
   const line = data.shippingLine;
-  const { PDFDocument, rgb } = await import('@cantoo/pdf-lib');
+  const { BlendMode, PDFDocument, rgb } = await import('@cantoo/pdf-lib');
   const fontkitModule = await import('@pdf-lib/fontkit');
   const fontkit = fontkitModule.default;
   const fonts = await loadFonts();
@@ -215,6 +222,24 @@ export async function renderDoLetterPdf(
    * ทุกใบใช้เนื้อความและพิกัดชุดเดียวกัน ต่างแค่หัวจดหมาย ที่อยู่ และผู้ลงนาม
    * จึงแยกเป็นฟังก์ชันแล้ววนเรียกตามจำนวนบริษัท ไม่ต้องเขียนโครงจดหมายซ้ำ
    */
+  /*
+   * ฝังรูปให้เสร็จก่อนเริ่มวาด เพราะ embedPng/embedJpg เป็น async
+   * แต่ตัววาดจดหมายเป็น sync ทั้งก้อน แยกขั้นตอนกันจึงไม่ต้องแปลงทั้งไฟล์เป็น async
+   */
+  type Embedded = { image: Awaited<ReturnType<typeof doc.embedPng>>; isPng: boolean };
+  const embedded: Partial<Record<CompanyNo, { stamp?: Embedded; sign?: Embedded }>> = {};
+  for (const co of LETTER_COMPANIES) {
+    const assets = options.stamps?.[co];
+    if (!assets) continue;
+    const embed = async (bytes?: Buffer) => {
+      if (!bytes) return undefined;
+      // ดูจากลายเซ็นไบต์แรกว่าเป็น PNG หรือ JPEG ไม่เชื่อนามสกุลไฟล์
+      const isPng = bytes.subarray(1, 4).toString('latin1') === 'PNG';
+      return { image: await (isPng ? doc.embedPng(bytes) : doc.embedJpg(bytes)), isPng };
+    };
+    embedded[co] = { stamp: await embed(assets.stamp), sign: await embed(assets.sign) };
+  }
+
   const drawLetter = (co: CompanyNo) => {
     const page = doc.addPage([PAGE_W, PAGE_H]);
 
@@ -372,6 +397,38 @@ export async function renderDoLetterPdf(
     // ---------- ผู้ลงนาม ----------
     const closeAt = b('closing');
     draw(f.value('closing', line), closeAt, { bold: true });
+
+    /*
+     * ตราประทับกับลายเซ็น — วาดก่อนชื่อผู้ลงนาม ตัวหนังสือจะได้อยู่บนสุด
+     * ของจริงประทับคร่อมชื่อ ถ้าวาดทีหลังจะบังชื่อจนอ่านไม่ออก
+     *
+     * ความกว้างมาจาก gap ของบล็อก ความสูงคิดตามสัดส่วนจริงของรูป
+     * จึงไม่มีทางถูกยืดจนตราเบี้ยว ส่วน y ที่ตั้งไว้คือขอบล่างของรูป
+     */
+    const placeImage = (
+      entry: { image: { width: number; height: number }; isPng: boolean } | undefined,
+      at: { x: number; y: number; gap: number },
+    ) => {
+      if (!entry) return;
+      const { image, isPng } = entry;
+      const width = at.gap;
+      const height = (image.height / image.width) * width;
+      /*
+       * y ที่ตั้งไว้คือ "ขอบบน" ของรูป นับจากขอบบนกระดาษเหมือนบล็อกข้อความอื่น
+       * pdf-lib วาดรูปโดยอิงขอบล่าง จึงต้องลบความสูงออกอีกทีตอนแปลงพิกัด
+       */
+      /*
+       * PNG ที่มีพื้นหลังโปร่งวาดตรง ๆ ได้เลย
+       * ส่วน JPEG ไม่มีช่องโปร่งใส จึงใช้ blend multiply ให้พื้นขาวจางหายไปแทน
+       * ผู้ใช้จะอัปแบบไหนมาก็ได้ผลที่ใช้งานได้ทั้งคู่
+       */
+      page.drawImage(image as Parameters<typeof page.drawImage>[0], {
+        x: at.x, y: PAGE_H - at.y - height, width, height,
+        ...(isPng ? {} : { blendMode: BlendMode.Multiply }),
+      });
+    };
+    placeImage(embedded[co]?.stamp, b(stampBlock(co)));
+    placeImage(embedded[co]?.sign, b(signBlock(co)));
 
     // แต่ละใบมีบล็อกผู้ลงนามของตัวเอง เลื่อนใบที่ 2 ได้โดยใบที่ 1 ไม่ขยับตาม
     const signAt = b(signerBlock(co));

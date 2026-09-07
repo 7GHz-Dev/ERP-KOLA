@@ -1128,3 +1128,22 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
 
 /* ปุ่มออกจดหมายกับแก้ข้อความอยู่แถวเดียวกัน ไม่ให้ช่องตารางสูงเกินจำเป็น */
 .do-letter-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* ตราประทับและลายเซ็นในหน้าตั้งค่าจดหมายแลก DO */
+.doc-form-section {
+  margin-bottom: 14px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+.doc-form-section h2 { margin: 0 0 4px; font-size: 14px; }
+.doc-form-section .meta { margin: 0 0 10px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.stamp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 900px) { .stamp-grid { grid-template-columns: 1fr; } }
+.stamp-card { padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
+.stamp-card h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+.stamp-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 6px 0; border-top: 1px solid var(--line);
+}
+.stamp-row:first-of-type { border-top: 0; }
+.stamp-label { min-width: 68px; font-size: 12px; font-weight: 700; }
+.stamp-row input[type="file"] { max-width: 190px; font-size: 11px; }

@@ -27,11 +27,12 @@ export const MERGED_CATEGORY = 'EOFFICE_MERGED';
 
 /**
  * ชุดแลก D/O — ลำดับเดียวกับที่ยื่นจริง
+ * จดหมายใช้ใบที่ประทับตราแล้วก่อน ถ้ายังไม่ได้ออกค่อยใช้ใบเปล่า
  * ใบขนส่งใช้ Arrival Notice ก่อน ถ้างานนั้นไม่มีค่อยถอยไปใช้ BL
  * เอกสารอื่น ๆ ต่อท้ายได้ เพราะมีหลายใบไม่แน่นอน
  */
 export const DO_BUNDLE_PARTS: Array<{ label: string; categories: string[] }> = [
-  { label: 'จดหมายแลก DO', categories: ['DO_LETTER'] },
+  { label: 'จดหมายแลก DO', categories: ['DO_LETTER_SIGNED', 'DO_LETTER'] },
   { label: 'Arrival Notice / BL', categories: ['ARRIVAL_NOTICE', 'BL'] },
   { label: 'Invoice DO', categories: ['INVOICE_DO'] },
   { label: 'Slip โอนเงิน', categories: ['DO_SLIP'] },

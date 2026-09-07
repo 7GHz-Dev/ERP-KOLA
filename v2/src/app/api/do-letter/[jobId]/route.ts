@@ -22,9 +22,12 @@ export async function GET(
   }
 
   const { jobId } = await params;
-  const wantsJson = new URL(_request.url).searchParams.get('json') === '1';
+  const query = new URL(_request.url).searchParams;
+  const wantsJson = query.get('json') === '1';
+  // stamp=1 คือขอฉบับที่ประทับตราและลายเซ็นให้เลย
+  const withStamp = query.get('stamp') === '1';
   try {
-    const { id, fileName, bytes } = await storeDoLetterPdf(jobId, user.id);
+    const { id, fileName, bytes } = await storeDoLetterPdf(jobId, user.id, withStamp);
     if (wantsJson) {
       return Response.json({ id, fileName });
     }
