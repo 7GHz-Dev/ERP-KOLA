@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { and, asc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { masterRecords } from '@/db/schema';
@@ -36,13 +37,14 @@ export async function listMaster(type: string, search?: string) {
     .limit(500);
 }
 
-export async function masterCounts() {
+/** cache ไว้ต่อ request เพราะทุกหน้าในหมวด Master Data เรียกเหมือนกันหมด */
+export const masterCounts = cache(async function masterCounts() {
   const rows = await db
     .select({ type: masterRecords.type, count: sql<number>`count(*)::int` })
     .from(masterRecords)
     .groupBy(masterRecords.type);
   return new Map(rows.map((r) => [r.type, r.count]));
-}
+})
 
 export type Option = { id: string; code: string | null; name: string };
 
@@ -72,13 +74,21 @@ export async function intakeOptions() {
   };
 }
 
+/**
+ * ค่าตั้งต้นทั้งหมดในรอบเดียว — cache ต่อหนึ่ง request
+ *
+ * หน้าหนึ่งมักอ่านหลายค่า เดิมยิงทีละค่าจึงเสียเวลาไป-กลับฐานข้อมูลค่าละรอบ
+ * ตารางนี้มีไม่กี่สิบแถว ดึงมาทั้งก้อนถูกกว่าการถามทีละใบ
+ */
+const allSettings = cache(async () => {
+  const rows = await db
+    .select({ code: masterRecords.code, value: masterRecords.value })
+    .from(masterRecords)
+    .where(and(eq(masterRecords.type, 'settings'), eq(masterRecords.isActive, true)));
+  return new Map(rows.map((r) => [r.code ?? '', (r.value ?? '').trim()]));
+});
+
 /** ค่าตั้งต้นที่ผู้ดูแลแก้ได้จากหน้า Master Data */
 export async function settingValue(code: string, fallback: string): Promise<string> {
-  const [row] = await db
-    .select({ value: masterRecords.value })
-    .from(masterRecords)
-    .where(and(eq(masterRecords.type, 'settings'), eq(masterRecords.code, code), eq(masterRecords.isActive, true)))
-    .limit(1);
-  const value = (row?.value ?? '').trim();
-  return value || fallback;
+  return (await allSettings()).get(code) || fallback;
 }
