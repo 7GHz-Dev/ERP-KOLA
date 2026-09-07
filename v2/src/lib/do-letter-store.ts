@@ -68,6 +68,15 @@ export async function storeDoLetterPdf(jobId: string, userId: string) {
 
   const originName = await resolveOriginPort(jobId, job.originPort);
 
+  const overrides = {
+    blNo: job.doLetterBlNo,
+    origin: job.doLetterOrigin,
+    destination: job.doLetterDestination,
+    vessel: job.doLetterVessel,
+    eta: job.doLetterEta,
+  };
+  const editedRows = Object.values(overrides).filter((v) => (v ?? '').trim()).length;
+
   const bytes = await renderDoLetterPdf({
     shippingLine: line,
     blNo: job.blNo,
@@ -77,6 +86,8 @@ export async function storeDoLetterPdf(jobId: string, userId: string) {
     // ทุกงานลงแหลมฉบัง เขียนได้หลายแบบจึงรวบให้เป็นข้อความเดียวก่อนวาด
     portName: normalizeDestination(port?.name ?? null) || null,
     originName,
+    // ข้อความที่ผู้ใช้แก้ไว้บนจดหมายฉบับนี้ ทับค่าที่มาจากข้อมูลงาน
+    overrides,
   });
 
   // ไฟล์เดียวมีสองหน้า — ใบของ KOLA และใบของ MAESOT FREEZONE
@@ -97,14 +108,16 @@ export async function storeDoLetterPdf(jobId: string, userId: string) {
     id, jobId, category: 'DO_LETTER', version: (previous?.version ?? 0) + 1,
     storageKey: key, fileName, mimeType: 'application/pdf',
     sizeBytes: bytes.length, uploadedBy: userId,
-    note: `ระบบออกให้อัตโนมัติ สายเรือ ${line}`,
+    note: editedRows
+      ? `ระบบออกให้ สายเรือ ${line} · แก้ข้อความเอง ${editedRows} บรรทัด`
+      : `ระบบออกให้อัตโนมัติ สายเรือ ${line}`,
   });
 
   // ทำจดหมายแล้วถือว่าผ่านขั้นแรก งานจะไปอยู่แท็บ Upload Slip / รวมเอกสาร
   await db.update(jobs)
     .set({ doLetterAt: new Date(), doLetterBy: userId, updatedAt: new Date() })
     .where(eq(jobs.id, jobId));
-  await logActivity(userId, 'RENDER_DO_LETTER', 'JOB', jobId, { line });
+  await logActivity(userId, 'RENDER_DO_LETTER', 'JOB', jobId, { line, editedRows });
 
   return { id, fileName, bytes };
 }

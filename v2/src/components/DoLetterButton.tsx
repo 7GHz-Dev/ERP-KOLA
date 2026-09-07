@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -51,6 +52,10 @@ export function DoLetterButton({
       >
         {busy ? 'กำลังออก…' : done ? 'ออกใหม่' : 'ออกจดหมาย'}
       </button>
+      {/* แก้ถ้อยคำบนจดหมายทีละบรรทัดแล้วออกใหม่ ไม่ต้องไปแก้ข้อมูลงาน */}
+      <Link className="button tiny ghost" href={`/do-exchange/${jobId}/letter`}>
+        แก้ข้อความ
+      </Link>
       {error ? <small className="client-cell-note bad">{error}</small> : null}
     </>
   );

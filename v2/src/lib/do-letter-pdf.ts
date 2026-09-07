@@ -71,6 +71,11 @@ export type DoLetterData = {
   originName: string | null;
   /** วันที่บนหัวจดหมาย — ไม่ส่งมาก็ใช้วันที่ออกจดหมาย */
   letterDate?: Date | string | null;
+  /**
+   * ข้อความที่ผู้ใช้แก้เองทีละบรรทัด — ทับค่าที่คำนวณจากข้อมูลงาน
+   * ช่องไหนว่างหรือไม่ส่งมา ใช้ค่าจากงานตามเดิม
+   */
+  overrides?: Partial<Record<(typeof DETAIL_ROWS)[number], string | null>>;
 };
 
 /**
@@ -179,13 +184,26 @@ export async function renderDoLetterPdf(
   const PAGE_H = 841.89;
 
   // รายละเอียดงานเหมือนกันทั้งสองใบ คิดครั้งเดียวแล้วใช้ซ้ำ
-  const detailValues: Record<(typeof DETAIL_ROWS)[number], string | null> = {
+  const fromJob: Record<(typeof DETAIL_ROWS)[number], string | null> = {
     blNo: data.blNo,
     origin: data.originName,
     destination: data.portName,
     vessel: [data.vessel, data.voyage].filter(Boolean).join('  V. ') || null,
     eta: letterDate(data.eta ?? null) || null,
   };
+
+  /*
+   * ค่าที่แก้เองมาก่อนค่าที่คำนวณจากงานเสมอ
+   *
+   * ตรวจด้วยการ trim เพราะช่องที่ผู้ใช้ล้างจนว่างต้องกลับไปใช้ค่าจากงาน
+   * ไม่ใช่พิมพ์บรรทัดเปล่าบนจดหมาย
+   */
+  const detailValues = Object.fromEntries(
+    DETAIL_ROWS.map((row) => {
+      const edited = (data.overrides?.[row] ?? '').trim();
+      return [row, edited || fromJob[row]];
+    }),
+  ) as Record<(typeof DETAIL_ROWS)[number], string | null>;
   // ป้ายกำกับมาจากแบบฟอร์ม ผู้ดูแลจึงเปลี่ยนถ้อยคำได้โดยไม่ต้องแก้โค้ด
   const details: Array<[string, string | null]> = DETAIL_ROWS.map(
     (row) => [f.value(labelKey(row), line), detailValues[row]],

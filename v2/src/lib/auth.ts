@@ -23,20 +23,19 @@ export class AppError extends Error {
 }
 
 /**
- * EMPLOYEE — พนักงานที่ทำได้ทุกงานปฏิบัติการ แต่แตะ Master Data ไม่ได้
+ * EMPLOYEE — พนักงานที่ยืนแทนได้สามฝ่าย คือ PAINT, FAH และ NAMKANG
  *
- * ADMIN ผ่านทุกด่านเพราะเป็นผู้ดูแลระบบ ส่วน EMPLOYEE ผ่านเฉพาะงานของฝ่ายต่าง ๆ
- * ด่านที่หวงไว้ให้ ADMIN อย่างเดียว (เช่น Master Data) จะระบุ roles เป็น ['ADMIN']
- * ซึ่งไม่มี EMPLOYEE อยู่ในนั้น จึงถูกปฏิเสธตามที่ตั้งใจ
+ * ไม่รวม ANN เพราะงานแลก D/O แยกความรับผิดชอบไว้ต่างหาก
+ * และไม่รวม ADMIN จึงแตะ Master Data ไม่ได้ — ด่านพวกนั้นระบุ roles เป็น ['ADMIN']
+ * ซึ่งไม่มีอยู่ในชุดนี้ จึงถูกปฏิเสธตามที่ตั้งใจ
  */
-const OPERATIONAL_ROLES = ['PAINT', 'FAH', 'NAMKANG', 'ANN'];
+const EMPLOYEE_ROLES = ['PAINT', 'FAH', 'NAMKANG'];
 
 /** ผู้ใช้ role นี้ผ่านด่านที่ต้องการ roles ชุดนี้หรือไม่ */
 export function roleAllows(role: string, roles: string[]) {
   if (role === 'ADMIN') return true;
   if (roles.includes(role)) return true;
-  // EMPLOYEE ยืนแทนฝ่ายปฏิบัติการได้ทุกฝ่าย แต่ไม่ได้สิทธิ์ของ ADMIN
-  return role === 'EMPLOYEE' && roles.some((r) => OPERATIONAL_ROLES.includes(r));
+  return role === 'EMPLOYEE' && roles.some((r) => EMPLOYEE_ROLES.includes(r));
 }
 
 export type SessionUser = {

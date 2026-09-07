@@ -1,11 +1,15 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import {
   DO_LETTER_FIELDS, LETTER_BLOCKS, SHIPPING_LINES,
   blockCode, lineKey, saveDoLetterValues,
 } from '@/lib/do-letter';
+import { storeDoLetterPdf } from '@/lib/do-letter-store';
 import { logActivity, newId, runAction, text } from './common';
 
 /**
@@ -48,4 +52,41 @@ async function saveDoLetterFormImpl(formData: FormData) {
 
 export async function saveDoLetterForm(formData: FormData) {
   return runAction(() => saveDoLetterFormImpl(formData));
+}
+
+/*
+ * แก้ข้อความบนจดหมายแลก D/O ของงานหนึ่ง แล้วออกจดหมายใหม่ทันที
+ *
+ * เก็บค่าที่แก้ไว้กับงาน ไม่ไปแตะ blNo / eta / vessel ตัวจริง
+ * เพราะสายเรือขอให้แก้ถ้อยคำบนจดหมายไม่ได้แปลว่าข้อมูลงานผิด
+ * ตารางงาน ใบขน และชุด E-Office จึงยังเห็นค่าเดิมทุกที่
+ *
+ * ช่องที่ล้างจนว่างคือขอให้กลับไปใช้ค่าจากงาน จึงเก็บเป็น null ไม่ใช่สตริงว่าง
+ * ออกจดหมายใหม่ให้เลยในคำสั่งเดียว ผู้ใช้จะได้ไม่ต้องกดสองครั้งแล้วลืมกดปุ่มที่สอง
+ */
+async function saveDoLetterTextImpl(formData: FormData) {
+  const user = await requireActiveSession(['ANN']);
+  const jobId = text(formData.get('jobId'), 80);
+  if (!jobId) throw new Error('ไม่พบงาน');
+
+  const field = (name: string) => text(formData.get(name), 200) || null;
+
+  await db.update(jobs).set({
+    doLetterBlNo: field('blNo'),
+    doLetterOrigin: field('origin'),
+    doLetterDestination: field('destination'),
+    doLetterVessel: field('vessel'),
+    doLetterEta: field('eta'),
+    updatedAt: new Date(),
+  }).where(eq(jobs.id, jobId));
+
+  const { id } = await storeDoLetterPdf(jobId, user.id);
+  await logActivity(user.id, 'EDIT_DO_LETTER_TEXT', 'JOB', jobId, { fileId: id });
+
+  revalidatePath('/do-exchange');
+  revalidatePath(`/do-exchange/${jobId}/letter`);
+}
+
+export async function saveDoLetterText(formData: FormData) {
+  return runAction(() => saveDoLetterTextImpl(formData));
 }

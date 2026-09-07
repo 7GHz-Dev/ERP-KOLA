@@ -133,6 +133,18 @@ export const jobs = pgTable('jobs', {
   doShippingLine: text('do_shipping_line'),
   doLetterAt: timestamp('do_letter_at', { withTimezone: true }),
   doLetterBy: text('do_letter_by'),
+  /*
+   * ข้อความที่แก้เองบนจดหมายแลก D/O — มีผลเฉพาะจดหมายฉบับนี้
+   *
+   * แยกจากช่องข้อมูลงานจริง (blNo, eta, vessel) เพราะบางครั้งสายเรือให้แก้ถ้อยคำ
+   * บนจดหมายอย่างเดียว ไม่ได้แปลว่าข้อมูลงานผิด ตารางกับใบขนจึงต้องไม่กระเทือน
+   * ช่องไหนว่างแปลว่ายังใช้ค่าจากงานตามเดิม
+   */
+  doLetterBlNo: text('do_letter_bl_no'),
+  doLetterOrigin: text('do_letter_origin'),
+  doLetterDestination: text('do_letter_destination'),
+  doLetterVessel: text('do_letter_vessel'),
+  doLetterEta: text('do_letter_eta'),
 
   draftRefNo: text('draft_ref_no'),
   draftStatus: text('draft_status'),
