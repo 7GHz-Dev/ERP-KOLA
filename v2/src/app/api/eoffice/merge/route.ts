@@ -13,12 +13,15 @@ export const maxDuration = 60;
  */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { jobId?: string; kind?: string };
-  // ชุดแลก DO เป็นงานของ ANN ส่วนชุด E-Office เป็นของ PAINT
-  const kind: BundleKind = body.kind === 'do' ? 'do' : 'eoffice';
+  // ชุดแลก DO มีสองแบบ (ประทับตรา / ไม่ประทับตรา) ทั้งคู่เป็นงานของ ANN
+  // ส่วนชุด E-Office เป็นของ PAINT
+  const kind: BundleKind = body.kind === 'do' || body.kind === 'doPlain'
+    ? body.kind
+    : 'eoffice';
 
   let user;
   try {
-    user = await requireActiveSession(kind === 'do' ? ['ANN'] : ['PAINT']);
+    user = await requireActiveSession(kind === 'eoffice' ? ['PAINT'] : ['ANN']);
   } catch (error) {
     return new Response(
       JSON.stringify({ status: 'error', detail: error instanceof Error ? error.message : 'ไม่มีสิทธิ์' }),

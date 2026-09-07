@@ -8,7 +8,7 @@ import { listJobs, QUEUE } from '@/lib/queries/jobs';
 
 export const dynamic = 'force-dynamic';
 
-const SEARCH_KEYS = ['person', 'shipper', 'blNo', 'consignee', 'refNo', 'entryNo'];
+const SEARCH_KEYS = ['blNo', 'consignee', 'refNo', 'entryNo'];
 
 export default async function DoExchangePage({
   searchParams,
@@ -18,7 +18,9 @@ export default async function DoExchangePage({
   const { rows, total } = await listJobs({ where: QUEUE.doExchange(), search, sortBy, sortDir });
 
   const columns: Column[] = [
-    col.clientInCharge(), col.shipper(), col.blNo(), col.consignee(), col.declarationNo(),
+    // ANN ดูจากวันเรือเข้ากับวันสุดท้ายของ DEM ว่าใบไหนต้องแลกก่อน จึงวางไว้ต้นแถว
+    col.eta(), col.lastDem(),
+    col.blNo(), col.consignee(), col.declarationNo(),
     {
       // สายเรือมาจาก SHIPLINE ของงาน ไม่ต้องเลือกซ้ำที่นี่
       label: 'SHIPLINE', kind: 'wrap', className: 'col-shipline',
@@ -34,6 +36,8 @@ export default async function DoExchangePage({
         );
       },
     },
+    // ท่าที่ต้องไปรับ DO จริง อยู่ติดสายเรือเพราะใช้คู่กันตอนวางแผนเดินเอกสาร
+    col.terminal(),
     {
       label: 'จดหมายแลก DO', kind: 'wrap', className: 'col-file',
       render: (r) => (
@@ -89,11 +93,13 @@ export default async function DoExchangePage({
       ),
     },
     {
-      label: 'ชุดแลก DO', kind: 'actions',
+      // สายเรือแต่ละเจ้ารับคนละแบบ จึงให้เลือกเองว่าจะรวมด้วยจดหมายฉบับไหน
+      label: 'รวมชุดแลก DO', kind: 'actions',
       render: (r) => (
         <div className="row-actions">
           <FileChip file={r.currentFiles?.DO_MERGED} />
           <MergeEofficeButton jobId={r.id} kind="do" />
+          <MergeEofficeButton jobId={r.id} kind="doPlain" />
         </div>
       ),
     },

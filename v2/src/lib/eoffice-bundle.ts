@@ -27,22 +27,36 @@ export const MERGED_CATEGORY = 'EOFFICE_MERGED';
 
 /**
  * ชุดแลก D/O — ลำดับเดียวกับที่ยื่นจริง
- * จดหมายใช้ใบที่ประทับตราแล้วก่อน ถ้ายังไม่ได้ออกค่อยใช้ใบเปล่า
  * ใบขนส่งใช้ Arrival Notice ก่อน ถ้างานนั้นไม่มีค่อยถอยไปใช้ BL
  * เอกสารอื่น ๆ ต่อท้ายได้ เพราะมีหลายใบไม่แน่นอน
+ *
+ * จดหมายเป็นชิ้นแรกและเลือกได้สองแบบ จึงต่อหัวเข้ามาตอนประกอบชุด
+ * สายเรือบางเจ้ารับเฉพาะใบที่ประทับตรา บางเจ้าขอใบเปล่าไว้เซ็นสด
+ * ถ้าปล่อยให้ระบบเดาเอง คนใช้จะไม่รู้ตัวว่าได้ชุดที่ผิดแบบไปแล้ว
  */
-export const DO_BUNDLE_PARTS: Array<{ label: string; categories: string[] }> = [
-  { label: 'จดหมายแลก DO', categories: ['DO_LETTER_SIGNED', 'DO_LETTER'] },
+const DO_BUNDLE_REST: Array<{ label: string; categories: string[] }> = [
   { label: 'Arrival Notice / BL', categories: ['ARRIVAL_NOTICE', 'BL'] },
   { label: 'Invoice DO', categories: ['INVOICE_DO'] },
   { label: 'Slip โอนเงิน', categories: ['DO_SLIP'] },
   { label: 'เอกสารอื่น ๆ', categories: ['DO_OTHER'] },
 ];
 
+/** จดหมายแบบประทับตรา — ใช้เฉพาะใบที่ประทับแล้ว ไม่ถอยไปใช้ใบเปล่า */
+export const DO_BUNDLE_PARTS_SIGNED = [
+  { label: 'จดหมายแลก DO (ประทับตรา)', categories: ['DO_LETTER_SIGNED'] },
+  ...DO_BUNDLE_REST,
+];
+
+/** จดหมายแบบไม่ประทับตรา — ใช้เฉพาะใบเปล่าที่เว้นที่ไว้เซ็นเอง */
+export const DO_BUNDLE_PARTS_PLAIN = [
+  { label: 'จดหมายแลก DO (ไม่ประทับตรา)', categories: ['DO_LETTER'] },
+  ...DO_BUNDLE_REST,
+];
+
 export const DO_MERGED_CATEGORY = 'DO_MERGED';
 
 /** ตั้งค่าของชุดเอกสารแต่ละแบบ ใช้ร่วมกับ buildBundle ตัวเดียวกัน */
-export type BundleKind = 'eoffice' | 'do';
+export type BundleKind = 'eoffice' | 'do' | 'doPlain';
 
 const BUNDLE_KINDS: Record<BundleKind, {
   parts: Array<{ label: string; categories: string[] }>;
@@ -55,8 +69,12 @@ const BUNDLE_KINDS: Record<BundleKind, {
     title: 'ชุด E-Office', action: 'MERGE_EOFFICE',
   },
   do: {
-    parts: DO_BUNDLE_PARTS, mergedCategory: DO_MERGED_CATEGORY,
-    title: 'ชุดแลก DO', action: 'MERGE_DO',
+    parts: DO_BUNDLE_PARTS_SIGNED, mergedCategory: DO_MERGED_CATEGORY,
+    title: 'ชุดแลก DO (ประทับตรา)', action: 'MERGE_DO',
+  },
+  doPlain: {
+    parts: DO_BUNDLE_PARTS_PLAIN, mergedCategory: DO_MERGED_CATEGORY,
+    title: 'ชุดแลก DO (ไม่ประทับตรา)', action: 'MERGE_DO',
   },
 };
 

@@ -1120,11 +1120,20 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
 }
 /* ฟอร์มของแต่ละแถวกางทับแถวอื่นไม่ได้ จึงลอยขึ้นมาแทน */
-.data-table .user-edit { position: relative; }
-.data-table .user-edit[open] > .user-form {
+.user-table .user-edit { position: relative; }
+.user-table .user-edit[open] > .user-form {
   position: absolute; right: 0; z-index: 5; width: 320px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
+
+/* ตารางผู้ใช้ไม่ต้องกว้างเท่าตารางงาน และเซลล์สองบรรทัดต้องชิดบน
+   ไม่งั้นชื่อแผนกกับตำแหน่งจะลอยคนละระดับกับคอลัมน์ข้าง ๆ */
+.user-table { min-width: 820px; }
+.user-table td { vertical-align: top; }
+.user-table td .badge { display: inline-block; }
+/* ปุ่มจัดการต้องกางฟอร์มออกมาได้ จึงห้ามตัดขอบเซลล์ */
+.user-table td.col-actions { overflow: visible; }
+.user-table tbody tr.user-off td:not(.col-actions) { opacity: .55; }
 
 /* ปุ่มออกจดหมายกับแก้ข้อความอยู่แถวเดียวกัน ไม่ให้ช่องตารางสูงเกินจำเป็น */
 .do-letter-buttons { display: flex; flex-wrap: wrap; gap: 4px; }

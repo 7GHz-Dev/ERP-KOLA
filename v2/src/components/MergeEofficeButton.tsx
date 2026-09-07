@@ -19,22 +19,33 @@ type Step = {
   detail?: string;
 };
 
+/** ปุ่มและลำดับชิ้นงานของชุดแต่ละแบบ — ปุ่มเดียวใช้ได้ทุกชุด */
+const BUNDLE_CFG = {
+  eoffice: {
+    title: 'รวมชุด E-Office',
+    label: 'รวมชุด E-Office',
+    order: 'คำร้อง → ใบขนสินค้า → Final Invoice → Arrival Notice / BL',
+  },
+  do: {
+    title: 'รวมชุดแลก DO (ประทับตรา)',
+    label: 'เซ็นประทับตรา',
+    order: 'จดหมายแลก DO ฉบับประทับตรา → Arrival Notice / BL → Invoice DO → Slip → เอกสารอื่น ๆ',
+  },
+  doPlain: {
+    title: 'รวมชุดแลก DO (ไม่ประทับตรา)',
+    label: 'ไม่เซ็นประทับตรา',
+    order: 'จดหมายแลก DO ฉบับเปล่า → Arrival Notice / BL → Invoice DO → Slip → เอกสารอื่น ๆ',
+  },
+} as const;
+
 export function MergeEofficeButton({
   jobId, kind = 'eoffice',
 }: {
   jobId: string;
   /** ชุดเอกสารที่จะรวม — ปุ่มและลำดับชิ้นงานเปลี่ยนตามนี้ */
-  kind?: 'eoffice' | 'do';
+  kind?: keyof typeof BUNDLE_CFG;
 }) {
-  const cfg = kind === 'do'
-    ? {
-        title: 'รวมชุดแลก DO',
-        order: 'จดหมายแลก DO → Invoice DO → Slip → เอกสารอื่น ๆ',
-      }
-    : {
-        title: 'รวมชุด E-Office',
-        order: 'คำร้อง → ใบขนสินค้า → Final Invoice → Arrival Notice / BL',
-      };
+  const cfg = BUNDLE_CFG[kind];
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -91,7 +102,7 @@ export function MergeEofficeButton({
   return (
     <>
       <button type="button" className="button tiny ok" onClick={() => dialog.current?.showModal()}>
-        {cfg.title}
+        {cfg.label}
       </button>
 
       <dialog ref={dialog} className="confirm-dialog wide">

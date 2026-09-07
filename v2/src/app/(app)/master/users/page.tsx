@@ -36,22 +36,27 @@ export default async function UsersPage({
         <div>
           <CreateUserForm />
 
+          {/* ใช้ตารางชุดเดียวกับหน้างาน (table.data) หัวตารางจึงติดอยู่กับที่
+              และแถวสลับสีเหมือนกันทุกหน้า ไม่ต้องเรียนรู้ตารางใหม่ */}
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data user-table">
               <thead>
                 <tr>
+                  <th className="col-no">No.</th>
                   <th>ชื่อผู้ใช้</th>
                   <th>ชื่อที่แสดง</th>
                   <th>สังกัด</th>
                   <th>แผนก / ตำแหน่ง</th>
                   <th>สิทธิ์</th>
                   <th>สถานะ</th>
-                  <th>จัดการ</th>
+                  <th className="col-actions">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((u) => (
-                  <tr key={u.id}>
+                {rows.map((u, index) => (
+                  /* ผู้ใช้ที่ถูกระงับจางลง จะได้กวาดตาเห็นเฉพาะคนที่ยังใช้งานอยู่ */
+                  <tr key={u.id} className={u.isActive ? undefined : 'user-off'}>
+                    <td>{index + 1}</td>
                     <td><b>{u.username}</b></td>
                     <td>{u.displayName}</td>
                     <td>{companyLabel(u.company)}</td>
@@ -71,7 +76,7 @@ export default async function UsersPage({
                         <small className="do-letter-hint">ต้องเปลี่ยนรหัส</small>
                       ) : null}
                     </td>
-                    <td>
+                    <td className="col-actions">
                       <div className="row-actions">
                         <EditUserForm user={u} />
                         <ResetPasswordForm user={u} />
@@ -81,7 +86,7 @@ export default async function UsersPage({
                   </tr>
                 ))}
                 {rows.length === 0 ? (
-                  <tr><td colSpan={7} className="slip-empty">ไม่พบผู้ใช้</td></tr>
+                  <tr><td colSpan={8} className="slip-empty">ไม่พบผู้ใช้</td></tr>
                 ) : null}
               </tbody>
             </table>

@@ -78,7 +78,7 @@ export const col = {
     render: (r) => r.portCode ?? r.portName ?? '-',
   }),
   terminal: (): Column => ({
-    label: 'Terminal',
+    label: 'Port Terminal',
     render: (r) => r.terminalName ?? '-',
   }),
   anStatus: (): Column => ({
