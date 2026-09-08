@@ -7,6 +7,7 @@ import {
 } from '@/components/ActionForms';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
 import { pendingTabCounts } from '@/lib/queries/dashboard';
+import { intakeOptions } from '@/lib/queries/master';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,11 @@ const TABS = [
 
 const SEARCH_KEYS = ['person', 'shipper', 'blNo', 'consignee', 'refNo', 'entryNo'];
 
-function columnsFor(tab: string, sub: 'wait' | 'approve'): Column[] {
+function columnsFor(
+  tab: string,
+  sub: 'wait' | 'approve',
+  options: Awaited<ReturnType<typeof intakeOptions>>,
+): Column[] {
   const base = [col.clientInCharge(), col.shipper(), col.blNo(), col.consignee(),
     col.eta(), col.lastDem(), col.lastDet()];
 
@@ -34,17 +39,7 @@ function columnsFor(tab: string, sub: 'wait' | 'approve'): Column[] {
             <ShowReason reason={r.anStatus === 'REJECTED' ? r.anReason : null} />
             {sub === 'wait' ? (
               <>
-                <EditBlForm
-                  jobId={r.id}
-                  blNo={r.blNo}
-                  vessel={r.vessel}
-                  voyage={r.voyage}
-                  eta={r.eta}
-                  transportDate={r.transportDate}
-                  demDays={r.demDays}
-                  detDays={r.detDays}
-                  product={r.product}
-                />
+                <EditBlForm job={r} options={options} />
                 <RequestApproval jobId={r.id} type="AN" label={r.anStatus === 'REJECTED' ? 'ส่งใหม่' : 'ส่งอนุมัติ'} />
               </>
             ) : null}
@@ -165,9 +160,11 @@ export default async function PendingPage({
     : tab === 'draft' ? QUEUE.pendingDraft(sub)
     : QUEUE.pendingEdoc();
 
-  const [{ rows, total }, counts] = await Promise.all([
+  const [{ rows, total }, counts, options] = await Promise.all([
     listJobs({ where, search, sortBy, sortDir }),
     pendingTabCounts(),
+    // ตัวเลือก master สำหรับฟอร์มแก้ BL — ดึงรอบเดียวแล้วส่งต่อให้ทุกแถวใช้ร่วมกัน
+    intakeOptions(),
   ]);
 
   // แท็บ 1-3 เตือนจำนวนที่รอกดส่งอนุมัติ แท็บ 4 เตือนจำนวนที่ยังไม่ได้รวมชุด
@@ -203,7 +200,7 @@ export default async function PendingPage({
 
       <JobTable
         basePath="/pending"
-        columns={columnsFor(tab, sub)}
+        columns={columnsFor(tab, sub, options)}
         rows={rows}
         total={total}
         carry={fullCarry}

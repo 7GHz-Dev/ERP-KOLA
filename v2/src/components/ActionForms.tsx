@@ -8,6 +8,7 @@ import { submitCustomsTask, submitDraftTask } from '@/lib/actions/automation';
 import { createEofficeRequest } from '@/lib/actions/eoffice';
 import { saveMasterRecord } from '@/lib/actions/master';
 import { ConfirmSubmit, PopoverCancel, PopoverHead } from '@/components/Interactions';
+import type { Option } from '@/lib/queries/master';
 export { UploadForm } from '@/components/UploadForm';
 export { MergeEofficeButton } from '@/components/MergeEofficeButton';
 
@@ -357,58 +358,167 @@ export function DraftActions({
   );
 }
 
-/** แก้ข้อมูล BL ที่คีย์ผิด — ใช้ตอนที่ยังไม่ส่งอนุมัติ AN */
+/**
+ * แก้ข้อมูล BL ที่คีย์ผิด — ใช้ตอนที่ยังไม่ส่งอนุมัติ AN
+ *
+ * ครอบคลุมทุกช่องที่กรอกไว้ตอนรับงาน เพราะเดิมแก้ได้แค่ 8 ช่อง
+ * ช่องที่เหลือ (BL TYPE, SHIPLINE, ปริมาณ, ท่าเรือ, Consignee ฯลฯ) พิมพ์ผิดแล้ว
+ * ต้องลบงานทิ้งแล้วรับใหม่ทั้งใบ ซึ่งเสียทั้งเวลาและเลขงาน
+ *
+ * จัดเป็นหมวดตามลำดับเดียวกับหน้ารับงาน ผู้ใช้จะได้กวาดตาหาช่องที่ต้องแก้เจอเร็ว
+ */
 export function EditBlForm({
-  jobId, blNo, vessel, voyage, eta, transportDate, demDays, detDays, product,
+  job, options,
 }: {
-  jobId: string; blNo: string | null; vessel: string | null; voyage: string | null;
-  eta: string | null; transportDate: string | null;
-  demDays: number; detDays: number; product: string | null;
+  job: {
+    id: string;
+    blNo: string | null; vessel: string | null; voyage: string | null;
+    eta: string | null; transportDate: string | null;
+    demDays: number; detDays: number; product: string | null;
+    blType: string | null; shipline: string | null; originPort: string | null;
+    unitAmount: string | null; packageType: string | null; grossWeight: string | null;
+    goodsValue: string | null; goodsCurrency: string | null;
+    consigneeId: string | null; notifyPartyId: string | null; personId: string | null;
+    jobTypeId: string | null; portId: string | null; terminalId: string | null;
+    customerNote: string | null;
+  };
+  options: {
+    consignees: Option[]; notify: Option[]; people: Option[]; jobTypes: Option[];
+    ports: Option[]; originPorts: Option[]; terminals: Option[]; packageTypes: Option[];
+  };
 }) {
+  /** ช่องเลือกจาก master — ว่างไว้ได้เสมอ เพราะบางงานยังไม่รู้ค่าตอนรับเข้า */
+  const pick = (name: string, label: string, list: Option[], current: string | null) => (
+    <label className="mini">
+      <span>{label}</span>
+      <select name={name} defaultValue={current ?? ''}>
+        <option value="">— ไม่ระบุ —</option>
+        {list.map((o) => (
+          <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+
   return (
     <details className="disclosure">
       <summary className="button tiny">แก้ไข</summary>
-      <form action={updateBlInfo} className="popover wide">
+      <form action={updateBlInfo} className="popover wide edit-bl">
         <PopoverHead title="แก้ข้อมูล BL" />
-        <input type="hidden" name="jobId" value={jobId} />
+        <input type="hidden" name="jobId" value={job.id} />
+
+        <p className="edit-bl-group">ข้อมูลใบตราส่ง</p>
         <label className="mini">
           <span>B/L No.</span>
-          <input name="blNo" defaultValue={blNo ?? ''} />
+          <input name="blNo" defaultValue={job.blNo ?? ''} />
         </label>
         <div className="field-pair">
           <label className="mini">
+            <span>BL TYPE</span>
+            <select name="blType" defaultValue={job.blType ?? ''}>
+              <option value="">— ไม่ระบุ —</option>
+              {['SWB', 'OBL', 'S', 'TWB', 'HBL', 'MBL', 'Original'].map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+          </label>
+          <label className="mini">
+            <span>SHIPLINE</span>
+            <input name="shipline" defaultValue={job.shipline ?? ''} />
+          </label>
+        </div>
+        {pick('jobTypeId', 'Job Type', options.jobTypes, job.jobTypeId)}
+
+        <p className="edit-bl-group">เรือและกำหนดการ</p>
+        <div className="field-pair">
+          <label className="mini">
             <span>Vessel</span>
-            <input name="vessel" defaultValue={vessel ?? ''} />
+            <input name="vessel" defaultValue={job.vessel ?? ''} />
           </label>
           <label className="mini">
             <span>Voyage</span>
-            <input name="voyage" defaultValue={voyage ?? ''} />
+            <input name="voyage" defaultValue={job.voyage ?? ''} />
           </label>
         </div>
         <div className="field-pair">
           <label className="mini">
             <span>ETA</span>
-            <input type="date" name="eta" defaultValue={eta ?? ''} />
+            <input type="date" name="eta" defaultValue={job.eta ?? ''} />
           </label>
           <label className="mini">
             <span>วันที่ขนย้าย</span>
-            <input type="date" name="transportDate" defaultValue={transportDate ?? ''} />
+            <input type="date" name="transportDate" defaultValue={job.transportDate ?? ''} />
           </label>
         </div>
         <div className="field-pair">
           <label className="mini">
             <span>DEM (วัน)</span>
-            <input type="number" min={0} name="demDays" defaultValue={demDays} />
+            <input type="number" min={0} name="demDays" defaultValue={job.demDays} />
           </label>
           <label className="mini">
             <span>DET (วัน)</span>
-            <input type="number" min={0} name="detDays" defaultValue={detDays} />
+            <input type="number" min={0} name="detDays" defaultValue={job.detDays} />
+          </label>
+        </div>
+
+        <p className="edit-bl-group">ท่าเรือ</p>
+        <label className="mini">
+          <span>เมืองต้นทาง (Port of Loading)</span>
+          <input name="originPort" defaultValue={job.originPort ?? ''} list="edit-bl-origins" />
+          {/* เสนอชื่อที่เคยใช้ แต่ยังพิมพ์เองได้ เพราะท่าต้นทางมีมากกว่าที่เก็บไว้ */}
+          <datalist id="edit-bl-origins">
+            {options.originPorts.map((o) => <option key={o.id} value={o.name} />)}
+          </datalist>
+        </label>
+        <div className="field-pair">
+          {pick('portId', 'Port of Discharge', options.ports, job.portId)}
+          {pick('terminalId', 'Port Terminal', options.terminals, job.terminalId)}
+        </div>
+
+        <p className="edit-bl-group">สินค้า</p>
+        <label className="mini">
+          <span>สินค้า</span>
+          <input name="product" defaultValue={job.product ?? ''} />
+        </label>
+        <div className="field-pair">
+          <label className="mini">
+            <span>จำนวน</span>
+            <input type="number" step="any" name="unitAmount" defaultValue={job.unitAmount ?? ''} />
+          </label>
+          <label className="mini">
+            <span>หน่วยนับ</span>
+            <select name="packageType" defaultValue={job.packageType ?? ''}>
+              <option value="">— ไม่ระบุ —</option>
+              {options.packageTypes.map((o) => (
+                <option key={o.id} value={o.name}>{o.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="field-pair">
+          <label className="mini">
+            <span>น้ำหนักรวม (KG)</span>
+            <input type="number" step="any" name="grossWeight" defaultValue={job.grossWeight ?? ''} />
+          </label>
+          <label className="mini">
+            <span>มูลค่าสินค้า</span>
+            <input type="number" step="any" name="goodsValue" defaultValue={job.goodsValue ?? ''} />
           </label>
         </div>
         <label className="mini">
-          <span>สินค้า</span>
-          <input name="product" defaultValue={product ?? ''} />
+          <span>สกุลเงิน</span>
+          <input name="goodsCurrency" defaultValue={job.goodsCurrency ?? ''} maxLength={10} />
         </label>
+
+        <p className="edit-bl-group">คู่ค้าและผู้รับผิดชอบ</p>
+        {pick('consigneeId', 'Consignee', options.consignees, job.consigneeId)}
+        {pick('notifyPartyId', 'Notify Party', options.notify, job.notifyPartyId)}
+        {pick('personId', 'ผู้รับผิดชอบ', options.people, job.personId)}
+        <label className="mini">
+          <span>หมายเหตุถึงลูกค้า</span>
+          <textarea name="customerNote" rows={2} defaultValue={job.customerNote ?? ''} />
+        </label>
+
         <div className="dialog-actions">
           <PopoverCancel />
           <SubmitButton label="บันทึก" tone="primary" />

@@ -1212,3 +1212,21 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
 .stamp-row:first-of-type { border-top: 0; }
 .stamp-label { min-width: 68px; font-size: 12px; font-weight: 700; }
 .stamp-row input[type="file"] { max-width: 190px; font-size: 11px; }
+
+/* ฟอร์มแก้ BL — ช่องเยอะกว่า popover อื่น จึงกว้างขึ้นและเลื่อนดูได้ */
+.popover.edit-bl {
+  min-width: min(94vw, 460px);
+  max-height: min(78vh, 620px);
+  overflow-y: auto;
+}
+.disclosure[open] > .popover.edit-bl { min-width: min(94vw, 460px); }
+/* หัวข้อคั่นหมวด ช่วยให้กวาดตาหาช่องที่ต้องแก้เจอเร็วขึ้น */
+.edit-bl-group {
+  margin: 12px 0 6px; padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.edit-bl-group:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
+.edit-bl .field-pair { gap: 8px; }
+.edit-bl label.mini { margin-bottom: 8px; }

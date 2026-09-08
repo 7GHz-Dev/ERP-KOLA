@@ -301,6 +301,20 @@ async function updateBlInfoImpl(formData: FormData) {
   const detDays = number(formData.get('detDays'), job.detDays);
   if (demDays < 0 || detDays < 0) throw new Error('จำนวนวันติดลบไม่ได้');
 
+  /*
+   * ช่องที่ฟอร์มไม่ได้ส่งมาต้องคงค่าเดิมไว้ ไม่ใช่ล้างทิ้ง
+   *
+   * ฟอร์มนี้กว้างขึ้นเรื่อย ๆ และบางหน้าส่งมาไม่ครบทุกช่อง
+   * ถ้าใช้ text() ตรง ๆ ช่องที่ไม่ได้ส่งจะกลายเป็นค่าว่างแล้วข้อมูลเดิมหาย
+   */
+  const keep = (field: string, current: string | null, max = 200) =>
+    (formData.has(field) ? text(formData.get(field), max) : current) || null;
+  const keepNum = (field: string, current: string | null) => {
+    if (!formData.has(field)) return current;
+    const raw = text(formData.get(field), 40);
+    return raw ? String(number(formData.get(field), 0)) : null;
+  };
+
   await db.update(jobs).set({
     blNo: text(formData.get('blNo'), 120) || job.blNo,
     vessel: text(formData.get('vessel'), 120),
@@ -310,12 +324,35 @@ async function updateBlInfoImpl(formData: FormData) {
     demDays: Math.round(demDays),
     detDays: Math.round(detDays),
     product: text(formData.get('product'), 1000),
+
+    // ---------- ช่องที่เพิ่มให้แก้ได้ ----------
+    blType: keep('blType', job.blType, 40),
+    shipline: keep('shipline', job.shipline, 120),
+    originPort: keep('originPort', job.originPort, 200),
+    unitAmount: keepNum('unitAmount', job.unitAmount),
+    packageType: keep('packageType', job.packageType, 60),
+    grossWeight: keepNum('grossWeight', job.grossWeight),
+    goodsValue: keepNum('goodsValue', job.goodsValue),
+    goodsCurrency: keep('goodsCurrency', job.goodsCurrency, 10),
+    // master ที่เลือกจากรายการ — ค่าว่างแปลว่าไม่ได้เลือก จึงเก็บเป็น null
+    consigneeId: keep('consigneeId', job.consigneeId, 80),
+    notifyPartyId: keep('notifyPartyId', job.notifyPartyId, 80),
+    personId: keep('personId', job.personId, 80),
+    jobTypeId: keep('jobTypeId', job.jobTypeId, 80),
+    portId: keep('portId', job.portId, 80),
+    terminalId: keep('terminalId', job.terminalId, 80),
+    customerNote: keep('customerNote', job.customerNote, 1000),
+
     updatedBy: user.id,
     updatedAt: new Date(),
   }).where(eq(jobs.id, jobId));
 
   await logActivity(user.id, 'UPDATE_BL_INFO', 'JOB', jobId, { demDays, detDays });
   revalidatePath('/pending');
+  // ช่องที่เพิ่มมามีผลกับหน้าอื่นด้วย เช่น SHIPLINE ที่หน้าแลก DO ใช้เลือกแบบฟอร์มจดหมาย
+  revalidatePath('/jobs');
+  revalidatePath('/overview');
+  revalidatePath('/do-exchange');
 }
 
 /**
