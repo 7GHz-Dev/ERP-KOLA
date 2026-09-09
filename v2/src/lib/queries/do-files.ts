@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { files, jobs, masterRecords } from '@/db/schema';
 import { letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
@@ -43,8 +43,11 @@ export async function loadDoPay(jobId: string) {
     .select({
       id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo,
       eta: jobs.eta, shipline: jobs.shipline, doPayAmount: jobs.doPayAmount,
+      doClaimedAt: jobs.doClaimedAt,
+      consigneeName: sql<string | null>`consignee.name`,
     })
     .from(jobs)
+    .leftJoin(sql`${masterRecords} as consignee`, sql`consignee.id = ${jobs.consigneeId}`)
     .where(eq(jobs.id, jobId))
     .limit(1);
   if (!job) return null;
@@ -61,7 +64,47 @@ export async function loadDoPay(jobId: string) {
     ))
     .limit(1);
 
-  return { job, invoiceDo };
+  /*
+   * ใบถัดไปที่ยังรอตั้งเบิก — ปุ่ม "ถัดไป" ในแผงพาไปต่อได้เลย
+   *
+   * บนมือถือ MAY ไล่ทำทีละใบจนหมด ถ้าต้องปิดแผงกลับไปหาแถวถัดไปในตารางเอง
+   * จะเสียจังหวะทุกใบ
+   *
+   * ต้องเป็นใบที่ "อยู่หลังใบนี้" ตามลำดับที่หน้าแสดง (เข้าคิวก่อนขึ้นก่อน)
+   * ไม่ใช่ใบเก่าสุดที่ยังค้าง ไม่งั้นพอเปิดใบที่สองแล้วกดถัดไป มันจะย้อนกลับ
+   * มาใบแรกแล้ววนอยู่สองใบนั้นไปเรื่อย ๆ ไม่มีทางไล่จนจบ
+   *
+   * เทียบด้วยคู่ (เวลาเข้าคิว, id) เพราะงานที่เข้าคิวเวลาเดียวกันเป๊ะมีจริง
+   * ถ้าเทียบเวลาอย่างเดียวจะข้ามใบที่เวลาชนกันไป id เป็นตัวตัดสินให้ลำดับนิ่ง
+   *
+   * เงื่อนไขที่เหลือต้องตรงกับ QUEUE.mayDoPay('wait') ไม่งั้นปุ่มจะพาไปงานนอกแท็บ
+   */
+  const arrived = sql`least(${jobs.eofficeSentAt}, handoff.sent_at)`;
+  const [next] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .leftJoin(
+      sql`(select job_id, min(sent_at) as sent_at from do_handoffs
+            where sent_at is not null group by job_id) as handoff`,
+      sql`handoff.job_id = ${jobs.id}`,
+    )
+    .where(and(
+      eq(jobs.isArchived, false),
+      sql`(${jobs.eofficeSentAt} is not null or handoff.sent_at is not null)`,
+      isNull(jobs.doExchangedAt),
+      isNull(jobs.doClaimedAt),
+      sql`(${arrived}, ${jobs.id}) > (
+            select least(j2.eoffice_sent_at, h2.sent_at), j2.id
+              from jobs j2
+              left join (select job_id, min(sent_at) as sent_at from do_handoffs
+                          where sent_at is not null group by job_id) as h2
+                     on h2.job_id = j2.id
+             where j2.id = ${jobId})`,
+    ))
+    .orderBy(sql`${arrived} asc, ${jobs.id} asc`)
+    .limit(1);
+
+  return { job, invoiceDo, nextId: next?.id ?? null };
 }
 
 /**

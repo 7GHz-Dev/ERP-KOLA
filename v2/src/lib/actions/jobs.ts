@@ -312,6 +312,45 @@ async function saveDoPayAmountImpl(formData: FormData) {
   revalidatePath('/may/do-pay');
 }
 
+/**
+ * MAY กดตั้งเบิก — คัดลอกข้อความไปส่งเบิกเงินแล้ว
+ *
+ * ต้องมียอดก่อน เพราะข้อความเบิกที่ไม่มียอดส่งไปก็ใช้ไม่ได้
+ * ตรวจฝั่งเซิร์ฟเวอร์ด้วย ไม่พึ่งแค่ปุ่มบนหน้าจอ เพราะฟอร์มถูกยิงตรงได้
+ *
+ * รับยอดมาพร้อมกันได้ด้วย บนมือถือจะได้พิมพ์ยอดแล้วกดตั้งเบิกจบในปุ่มเดียว
+ * ไม่ต้องกดบันทึกยอดก่อนแล้วค่อยกดตั้งเบิกอีกที
+ */
+async function markDoClaimedImpl(formData: FormData) {
+  const user = await requireActiveSession(['MAY']);
+  const jobId = required(formData.get('jobId'), 'งาน', 80);
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job) throw new Error('ไม่พบงาน');
+  if (job.doClaimedAt) throw new Error('ตั้งเบิกไปแล้ว');
+
+  const raw = text(formData.get('amount'), 30);
+  let amount = job.doPayAmount;
+  if (raw) {
+    const n = number(formData.get('amount'), NaN);
+    if (!Number.isFinite(n) || n < 0) throw new Error('ยอดชำระต้องเป็นตัวเลขไม่ติดลบ');
+    amount = n.toFixed(2);
+  }
+  if (!amount) throw new Error('กรุณากรอกยอดชำระก่อนกดตั้งเบิก');
+
+  const now = new Date();
+  await db.update(jobs).set({
+    doPayAmount: amount,
+    doPayAmountBy: job.doPayAmountBy ?? user.id,
+    doPayAmountAt: job.doPayAmountAt ?? now,
+    doClaimedAt: now, doClaimedBy: user.id,
+    updatedBy: user.id, updatedAt: now,
+  }).where(eq(jobs.id, jobId));
+  await logActivity(user.id, 'MARK_DO_CLAIMED', 'JOB', jobId, { amount });
+
+  revalidatePath('/may/do-pay');
+}
+
 /** ปล่อยสินค้า — ต้องมี E-Office และ Surrender เคลียร์แล้วเท่านั้น */
 async function releaseJobImpl(formData: FormData) {
   const user = await requireActiveSession(['NAMKANG']);
@@ -522,6 +561,10 @@ export async function markDoExchanged(formData: FormData) {
 
 export async function saveDoPayAmount(formData: FormData) {
   return runAction(() => saveDoPayAmountImpl(formData));
+}
+
+export async function markDoClaimed(formData: FormData) {
+  return runAction(() => markDoClaimedImpl(formData));
 }
 
 export async function releaseJob(formData: FormData) {

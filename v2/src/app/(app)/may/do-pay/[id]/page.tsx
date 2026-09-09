@@ -29,6 +29,8 @@ export default async function DoPayPage({ params }: { params: Promise<{ id: stri
         eta={data.job.eta}
         shipline={data.job.shipline}
         amount={data.job.doPayAmount}
+        claimedAt={data.job.doClaimedAt}
+        nextId={data.nextId}
       />
     </>
   );

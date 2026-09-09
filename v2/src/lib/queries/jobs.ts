@@ -44,6 +44,7 @@ const SORTABLE: Record<string, AnyPgColumn | SQL> = {
   blNo: jobs.blNo,
   eta: jobs.eta,
   doExchangedAt: jobs.doExchangedAt,
+  doClaimedAt: jobs.doClaimedAt,
   // เวลาที่รายการเข้าคิวแลก DO — เป็นนิพจน์ ไม่ใช่คอลัมน์ตรง ๆ จึงเรียงด้วย SQL เดียวกัน
   arrivedAt: sql`least(${jobs.eofficeSentAt}, handoff.sent_at)`,
   demDays: jobs.demDays,
@@ -121,6 +122,7 @@ export async function listJobs(filter: JobFilter = {}) {
       doLetterAt: jobs.doLetterAt,
       doExchangedAt: jobs.doExchangedAt,
       doPayAmount: jobs.doPayAmount,
+      doClaimedAt: jobs.doClaimedAt,
       /*
        * เวลาที่รายการถูกส่งเข้ามาถึงคิวแลก DO
        *
@@ -213,6 +215,21 @@ export async function currentFilesFor(jobIds: string[]) {
 
 /* ---------- เงื่อนไขของแต่ละคิวงาน แปลตรงจากระบบเดิม ---------- */
 
+/**
+ * งานที่ถูกส่งให้ Partner แล้ว ไม่ว่าจะส่งจากทางไหน — จุดที่งานเข้าคิวแลก DO
+ *
+ * ส่งได้สองทางคนละแผนก PAINT บันทึกที่ jobs.eoffice_sent_at
+ * ส่วน FAH บันทึกที่ do_handoffs.sent_at ต้องนับทั้งสองทาง
+ * แยกออกมาเพราะทั้งคิวของ ANN และของ MAY ใช้เงื่อนไขนี้เหมือนกัน
+ */
+function sentToPartner() {
+  return or(
+    isNotNull(jobs.eofficeSentAt),
+    sql`exists (select 1 from do_handoffs dh
+                 where dh.job_id = ${jobs.id} and dh.sent_at is not null)`,
+  );
+}
+
 export const QUEUE = {
   /** งานคงค้าง แท็บ 1 — รอส่งอนุมัติ AN / รออนุมัติ */
   pendingBl: (sub: 'wait' | 'approve') => ({ an }: JoinContext) => [
@@ -304,12 +321,21 @@ export const QUEUE = {
    * เพราะเป็นงานของคนเดียวกันบนงานเดียวกัน กดส่งแล้วจึงย้ายไปอีกแท็บ
    */
   doExchange: (sub: 'wait' | 'sent' = 'wait') => () => [
-    or(
-      isNotNull(jobs.eofficeSentAt),
-      sql`exists (select 1 from do_handoffs dh
-                   where dh.job_id = ${jobs.id} and dh.sent_at is not null)`,
-    ),
+    sentToPartner(),
     sub === 'sent' ? isNotNull(jobs.doExchangedAt) : isNull(jobs.doExchangedAt),
+  ],
+
+  /*
+   * MAY — รายการเดียวกับคิวรอแลก DO ของ ANN แยกด้วยเวลาที่กดตั้งเบิก
+   *
+   * ต่อยอดจาก doExchange('wait') ตัวเดียวกัน ไม่เขียนเงื่อนไขซ้ำ
+   * งานที่ ANN กดส่งแลกแล้วจึงหายจากทั้งสองแท็บของ MAY เองโดยไม่ต้องทำอะไรเพิ่ม
+   */
+  mayDoPay: (sub: 'wait' | 'claimed') => () => [
+    sentToPartner(),
+    // งานที่ ANN กดส่งแลกแล้วถือว่าจบ ไม่ต้องค้างในคิวของ MAY อีก
+    isNull(jobs.doExchangedAt),
+    sub === 'claimed' ? isNotNull(jobs.doClaimedAt) : isNull(jobs.doClaimedAt),
   ],
 
   /** NAMKANG */

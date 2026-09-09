@@ -1152,6 +1152,22 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
   font-size: 12px; line-height: 1.5;
 }
 .do-pay-view .slip-view { height: 70vh; }
+.do-pay-note { margin: 6px 0 0; font-size: 11px; color: var(--muted); }
+.do-pay-done {
+  margin: 0; padding: 9px 11px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  background: var(--green-soft); color: var(--green);
+}
+.do-pay-next {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.do-pay-claim-form { display: flex; }
+.do-pay-claim-form .button { width: 100%; padding: 11px 12px; font-size: 14px; }
+@media (max-width: 900px) {
+  /* ช่องกรอกอยู่บน ไฟล์อยู่ล่าง แป้นพิมพ์จึงไม่บังสิ่งที่กำลังกรอก */
+  .do-pay-side { order: -1; }
+  .do-pay-view .slip-view { height: 58vh; }
+}
 /*
  * ช่องปุ่มดูกับยอดที่บันทึกแล้ว — คอลัมน์แรกของตาราง MAY
  * ปุ่มอยู่บน ยอดอยู่ล่าง กวาดตาลงมาเห็นได้ทีเดียวว่าใบไหนกรอกยอดแล้ว
@@ -1159,6 +1175,43 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-width: 96px; }
 .do-pay-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .do-pay-cell b { font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/*
+ * สลับตาราง/การ์ดตามความกว้างจอ — ใช้ในหน้าของ MAY ที่ทำงานบนมือถือเป็นหลัก
+ * เรนเดอร์ทั้งสองแบบจากข้อมูลชุดเดียวกันแล้วซ่อนอันที่ไม่ใช้
+ */
+.only-narrow { display: none; }
+@media (max-width: 820px) {
+  .only-narrow { display: block; }
+  .only-wide { display: none; }
+}
+
+/* การ์ดรายการของ MAY บนมือถือ */
+.do-cards { display: flex; flex-direction: column; gap: 10px; }
+.do-cards-empty { padding: 24px 12px; text-align: center; color: var(--muted); font-size: 13px; }
+.do-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px; display: flex; flex-direction: column; gap: 10px;
+}
+.do-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.do-card-head > div { flex: 1; min-width: 0; }
+.do-card-head b { display: block; font-size: 15px; word-break: break-all; }
+.do-card-head small { color: var(--muted); font-size: 12px; }
+.do-card-amount {
+  font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.do-card-kv {
+  display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12px;
+}
+.do-card-kv dt { color: var(--muted); }
+.do-card-kv dd { margin: 0; }
+.do-card-files { display: flex; flex-wrap: wrap; gap: 10px; }
+.do-card-file { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.do-card-file small { color: var(--muted); }
+/* ปุ่มเต็มความกว้างและสูงพอให้นิ้วโป้งกดได้ถนัด */
+.do-card-open, .do-pay-copy, .do-pay-nextbtn {
+  display: block; width: 100%; text-align: center; padding: 11px 12px; font-size: 14px;
+}
 
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }

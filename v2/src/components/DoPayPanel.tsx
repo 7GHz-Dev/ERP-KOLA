@@ -1,21 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { saveDoPayAmount } from '@/lib/actions/jobs';
+import { useRouter } from 'next/navigation';
+import { markDoClaimed, saveDoPayAmount } from '@/lib/actions/jobs';
 import { claimText } from '@/lib/do-claim';
+import { ConfirmSubmit } from '@/components/Interactions';
 import type { PreviewFile } from '@/components/SlipCheckPanel';
 
 /**
  * แผงของ MAY — ดู Invoice DO แล้วกรอกยอดชำระ พร้อมคัดลอกข้อความเบิก
  *
- * ยอดกับข้อความอยู่จอเดียวกับไฟล์ เพราะต้องอ่านตัวเลขจากใบแล้วพิมพ์ตามทันที
- * เปิดไฟล์คนละหน้าแล้วสลับไปมาจำตัวเลขพลาดง่าย
+ * ทำงานทีละใบตามลำดับ เปิดไฟล์ → อ่านยอดแล้วกรอก → คัดลอกข้อความ → ตั้งเบิก → ใบถัดไป
+ * ทุกปุ่มของขั้นตอนนี้อยู่ในแผงเดียวกัน ไม่ต้องปิดกลับไปหาแถวถัดไปในตารางเอง
  *
- * ข้อความคำนวณสด ๆ จากยอดที่กำลังพิมพ์ ไม่ต้องกดบันทึกก่อนถึงจะคัดลอกได้
- * ส่วนปุ่มบันทึกไว้เก็บยอดไว้ใช้รอบหน้า เปิดมาอีกครั้งจะได้ไม่ต้องอ่านไฟล์ซ้ำ
+ * ยอดกับข้อความอยู่จอเดียวกับไฟล์ เพราะต้องอ่านตัวเลขจากใบแล้วพิมพ์ตามทันที
+ * บนมือถือช่องกรอกอยู่บน ไฟล์อยู่ล่าง แป้นพิมพ์จึงไม่บังสิ่งที่กำลังกรอก
  */
 export function DoPayPanel({
-  jobId, invoiceDo, blNo, eta, shipline, amount,
+  jobId, invoiceDo, blNo, eta, shipline, amount, claimedAt, nextId,
 }: {
   jobId: string;
   invoiceDo?: PreviewFile;
@@ -23,10 +25,16 @@ export function DoPayPanel({
   eta: string | null;
   shipline: string | null;
   amount: string | null;
+  claimedAt: Date | string | null;
+  /** งานถัดไปที่ยังรอตั้งเบิก — ไม่มีแล้วแปลว่าทำครบทุกใบ */
+  nextId: string | null;
 }) {
+  const router = useRouter();
   const [value, setValue] = useState(amount ?? '');
   const [copied, setCopied] = useState(false);
   const text = claimText({ blNo, eta, shipline, amount: value });
+  const claimed = Boolean(claimedAt);
+  const ready = value.trim() !== '';
 
   const copy = async () => {
     try {
@@ -48,6 +56,7 @@ export function DoPayPanel({
   return (
     <div className="do-pay">
       <div className="do-pay-side">
+        {/* ขั้นที่ 1-2 — กรอกยอดที่อ่านได้จากใบที่เปิดดูอยู่ */}
         <form action={saveDoPayAmount} className="do-pay-form">
           <input type="hidden" name="jobId" value={jobId} />
           <label className="mini">
@@ -63,20 +72,69 @@ export function DoPayPanel({
               placeholder="เช่น 18400"
               value={value}
               onChange={(e) => setValue(e.target.value)}
+              disabled={claimed}
             />
           </label>
-          <button className="button tiny primary" type="submit">บันทึกยอด</button>
+          {claimed ? null : (
+            <button className="button tiny" type="submit">บันทึกยอด</button>
+          )}
         </form>
 
+        {/* ขั้นที่ 2 ต่อ — คัดลอกข้อความไปวางในแชทเบิกเงิน */}
         <div className="do-pay-claim">
           <div className="do-pay-claim-head">
             <span>ข้อความเบิก</span>
-            <button type="button" className="button tiny ok" onClick={() => void copy()}>
-              {copied ? 'คัดลอกแล้ว' : 'คัดลอกข้อความเบิก'}
-            </button>
           </div>
           {/* อ่านอย่างเดียวแต่เลือกได้ เผื่อคลิปบอร์ดใช้ไม่ได้จะได้ลากคัดลอกเอง */}
           <textarea className="do-pay-text" readOnly rows={2} value={text} />
+          <button
+            type="button"
+            className="button ok do-pay-copy"
+            onClick={() => void copy()}
+            disabled={!ready}
+          >
+            {copied ? 'คัดลอกแล้ว' : 'คัดลอกข้อความเบิก'}
+          </button>
+          {ready ? null : <p className="do-pay-note">กรอกยอดก่อนจึงจะคัดลอกได้</p>}
+        </div>
+
+        {/* ขั้นที่ 3 — ตั้งเบิกแล้วไปใบถัดไป */}
+        <div className="do-pay-next">
+          {claimed ? (
+            <p className="do-pay-done">ตั้งเบิกแล้ว · รายการอยู่ในแท็บ ตั้งเบิกแล้ว</p>
+          ) : (
+            <form action={markDoClaimed} className="do-pay-claim-form">
+              <input type="hidden" name="jobId" value={jobId} />
+              {/* ส่งยอดที่กำลังพิมพ์ไปด้วย จะได้ไม่ต้องกดบันทึกยอดก่อนอีกที */}
+              <input type="hidden" name="amount" value={value} />
+              {ready ? (
+                <ConfirmSubmit
+                  label="ตั้งเบิกแล้ว"
+                  tone="primary"
+                  confirm="คัดลอกข้อความไปตั้งเบิกแล้วใช่ไหม"
+                  detail="ระบบจะบันทึกยอดกับเวลาที่ตั้งเบิก และรายการจะย้ายไปแท็บ ตั้งเบิกแล้ว"
+                />
+              ) : (
+                <span className="badge pending">กรอกยอดก่อนจึงกดตั้งเบิกได้</span>
+              )}
+            </form>
+          )}
+
+          {/*
+            ไปใบถัดไปโดยไม่ต้องปิดแผงกลับไปหาในตาราง
+            ใช้ replace ไม่ push ประวัติย้อนกลับจะได้ไม่ยาวเป็นสิบชั้นตอนไล่ทำหลายใบ
+          */}
+          {nextId ? (
+            <button
+              type="button"
+              className="button primary do-pay-nextbtn"
+              onClick={() => router.replace(`/may/do-pay/${nextId}`)}
+            >
+              ดูไฟล์ต่อไป →
+            </button>
+          ) : (
+            <p className="do-pay-note">ไม่มีใบที่รอตั้งเบิกแล้ว</p>
+          )}
         </div>
       </div>
 

@@ -162,6 +162,14 @@ export const jobs = pgTable('jobs', {
   doPayAmountBy: text('do_pay_amount_by'),
   doPayAmountAt: timestamp('do_pay_amount_at', { withTimezone: true }),
   /*
+   * MAY คัดลอกข้อความแล้วส่งตั้งเบิกไปแล้ว — ใช้แยกแท็บรอตั้งเบิก/ตั้งเบิกแล้ว
+   *
+   * แยกจาก doPayAmountAt เพราะคนละขั้น กรอกยอดไว้แล้วยังไม่ได้ส่งตั้งเบิกก็มี
+   * เช่นเปิดดูไฟล์กรอกยอดค้างไว้ก่อน แล้วค่อยส่งทีเดียวหลายใบ
+   */
+  doClaimedAt: timestamp('do_claimed_at', { withTimezone: true }),
+  doClaimedBy: text('do_claimed_by'),
+  /*
    * ข้อความที่แก้เองบนจดหมายแลก D/O — มีผลเฉพาะจดหมายฉบับนี้
    *
    * แยกจากช่องข้อมูลงานจริง (blNo, eta, vessel) เพราะบางครั้งสายเรือให้แก้ถ้อยคำ
