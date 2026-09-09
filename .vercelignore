@@ -1,0 +1,10 @@
+# ไฟล์ที่ไม่ต้องอัปขึ้น Vercel ตอน deploy จาก CLI
+#
+# ตอน deploy ผ่าน GitHub ไฟล์พวกนี้ไม่เคยขึ้นไปอยู่แล้วเพราะ .gitignore กันไว้
+# แต่ CLI ไม่ได้อ่าน .gitignore ให้ จึงกวาดไปหมดจนเกินขีดจำกัด 100 MB ต่อไฟล์
+node_modules
+v2/node_modules
+v2/.next
+v2/test
+v2/tests/fixtures
+test

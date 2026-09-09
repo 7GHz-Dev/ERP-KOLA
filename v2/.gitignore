@@ -12,3 +12,5 @@ test/
 # repo นี้เป็น public จึงไม่เก็บขึ้นไป เก็บไว้ในเครื่องแต่ละคนแทน
 # วิธีสร้างใหม่ดูใน docs/PARSER-ACCURACY.md
 tests/fixtures/
+.vercel
+.env*
