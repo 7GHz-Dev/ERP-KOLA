@@ -145,6 +145,14 @@ export const jobs = pgTable('jobs', {
   doLetterAt: timestamp('do_letter_at', { withTimezone: true }),
   doLetterBy: text('do_letter_by'),
   /*
+   * ANN ส่งชุดแลก D/O ให้สายเรือแล้ว — ใช้แยกแท็บรอทำชุดแลก/ส่งแลก DO แล้ว
+   *
+   * แยกจาก doLetterAt เพราะคนละขั้นกัน doLetterAt แปลว่า "ทำจดหมายเสร็จ"
+   * ซึ่งเกิดตั้งแต่ตอนออกจดหมายหรืออัปโหลดจดหมายเอง ยังไม่ได้ส่งไปไหน
+   */
+  doExchangedAt: timestamp('do_exchanged_at', { withTimezone: true }),
+  doExchangedBy: text('do_exchanged_by'),
+  /*
    * ข้อความที่แก้เองบนจดหมายแลก D/O — มีผลเฉพาะจดหมายฉบับนี้
    *
    * แยกจากช่องข้อมูลงานจริง (blNo, eta, vessel) เพราะบางครั้งสายเรือให้แก้ถ้อยคำ

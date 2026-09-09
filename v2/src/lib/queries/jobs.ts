@@ -39,10 +39,13 @@ export function latestApproval(type: 'AN' | 'FN') {
     .as(`latest_${type.toLowerCase()}`);
 }
 
-const SORTABLE: Record<string, AnyPgColumn> = {
+const SORTABLE: Record<string, AnyPgColumn | SQL> = {
   jobNo: jobs.jobNo,
   blNo: jobs.blNo,
   eta: jobs.eta,
+  doExchangedAt: jobs.doExchangedAt,
+  // เวลาที่รายการเข้าคิวแลก DO — เป็นนิพจน์ ไม่ใช่คอลัมน์ตรง ๆ จึงเรียงด้วย SQL เดียวกัน
+  arrivedAt: sql`least(${jobs.eofficeSentAt}, handoff.sent_at)`,
   demDays: jobs.demDays,
   detDays: jobs.detDays,
   draftRefNo: jobs.draftRefNo,
@@ -116,6 +119,15 @@ export async function listJobs(filter: JobFilter = {}) {
       shipline: jobs.shipline,
       originPort: jobs.originPort,
       doLetterAt: jobs.doLetterAt,
+      doExchangedAt: jobs.doExchangedAt,
+      /*
+       * เวลาที่รายการถูกส่งเข้ามาถึงคิวแลก DO
+       *
+       * ส่งเข้ามาได้สองทางคนละแผนก (PAINT ที่ jobs.eoffice_sent_at และ
+       * FAH ที่ do_handoffs.sent_at) งานหนึ่งอาจถูกส่งทั้งสองทาง
+       * เอาเวลาแรกสุดเพราะนั่นคือตอนที่รายการมาโผล่ให้ ANN เห็นจริง ๆ
+       */
+      arrivedAt: sql<string | null>`least(${jobs.eofficeSentAt}, handoff.sent_at)`,
       jobTypeName: sql<string | null>`job_type.name`,
       portName: sql<string | null>`port.name`,
       portCode: sql<string | null>`port.code`,
@@ -159,6 +171,11 @@ export async function listJobs(filter: JobFilter = {}) {
       sql`entry.job_id = ${jobs.id}`,
     )
     .leftJoin(sql`eoffice_requests as eof`, sql`eof.job_id = ${jobs.id}`)
+    .leftJoin(
+      sql`(select job_id, min(sent_at) as sent_at from do_handoffs
+            where sent_at is not null group by job_id) as handoff`,
+      sql`handoff.job_id = ${jobs.id}`,
+    )
     .leftJoin(
       sql`(select job_id,
                   jsonb_object_agg(category, jsonb_build_object('id', id, 'fileName', file_name)) as files
@@ -281,15 +298,17 @@ export const QUEUE = {
    * ANN เป็นพนักงาน SHIPME ที่รับงานต่อจาก Partner จึงต้องเห็นทั้งสองทาง
    * เดิมดูแค่ทางของ PAINT งานที่ FAH ส่งไปแล้วจึงตกหล่นไม่เข้าคิวนี้เลย
    *
-   * หน้าเดียวจบ ไม่แยกแท็บ เพราะทำจดหมาย · อัปโหลด Slip · รวมชุด
-   * เป็นงานของคนเดียวกันบนงานเดียวกัน แยกแท็บแล้วต้องเด้งไปมา
+   * แยกสองแท็บด้วยเวลาที่กดส่งแลก DO
+   * ขั้นทำจดหมาย · อัปโหลด Slip · รวมชุด อยู่ในแท็บเดียวกันทั้งหมด
+   * เพราะเป็นงานของคนเดียวกันบนงานเดียวกัน กดส่งแล้วจึงย้ายไปอีกแท็บ
    */
-  doExchange: () => () => [
+  doExchange: (sub: 'wait' | 'sent' = 'wait') => () => [
     or(
       isNotNull(jobs.eofficeSentAt),
       sql`exists (select 1 from do_handoffs dh
                    where dh.job_id = ${jobs.id} and dh.sent_at is not null)`,
     ),
+    sub === 'sent' ? isNotNull(jobs.doExchangedAt) : isNull(jobs.doExchangedAt),
   ],
 
   /** NAMKANG */

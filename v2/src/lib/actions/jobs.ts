@@ -247,6 +247,38 @@ async function sendEofficeToPartnerImpl(formData: FormData) {
   revalidatePath('/pending');
 }
 
+/**
+ * ANN ส่งชุดแลก D/O ให้สายเรือแล้ว
+ *
+ * ต้องรวมชุดแลก DO ไว้ก่อน เพราะนั่นคือของที่ส่งออกไปจริง
+ * ตรวจฝั่งเซิร์ฟเวอร์ด้วย ไม่พึ่งแค่ปุ่มบนหน้าจอ เพราะฟอร์มถูกยิงตรงได้
+ */
+async function markDoExchangedImpl(formData: FormData) {
+  const user = await requireActiveSession(['ANN']);
+  const jobId = required(formData.get('jobId'), 'งาน', 80);
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job) throw new Error('ไม่พบงาน');
+  if (job.doExchangedAt) throw new Error('ส่งแลก DO ไปแล้ว');
+
+  const [merged] = await db.select({ id: files.id })
+    .from(files)
+    .where(and(eq(files.jobId, jobId), eq(files.category, 'DO_MERGED'), eq(files.isCurrent, true)))
+    .limit(1);
+  if (!merged) throw new Error('ยังไม่ได้รวมชุดแลก DO');
+
+  await db.update(jobs).set({
+    doExchangedAt: new Date(), doExchangedBy: user.id,
+    updatedBy: user.id, updatedAt: new Date(),
+  }).where(eq(jobs.id, jobId));
+  await recordStatus(jobId, job.status, 'DO_EXCHANGED',
+    text(formData.get('note'), 500) || 'ส่งชุดแลก D/O ให้สายเรือ', user.id);
+  await logActivity(user.id, 'MARK_DO_EXCHANGED', 'JOB', jobId, {});
+
+  revalidatePath('/do-exchange');
+  revalidatePath('/pending');
+}
+
 /** ปล่อยสินค้า — ต้องมี E-Office และ Surrender เคลียร์แล้วเท่านั้น */
 async function releaseJobImpl(formData: FormData) {
   const user = await requireActiveSession(['NAMKANG']);
@@ -449,6 +481,10 @@ export async function confirmCustomerInfo(formData: FormData) {
 
 export async function sendEofficeToPartner(formData: FormData) {
   return runAction(() => sendEofficeToPartnerImpl(formData));
+}
+
+export async function markDoExchanged(formData: FormData) {
+  return runAction(() => markDoExchangedImpl(formData));
 }
 
 export async function releaseJob(formData: FormData) {

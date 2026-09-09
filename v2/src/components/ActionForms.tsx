@@ -1,6 +1,6 @@
 import {
   confirmCustomerInfo, decideApproval, fileCustomsEntry, rejectDraft, releaseJob,
-  requestApproval, saveDoHandoff, sendEofficeToPartner, submitDraftForReview,
+  markDoExchanged, requestApproval, saveDoHandoff, sendEofficeToPartner, submitDraftForReview,
   updateBlInfo, updateSurrender,
 } from '@/lib/actions/jobs';
 import { acknowledgeInvoice, uploadJobFile } from '@/lib/actions/files';
@@ -115,6 +115,26 @@ export function SendEofficeButton({ jobId, ready }: { jobId: string; ready: bool
         tone="ok"
         confirm="ส่งชุดปล่อย E-Office ให้ Partner ใช่ไหม"
         detail="ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน และรายการจะออกจากหน้านี้"
+      />
+    </form>
+  );
+}
+
+/**
+ * ส่งชุดแลก D/O ให้สายเรือแล้ว — ต้องรวมชุดแลก DO ก่อน
+ *
+ * บอกด้วยว่ายังขาดอะไร ผู้ใช้จะได้ไม่ต้องเดาว่าทำไมยังกดไม่ได้
+ */
+export function SendDoExchangedButton({ jobId, ready }: { jobId: string; ready: boolean }) {
+  if (!ready) return <span className="badge pending">ยังไม่ได้รวมชุด</span>;
+  return (
+    <form action={markDoExchanged} className="inline-form">
+      <input type="hidden" name="jobId" value={jobId} />
+      <ConfirmSubmit
+        label="ส่งแลก DO แล้ว"
+        tone="ok"
+        confirm="ส่งชุดแลก D/O ให้สายเรือแล้วใช่ไหม"
+        detail="ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน และรายการจะย้ายไปแท็บ ส่งแลก DO แล้ว"
       />
     </form>
   );

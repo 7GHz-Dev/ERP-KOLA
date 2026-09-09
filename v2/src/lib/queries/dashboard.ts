@@ -65,9 +65,9 @@ export async function navCounts() {
       // ต้องตรงกับ QUEUE.eofficeSigned('wait') — ยังไม่ได้กดส่ง Partner
       eofficeSignedWait: sql<number>`count(*) filter (
         where ${jobs.customsStatus} = 'FILED' and ${jobs.eofficeSentAt} is null)::int`,
-      // ต้องตรงกับ QUEUE.doExchange — ส่ง Partner แล้ว (ทางใดทางหนึ่ง) แต่ยังไม่ได้ทำจดหมาย
+      // ต้องตรงกับ QUEUE.doExchange('wait') — ส่ง Partner แล้ว (ทางใดทางหนึ่ง) แต่ยังไม่ได้ส่งแลก DO
       doExchangeWait: sql<number>`count(*) filter (
-        where ${jobs.doLetterAt} is null
+        where ${jobs.doExchangedAt} is null
           and (${jobs.eofficeSentAt} is not null
                or exists (select 1 from do_handoffs dh
                            where dh.job_id = ${jobs.id} and dh.sent_at is not null)))::int`,
