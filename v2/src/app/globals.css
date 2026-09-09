@@ -798,7 +798,8 @@ label.mini span { font-size: 12px; }
  * ให้ใช้ความสูงที่เหลือจริงของแผงแทน
  */
 @media (max-width: 900px) and (orientation: landscape) {
-  .do-pay-view .slip-view, .slip-view { height: 78vh; }
+  /* จอเตี้ย (มือถือแนวนอน) ไฟล์ที่คิดความสูงจาก vh จะเตี้ยจนอ่านไม่ออก ให้สูงขึ้น */
+  .slip-view { height: 78vh; }
 }
 
 @media print {
@@ -1197,9 +1198,33 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
  *
  * ให้ไฟล์กว้างกว่าเพราะต้องอ่านตัวเลขจากในใบ ส่วนฝั่งซ้ายมีแค่ช่องเดียวกับกล่องข้อความ
  */
-.do-pay { display: grid; grid-template-columns: 280px 1fr; gap: 10px; align-items: start; }
-@media (max-width: 900px) { .do-pay { grid-template-columns: 1fr; } }
-.do-pay-side { display: flex; flex-direction: column; gap: 10px; }
+/*
+ * แผงกรอกยอดของ MAY — ไฟล์อยู่บน ฟอร์มอยู่ล่าง แบบเดียวกับแผงกรอก DO ของ FAH
+ *
+ * เป็นงานลักษณะเดียวกันคืออ่านตัวเลขจากใบแล้วคีย์ตาม วางเรียงลงมาสายตาจึงไหลต่อกัน
+ * และบนมือถือเอกสารได้ความกว้างเต็มจอ อ่านง่ายกว่าแบ่งซ้ายขวา
+ *
+ * สูงเต็มแผงเพื่อให้ไฟล์ยืดได้มากที่สุด ตัวที่เลื่อนคือช่องไฟล์ ไม่ใช่ทั้งแผง
+ */
+.do-pay { display: flex; flex-direction: column; gap: 10px; min-height: 0; height: 100%; }
+/*
+ * ในแผงข้าง ให้เนื้อในสูงเต็มช่องและไม่เลื่อนทั้งแผง
+ * ไฟล์จะได้ยืดเต็มความสูงที่เหลือ แทนที่จะสูงตามเนื้อหาแล้วลอยอยู่ครึ่งบน
+ * ใช้กฎเดียวกับที่แผงดูไฟล์ตัวอื่นใช้อยู่แล้ว
+ */
+.job-drawer .drawer-content:has(> .do-pay) { display: flex; padding: 12px; overflow: hidden; }
+/*
+ * ตอนเปิดเป็นหน้าเต็ม (กด URL ตรงหรือรีเฟรช) ไม่มีแผงครอบให้ยืดตาม
+ * height:100% จึงยุบจนไฟล์เหลือแค่ความสูงขั้นต่ำ ตั้งความสูงจากจอให้แทน
+ * หักส่วนหัวหน้ากับขอบล่างออก ไฟล์จะได้ไม่ดันจนหน้าเลื่อนโดยไม่จำเป็น
+ */
+.main > .do-pay { height: calc(100vh - 150px); min-height: 420px; }
+.do-pay-view { display: flex; flex-direction: column; flex: 1; min-height: 240px; }
+.do-pay-file {
+  display: block; flex: 1; width: 100%; min-height: 240px;
+  border: 1px solid var(--line); border-radius: 8px; background: #f4f6f8; object-fit: contain;
+}
+.do-pay-side { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .do-pay-form {
   display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
@@ -1219,7 +1244,6 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
   width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px; line-height: 1.5;
 }
-.do-pay-view .slip-view { height: 70vh; }
 .do-pay-note { margin: 6px 0 0; font-size: 11px; color: var(--muted); }
 .do-pay-done {
   margin: 0; padding: 9px 11px; border-radius: 8px; font-size: 12px; font-weight: 600;
@@ -1232,9 +1256,27 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 .do-pay-claim-form { display: flex; }
 .do-pay-claim-form .button { width: 100%; padding: 11px 12px; font-size: 14px; }
 @media (max-width: 900px) {
-  /* ช่องกรอกอยู่บน ไฟล์อยู่ล่าง แป้นพิมพ์จึงไม่บังสิ่งที่กำลังกรอก */
-  .do-pay-side { order: -1; }
-  .do-pay-view .slip-view { height: 58vh; }
+  /*
+   * มือถือให้ไฟล์สูงเป็นสัดส่วนของจอ ไม่ยืดตามแผง
+   * เพราะเนื้อหาใต้ไฟล์ (ช่องกรอก · ข้อความ · ปุ่ม) รวมกันสูงกว่าจอ
+   * ถ้าให้ไฟล์ยืดเต็มด้วย จะต้องเลื่อนยาวมากกว่าจะถึงปุ่มตั้งเบิก
+   */
+  .do-pay { height: auto; }
+  .do-pay-view { flex: none; }
+  .do-pay-file { flex: none; height: 52vh; min-height: 0; }
+  /*
+   * จอแคบไฟล์สูงคงที่แล้วฟอร์มต่อท้ายลงไป รวมกันสูงเกินจอ แผงจึงต้องเลื่อนได้
+   * กฎด้านบนตั้ง overflow:hidden ไว้เพื่อให้ไฟล์ยืดเต็มบนจอใหญ่ ต้องปลดตรงนี้
+   */
+  .job-drawer .drawer-content:has(> .do-pay) { display: block; overflow: auto; }
+}
+
+/*
+ * มือถือแนวนอน จอเตี้ยกว่ามาก 52vh จะเหลือความสูงไฟล์แค่ไม่กี่ร้อยพิกเซล
+ * ต้องอยู่หลังบล็อกบน เพราะความจำเพาะเท่ากัน ตัวที่มาทีหลังจึงชนะ
+ */
+@media (max-width: 900px) and (orientation: landscape) {
+  .do-pay-file { height: 82vh; }
 }
 /*
  * ช่องปุ่มดูกับยอดที่บันทึกแล้ว — คอลัมน์แรกของตาราง MAY

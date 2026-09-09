@@ -13,8 +13,9 @@ import type { PreviewFile } from '@/components/SlipCheckPanel';
  * ทำงานทีละใบตามลำดับ เปิดไฟล์ → อ่านยอดแล้วกรอก → คัดลอกข้อความ → ตั้งเบิก → ใบถัดไป
  * ทุกปุ่มของขั้นตอนนี้อยู่ในแผงเดียวกัน ไม่ต้องปิดกลับไปหาแถวถัดไปในตารางเอง
  *
- * ยอดกับข้อความอยู่จอเดียวกับไฟล์ เพราะต้องอ่านตัวเลขจากใบแล้วพิมพ์ตามทันที
- * บนมือถือช่องกรอกอยู่บน ไฟล์อยู่ล่าง แป้นพิมพ์จึงไม่บังสิ่งที่กำลังกรอก
+ * วางไฟล์ไว้บน ฟอร์มอยู่ล่าง แบบเดียวกับแผงกรอก DO ของ FAH
+ * เป็นงานลักษณะเดียวกันคืออ่านตัวเลขจากใบแล้วคีย์ตาม สายตาจึงไหลจากไฟล์ลงมาที่ช่องกรอกพอดี
+ * และบนมือถือได้ความกว้างเต็มจอให้เอกสาร ซึ่งอ่านง่ายกว่าแบ่งซ้ายขวา
  */
 export function DoPayPanel({
   jobId, invoiceDo, blNo, eta, shipline, amount, claimedAt, nextId,
@@ -55,6 +56,22 @@ export function DoPayPanel({
 
   return (
     <div className="do-pay">
+      {/* ไฟล์อยู่บนสุด — อ่านยอดจากใบแล้วสายตาไหลลงมาที่ช่องกรอกพอดี */}
+      <div className="do-pay-view">
+        {!src ? (
+          <p className="drawer-note warn">ยังไม่ได้อัปโหลด Invoice DO ของงานนี้</p>
+        ) : isImage ? (
+          <img className="do-pay-file" src={src} alt={invoiceDo?.fileName ?? 'Invoice DO'} />
+        ) : (
+          <object className="do-pay-file" data={src} type="application/pdf">
+            <p className="drawer-note warn">
+              เบราว์เซอร์นี้แสดงไฟล์นี้ในหน้าไม่ได้ ·{' '}
+              <a href={src} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
+            </p>
+          </object>
+        )}
+      </div>
+
       <div className="do-pay-side">
         {/* ขั้นที่ 1-2 — กรอกยอดที่อ่านได้จากใบที่เปิดดูอยู่ */}
         <form action={saveDoPayAmount} className="do-pay-form">
@@ -136,28 +153,6 @@ export function DoPayPanel({
             <p className="do-pay-note">ไม่มีใบที่รอตั้งเบิกแล้ว</p>
           )}
         </div>
-      </div>
-
-      <div className="slip-pane do-pay-view">
-        <div className="slip-pane-head">
-          <span>Invoice DO</span>
-          {src ? (
-            <a className="button tiny" href={src} target="_blank" rel="noreferrer">เปิดเต็มจอ</a>
-          ) : null}
-        </div>
-        {!src ? (
-          <div className="slip-empty">ยังไม่มีไฟล์ Invoice DO</div>
-        ) : isImage ? (
-          <img className="slip-view" src={src} alt={invoiceDo?.fileName ?? 'Invoice DO'} />
-        ) : (
-          <object className="slip-view" data={src} type="application/pdf">
-            <p className="slip-empty">
-              เบราว์เซอร์นี้แสดง PDF ในหน้าไม่ได้ ·{' '}
-              <a href={src} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
-            </p>
-          </object>
-        )}
-        {invoiceDo ? <div className="slip-pane-foot">{invoiceDo.fileName}</div> : null}
       </div>
     </div>
   );
