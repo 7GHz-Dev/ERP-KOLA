@@ -28,7 +28,8 @@ const UPLOAD_ROLES: Record<string, string[]> = {
   EOFFICE_SIGNED: ['PAINT'],
   DO_LETTER: ['ANN'],
   DO_LETTER_SIGNED: ['ANN'],
-  DO_SLIP: ['ANN'],
+  // MAY อัป Slip ได้ด้วย เป็นคนจ่ายเงินค่าแลก D/O จึงถือสลิปตัวจริงอยู่ในมือ
+  DO_SLIP: ['ANN', 'MAY'],
   DO_OTHER: ['ANN'],
   DO_MERGED: ['ANN'],
   INVOICE_GOODS: ['NAMKANG'],

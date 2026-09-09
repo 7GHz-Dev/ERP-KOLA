@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable, FileChip, type Column } from '@/components/JobTable';
+import { UploadForm } from '@/components/ActionForms';
 import { formatDateTime } from '@/lib/format';
 import { claimAmount } from '@/lib/do-claim';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
@@ -33,6 +34,22 @@ export default async function MayDoPayPage({
 
   const columns: Column[] = [
     {
+      /*
+       * ปุ่มดู — เปิดแผงที่มี Invoice DO คู่กับช่องกรอกยอดและข้อความเบิก
+       * เป็นลิงก์จริง ไม่ใช่ปุ่มเปิดแผงในหน้า จึงส่งต่อและกดรีเฟรชได้
+       *
+       * อยู่คอลัมน์แรกเพราะเป็นสิ่งที่ต้องกดทุกแถว ไม่ต้องกวาดตาไปสุดขวาก่อน
+       * ยอดที่บันทึกไว้แล้วขึ้นใต้ปุ่ม จะได้รู้ว่าใบไหนกรอกแล้วโดยไม่ต้องเปิดทีละใบ
+       */
+      label: 'ยอดชำระ', kind: 'wrap', className: 'col-do-pay',
+      render: (r) => (
+        <div className="do-pay-cell">
+          <Link className="button tiny primary" href={`/may/do-pay/${r.id}`}>ดู</Link>
+          {r.doPayAmount ? <b>{claimAmount(r.doPayAmount)}</b> : null}
+        </div>
+      ),
+    },
+    {
       label: 'วันที่ส่งรายการมา', sortKey: 'arrivedAt', kind: 'wrap',
       render: (r) => formatDateTime(r.arrivedAt),
     },
@@ -52,28 +69,25 @@ export default async function MayDoPayPage({
       ),
     },
     {
-      label: 'Slip โอนเงิน', kind: 'wrap', className: 'col-file',
-      render: (r) => (
-        <div className="file-cell">
-          <FileChip file={r.currentFiles?.DO_SLIP} />
-        </div>
-      ),
-    },
-    {
       /*
-       * ปุ่มดู — เปิดแผงที่มี Invoice DO คู่กับช่องกรอกยอดและข้อความเบิก
-       * เป็นลิงก์จริง ไม่ใช่ปุ่มเปิดแผงในหน้า จึงส่งต่อและกดรีเฟรชได้
-       * ยอดที่บันทึกไว้แล้วขึ้นข้างปุ่ม จะได้รู้ว่าใบไหนกรอกแล้วโดยไม่ต้องเปิดทีละใบ
+       * MAY เป็นคนจ่ายเงินค่าแลก D/O จึงถือสลิปตัวจริง อัปได้จากแถวนี้เลย
+       * อัปเสร็จอยู่หน้าเดิม ไม่เด้งไปแผงดูไฟล์ จะได้อัปใบถัดไปต่อได้ทันที
        */
-      label: 'ยอดชำระ', kind: 'actions',
-      render: (r) => (
-        <div className="row-actions">
-          {r.doPayAmount ? (
-            <b className="do-pay-cell">{claimAmount(r.doPayAmount)}</b>
-          ) : null}
-          <Link className="button tiny primary" href={`/may/do-pay/${r.id}`}>ดู</Link>
-        </div>
-      ),
+      label: 'Slip โอนเงิน', kind: 'wrap', className: 'col-file',
+      render: (r) => {
+        const file = r.currentFiles?.DO_SLIP;
+        return (
+          <div className="file-cell">
+            <FileChip file={file} />
+            <UploadForm
+              jobId={r.id}
+              category="DO_SLIP"
+              label={file ? 'เปลี่ยนไฟล์' : 'อัปโหลด Slip'}
+              stayHere
+            />
+          </div>
+        );
+      },
     },
   ];
 
@@ -91,7 +105,7 @@ export default async function MayDoPayPage({
         columns={columns}
         rows={rows} total={total} carry={carry} sortBy={sortBy} sortDir={sortDir}
         empty="ยังไม่มีงานที่รอแลก DO"
-        hint="รายการชุดเดียวกับหน้าจัดการแลก DO ของ ANN · งานที่ ANN กดส่งแลกแล้วจะหายไปจากหน้านี้"
+        hint="กดปุ่ม ดู ที่ต้นแถวเพื่อเปิด Invoice DO คู่กับช่องกรอกยอด · อัป Slip ได้จากในแถว · งานที่ ANN กดส่งแลกแล้วจะหายไปจากหน้านี้"
       />
     </>
   );

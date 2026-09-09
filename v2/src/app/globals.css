@@ -1152,8 +1152,13 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
   font-size: 12px; line-height: 1.5;
 }
 .do-pay-view .slip-view { height: 70vh; }
-/* ยอดที่บันทึกแล้วในตาราง */
-.do-pay-cell { font-variant-numeric: tabular-nums; }
+/*
+ * ช่องปุ่มดูกับยอดที่บันทึกแล้ว — คอลัมน์แรกของตาราง MAY
+ * ปุ่มอยู่บน ยอดอยู่ล่าง กวาดตาลงมาเห็นได้ทีเดียวว่าใบไหนกรอกยอดแล้ว
+ */
+table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-width: 96px; }
+.do-pay-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.do-pay-cell b { font-size: 13px; font-variant-numeric: tabular-nums; }
 
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }
