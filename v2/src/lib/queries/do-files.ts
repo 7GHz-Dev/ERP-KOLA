@@ -33,6 +33,38 @@ export async function loadSlipCheck(jobId: string) {
 }
 
 /**
+ * ข้อมูลของแผงกรอกยอดชำระของ MAY — Invoice DO กับค่าที่ใช้ประกอบข้อความเบิก
+ *
+ * ดึงค่าที่ข้อความเบิกต้องใช้มาจากงานโดยตรง (BL · ETA · สายเรือ · ยอดที่เคยกรอก)
+ * แผงจึงประกอบข้อความได้เองโดยไม่ต้องรอตารางส่งค่าลงมา และรีเฟรชหน้าก็ยังได้ค่าครบ
+ */
+export async function loadDoPay(jobId: string) {
+  const [job] = await db
+    .select({
+      id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo,
+      eta: jobs.eta, shipline: jobs.shipline, doPayAmount: jobs.doPayAmount,
+    })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  if (!job) return null;
+
+  const [invoiceDo] = await db
+    .select({
+      id: files.id, fileName: files.fileName, mimeType: files.mimeType,
+    })
+    .from(files)
+    .where(and(
+      eq(files.jobId, jobId),
+      eq(files.category, 'INVOICE_DO'),
+      eq(files.isCurrent, true),
+    ))
+    .limit(1);
+
+  return { job, invoiceDo };
+}
+
+/**
  * ข้อมูลสำหรับหน้าแก้ข้อความจดหมายแลก D/O
  *
  * คืนสองชุดคู่กัน — ค่าที่คำนวณจากงาน (ใช้เป็น placeholder ให้เห็นว่าถ้าไม่แก้จะได้อะไร)

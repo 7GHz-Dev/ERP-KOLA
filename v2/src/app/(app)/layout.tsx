@@ -59,6 +59,12 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    label: 'MAY', color: '#c2185b', roles: ['MAY'],
+    items: [
+      { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'doExchangeWait' },
+    ],
+  },
+  {
     label: 'SYSTEM', color: '#793400', roles: ['ADMIN'],
     items: [
       { href: '/master', label: 'Master Data' },

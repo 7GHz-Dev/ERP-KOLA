@@ -120,6 +120,7 @@ export async function listJobs(filter: JobFilter = {}) {
       originPort: jobs.originPort,
       doLetterAt: jobs.doLetterAt,
       doExchangedAt: jobs.doExchangedAt,
+      doPayAmount: jobs.doPayAmount,
       /*
        * เวลาที่รายการถูกส่งเข้ามาถึงคิวแลก DO
        *

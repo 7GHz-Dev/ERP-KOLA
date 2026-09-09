@@ -1124,6 +1124,37 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 }
 .slip-empty { padding: 28px 12px; text-align: center; color: var(--muted); font-size: 12px; }
 
+/*
+ * แผงกรอกยอดชำระของ MAY — ช่องกรอกกับข้อความเบิกอยู่ซ้าย Invoice DO อยู่ขวา
+ *
+ * ให้ไฟล์กว้างกว่าเพราะต้องอ่านตัวเลขจากในใบ ส่วนฝั่งซ้ายมีแค่ช่องเดียวกับกล่องข้อความ
+ */
+.do-pay { display: grid; grid-template-columns: 280px 1fr; gap: 10px; align-items: start; }
+@media (max-width: 900px) { .do-pay { grid-template-columns: 1fr; } }
+.do-pay-side { display: flex; flex-direction: column; gap: 10px; }
+.do-pay-form {
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.do-pay-form label { width: 100%; }
+.do-pay-form input { font-size: 18px; font-variant-numeric: tabular-nums; }
+.do-pay-claim {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.do-pay-claim-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+}
+.do-pay-claim-head span { flex: 1; }
+/* ข้อความเบิกใช้ฟอนต์ความกว้างคงที่ จะได้เห็นว่าลูกน้ำกับตัวเลขตรงกับที่จะวางจริง */
+.do-pay-text {
+  width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; line-height: 1.5;
+}
+.do-pay-view .slip-view { height: 70vh; }
+/* ยอดที่บันทึกแล้วในตาราง */
+.do-pay-cell { font-variant-numeric: tabular-nums; }
+
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }
 .shipline-cell b { display: block; font-size: 12px; font-weight: 600; line-height: 1.35; }

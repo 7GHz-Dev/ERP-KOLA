@@ -153,6 +153,15 @@ export const jobs = pgTable('jobs', {
   doExchangedAt: timestamp('do_exchanged_at', { withTimezone: true }),
   doExchangedBy: text('do_exchanged_by'),
   /*
+   * ยอดที่ต้องชำระค่าแลก D/O — MAY กรอกจาก Invoice DO ที่เปิดดูคู่กัน
+   *
+   * เก็บเป็น numeric เหมือนยอดเงินช่องอื่นของระบบ ไม่ใช่ข้อความ
+   * เพราะต้องเอาไปจัดรูปแบบใส่ข้อความเบิกและรวมยอดได้ในภายหลัง
+   */
+  doPayAmount: numeric('do_pay_amount', { precision: 18, scale: 2 }),
+  doPayAmountBy: text('do_pay_amount_by'),
+  doPayAmountAt: timestamp('do_pay_amount_at', { withTimezone: true }),
+  /*
    * ข้อความที่แก้เองบนจดหมายแลก D/O — มีผลเฉพาะจดหมายฉบับนี้
    *
    * แยกจากช่องข้อมูลงานจริง (blNo, eta, vessel) เพราะบางครั้งสายเรือให้แก้ถ้อยคำ

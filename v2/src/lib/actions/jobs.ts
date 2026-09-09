@@ -279,6 +279,39 @@ async function markDoExchangedImpl(formData: FormData) {
   revalidatePath('/pending');
 }
 
+/**
+ * MAY บันทึกยอดที่ต้องชำระค่าแลก D/O
+ *
+ * อ่านมาจาก Invoice DO ที่เปิดดูคู่กันในแผงเดียวกัน เก็บไว้เพื่อให้เปิดมาอีกกี่ครั้ง
+ * ก็ยังได้ข้อความเบิกชุดเดิม ไม่ต้องเปิดไฟล์อ่านซ้ำทุกรอบ
+ * ล้างช่องให้ว่างได้ เผื่อกรอกผิดแล้วอยากลบทิ้งก่อนกรอกใหม่
+ */
+async function saveDoPayAmountImpl(formData: FormData) {
+  const user = await requireActiveSession(['MAY']);
+  const jobId = required(formData.get('jobId'), 'งาน', 80);
+
+  const [job] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job) throw new Error('ไม่พบงาน');
+
+  const raw = text(formData.get('amount'), 30);
+  let amount: string | null = null;
+  if (raw) {
+    const n = number(formData.get('amount'), NaN);
+    if (!Number.isFinite(n) || n < 0) throw new Error('ยอดชำระต้องเป็นตัวเลขไม่ติดลบ');
+    amount = n.toFixed(2);
+  }
+
+  await db.update(jobs).set({
+    doPayAmount: amount,
+    doPayAmountBy: amount ? user.id : null,
+    doPayAmountAt: amount ? new Date() : null,
+    updatedBy: user.id, updatedAt: new Date(),
+  }).where(eq(jobs.id, jobId));
+  await logActivity(user.id, 'SAVE_DO_PAY_AMOUNT', 'JOB', jobId, { amount });
+
+  revalidatePath('/may/do-pay');
+}
+
 /** ปล่อยสินค้า — ต้องมี E-Office และ Surrender เคลียร์แล้วเท่านั้น */
 async function releaseJobImpl(formData: FormData) {
   const user = await requireActiveSession(['NAMKANG']);
@@ -485,6 +518,10 @@ export async function sendEofficeToPartner(formData: FormData) {
 
 export async function markDoExchanged(formData: FormData) {
   return runAction(() => markDoExchangedImpl(formData));
+}
+
+export async function saveDoPayAmount(formData: FormData) {
+  return runAction(() => saveDoPayAmountImpl(formData));
 }
 
 export async function releaseJob(formData: FormData) {

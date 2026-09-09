@@ -34,7 +34,7 @@ export const DEPARTMENTS = [
     key: 'CARRIER_COORD',
     label: 'ประสานงานสายเรือ',
     company: 'SHIPME' as CompanyKey,
-    roles: ['ANN'],
+    roles: ['ANN', 'MAY'],
   },
   {
     key: 'SYSTEM',
@@ -71,6 +71,10 @@ export const ROLE_INFO: Record<string, { label: string; detail: string }> = {
   ANN: {
     label: 'ANN',
     detail: 'จัดการแลก DO — ออกจดหมาย, อัปโหลด Slip และรวมชุดเอกสาร',
+  },
+  MAY: {
+    label: 'MAY',
+    detail: 'รอแลก DO — กรอกยอดชำระจาก Invoice DO และคัดลอกข้อความเบิก',
   },
 };
 
