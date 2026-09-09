@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { ActionAlert } from '@/components/ActionAlert';
 import { DisclosureBehavior } from '@/components/Interactions';
 import { SideNav } from '@/components/SideNav';
+import { SidebarToggle } from '@/components/SidebarToggle';
 import { currentUser, logout, roleAllows } from '@/lib/auth';
 import { navCounts } from '@/lib/queries/dashboard';
 
@@ -135,6 +136,12 @@ export default async function AppLayout({
 
   return (
     <div className="app-shell">
+      {/*
+        ปุ่มซ่อน/แสดงเมนูอยู่นอกแถบเมนู เพราะตอนซ่อนแล้วแถบหายไปทั้งอัน
+        ถ้าปุ่มอยู่ข้างในจะหายตามไปด้วยจนกดกลับมาไม่ได้
+      */}
+      <SidebarToggle />
+
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark small">K</div>

@@ -584,6 +584,35 @@ label.mini span { font-size: 12px; }
 }
 .sidebar-user .button:hover { background: rgba(255, 255, 255, .18); color: #fff; }
 
+/* ---------- ปุ่มซ่อน/แสดงเมนู ---------- */
+
+/*
+ * ลอยทับมุมซ้ายบนของแถบเมนู อยู่นอกตัวแถบเพราะตอนซ่อนแล้วแถบหายไปทั้งอัน
+ * z-index ต่ำกว่า drawer (200) เพื่อไม่ให้ค้างทับตอนเปิดแผงดูไฟล์
+ */
+.nav-toggle {
+  position: fixed; top: 16px; left: 14px; z-index: 60;
+  width: 34px; height: 34px; display: grid; place-items: center;
+  border: 1px solid rgba(255, 255, 255, .24); border-radius: 7px;
+  background: rgba(255, 255, 255, .12); color: #fff;
+  font-size: 15px; line-height: 1; cursor: pointer;
+}
+.nav-toggle:hover { background: rgba(255, 255, 255, .24); }
+
+/* เมนูถูกซ่อน — คืนความกว้างทั้งหมดให้เนื้อหา */
+.nav-hidden .app-shell { grid-template-columns: minmax(0, 1fr); }
+.nav-hidden .sidebar { display: none; }
+/*
+ * ตอนซ่อน ปุ่มไม่มีพื้นหลังเข้มของแถบเมนูรองอยู่แล้ว ต้องมีพื้นหลังของตัวเอง
+ * ไม่งั้นเครื่องหมายสีขาวจะจมหายไปกับพื้นหน้าสีอ่อน
+ */
+.nav-hidden .nav-toggle {
+  background: var(--sidebar); border-color: transparent;
+  box-shadow: 0 2px 8px rgba(15, 35, 49, .25);
+}
+/* เว้นที่ให้ปุ่มที่ลอยอยู่ ไม่ให้ทับหัวข้อของหน้า */
+.nav-hidden .main { padding-left: 60px; }
+
 /* ---------- Drawer ---------- */
 
 .drawer-root { position: fixed; inset: 0; z-index: 200; }
@@ -742,6 +771,34 @@ label.mini span { font-size: 12px; }
   .drawer-kv .key { margin-top: 8px; }
   .document-line { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; }
+
+  /*
+   * แผงดูไฟล์บนมือถือ — บีบส่วนที่ไม่ใช่ไฟล์ให้เล็กลงเพื่อเหลือที่ให้เอกสารมากที่สุด
+   * หัวแผงเดิมสูง 66px กับขอบใน 18px รวมกันกินความสูงจอไปเกือบหนึ่งในสี่
+   */
+  .drawer-header { min-height: 0; padding: 9px 11px; gap: 8px; }
+  .drawer-header h2 { font-size: 15px; }
+  .drawer-file { font-size: 13px; max-width: 22ch; }
+  .drawer-content { padding: 10px; }
+  .job-drawer .drawer-content:has(> .file-preview-view) { padding: 8px; }
+  .drawer-section { padding: 11px 12px; }
+  /* ปุ่มในหัวแผงต้องกดโดนด้วยนิ้ว ไม่ใช่ปลายเมาส์ */
+  .drawer-nav .icon-button { width: 36px; height: 36px; }
+  .drawer-nav span { min-width: 42px; font-size: 11px; }
+
+  /*
+   * แผงเล็ก (เช่นฟอร์มอัปโหลดในการ์ด) ตั้ง min-width ไว้กว้างกว่าการ์ดบนจอแคบ
+   * ปล่อยไว้จะดันจนหน้าเลื่อนซ้ายขวาได้ทั้งหน้า
+   */
+  .popover, .popover.wide { min-width: 0; width: min(86vw, 320px); }
+}
+
+/*
+ * จอเตี้ย (มือถือแนวนอน) ไฟล์ที่ตั้งความสูงเป็น vh ไว้จะเตี้ยจนอ่านไม่ออก
+ * ให้ใช้ความสูงที่เหลือจริงของแผงแทน
+ */
+@media (max-width: 900px) and (orientation: landscape) {
+  .do-pay-view .slip-view, .slip-view { height: 78vh; }
 }
 
 @media print {
@@ -1051,6 +1108,17 @@ body.has-trim-pane .extract-field.wide { grid-column: 1 / -1; }
  * ผูกไว้กับตัวแปรเดียว แก้ที่เดียวได้ครบทุกแผง
  */
 .job-drawer.wide { width: var(--doc-drawer-w); }
+
+/*
+ * บนมือถือแผงอ่านเอกสารต้องเต็มจอ
+ *
+ * ต้องอยู่หลังกฎบรรทัดบน เพราะความจำเพาะเท่ากัน (.job-drawer.wide เหมือนกัน)
+ * ตัวที่มาทีหลังจึงชนะ ถ้าไปเขียนไว้ในบล็อกจอแคบด้านบนของไฟล์ กฎนี้จะทับกลับ
+ * แล้วแผงจะกว้างตาม clamp() ที่มีขั้นต่ำ 638px ซึ่งล้นจอมือถือจนเลื่อนซ้ายขวาได้
+ */
+@media (max-width: 900px) {
+  .job-drawer.wide { width: 100vw; }
+}
 
 /*
  * ---------- แผงกรอก DO (ดูไฟล์ไปกรอกไป) ----------
