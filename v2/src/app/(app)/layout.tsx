@@ -17,11 +17,20 @@ export const dynamic = 'force-dynamic';
  * ADMIN เห็นทุกกลุ่ม
  */
 type NavItem = { href: string; label: string; count?: keyof Awaited<ReturnType<typeof navCounts>> };
-type NavGroup = { label: string; color: string; roles: string[]; items: NavItem[] };
+type NavGroup = {
+  label: string; color: string; roles: string[]; items: NavItem[];
+  /** role ที่ไม่ต้องเห็นกลุ่มนี้ ใช้กับกลุ่มที่เปิดให้ทุกคน (roles ว่าง) แต่มีข้อยกเว้น */
+  hideFor?: string[];
+};
 
 const NAV: NavGroup[] = [
   {
-    label: 'Overview', color: '#a4a097', roles: [],
+    /*
+     * ANN กับ MAY เป็นพนักงาน SHIPME ที่รับงานต่อเป็นช่วง ๆ ไม่ได้ดูแลงานทั้งระบบ
+     * ภาพรวมงานกับทะเบียนงานเป็นมุมของฝั่ง KOLA จึงไม่ต้องมีในเมนูของสองคนนี้
+     * เมนูสั้นลงเหลือเฉพาะงานของตัวเอง ซึ่งช่วยมากตอนใช้บนมือถือ
+     */
+    label: 'Overview', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY'],
     items: [
       { href: '/overview', label: 'ภาพรวมงาน' },
       { href: '/jobs', label: 'ทะเบียนงาน' },
@@ -130,8 +139,14 @@ export default async function AppLayout({
   if (!user) redirect('/login');
 
 
+  /*
+   * ADMIN เห็นทุกกลุ่มตามเดิม hideFor จึงเช็คจาก role ตรง ๆ ไม่ผ่าน roleAllows
+   * ไม่งั้น ADMIN จะโดนซ่อนไปด้วยเพราะ roleAllows คืนจริงให้ ADMIN เสมอ
+   */
   const visible = NAV.filter(
-    (g) => g.roles.length === 0 || roleAllows(user.role, g.roles),
+    (g) =>
+      !g.hideFor?.includes(user.role)
+      && (g.roles.length === 0 || roleAllows(user.role, g.roles)),
   );
 
   return (

@@ -590,28 +590,44 @@ label.mini span { font-size: 12px; }
  * ลอยทับมุมซ้ายบนของแถบเมนู อยู่นอกตัวแถบเพราะตอนซ่อนแล้วแถบหายไปทั้งอัน
  * z-index ต่ำกว่า drawer (200) เพื่อไม่ให้ค้างทับตอนเปิดแผงดูไฟล์
  */
+/*
+ * ปุ่มซ่อน/แสดงเมนู — คนละหน้าตาตามสถานะ
+ *
+ * ตอนเมนูกางอยู่ ปุ่มเป็นแค่ลูกศรจาง ๆ มุมขวาบนของแถบ ทับพื้นเข้มของแถบเมนู
+ * ไม่ต้องแย่งสายตากับรายการเมนูที่เห็นอยู่แล้ว จะได้ไม่รก
+ *
+ * z-index ต่ำกว่า drawer (200) เพื่อไม่ให้ค้างทับตอนเปิดแผงดูไฟล์
+ */
 .nav-toggle {
-  position: fixed; top: 16px; left: 14px; z-index: 60;
-  width: 34px; height: 34px; display: grid; place-items: center;
-  border: 1px solid rgba(255, 255, 255, .24); border-radius: 7px;
-  background: rgba(255, 255, 255, .12); color: #fff;
-  font-size: 15px; line-height: 1; cursor: pointer;
+  position: fixed; top: 18px; left: calc(var(--sidebar-w) - 42px); z-index: 60;
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 0; border-radius: 7px; padding: 0;
+  background: transparent; color: #8fa3b4;
+  cursor: pointer; transition: background .15s, color .15s;
 }
-.nav-toggle:hover { background: rgba(255, 255, 255, .24); }
+.nav-toggle:hover { background: rgba(255, 255, 255, .12); color: #fff; }
 
 /* เมนูถูกซ่อน — คืนความกว้างทั้งหมดให้เนื้อหา */
 .nav-hidden .app-shell { grid-template-columns: minmax(0, 1fr); }
 .nav-hidden .sidebar { display: none; }
+
 /*
- * ตอนซ่อน ปุ่มไม่มีพื้นหลังเข้มของแถบเมนูรองอยู่แล้ว ต้องมีพื้นหลังของตัวเอง
- * ไม่งั้นเครื่องหมายสีขาวจะจมหายไปกับพื้นหน้าสีอ่อน
+ * ตอนซ่อน ปุ่มนี้เป็นทางเดียวที่จะเรียกเมนูกลับมา ต้องหาเจอทันทีโดยไม่ต้องกวาดตา
+ * จึงเป็นปุ่มทึบมีคำว่า "เมนู" กำกับ ไม่ใช่ไอคอนเปล่าที่ต้องเดาว่ากดแล้วได้อะไร
+ * สูง 38px กดด้วยนิ้วโป้งบนมือถือได้สบาย
  */
-.nav-hidden .nav-toggle {
-  background: var(--sidebar); border-color: transparent;
-  box-shadow: 0 2px 8px rgba(15, 35, 49, .25);
+.nav-toggle.show {
+  top: 12px; left: 12px;
+  width: auto; height: 38px; padding: 0 13px;
+  background: var(--sidebar); color: #fff;
+  box-shadow: 0 2px 10px rgba(15, 35, 49, .28);
 }
+.nav-toggle.show:hover { background: var(--navy); color: #fff; }
+.nav-toggle-text { font-size: 13px; font-weight: 700; line-height: 1; }
+
 /* เว้นที่ให้ปุ่มที่ลอยอยู่ ไม่ให้ทับหัวข้อของหน้า */
-.nav-hidden .main { padding-left: 60px; }
+.nav-hidden .main { padding-top: 60px; }
 
 /* ---------- Drawer ---------- */
 
