@@ -20,11 +20,11 @@ export const SHIPPING_LINES = [
   'CNC', 'WAN HAI', 'MAERSK', 'ONE', 'NEX', 'TOKO LINE', 'NAMSUNG', 'OOCL',
   'RCL', 'CEVA', 'KOLA YANG MING', 'ALPINE', 'ENTERPRISE', 'PILOT',
   'M+R FORWARDING', 'TOLL GLOBAL', 'K LINE', 'KMTC', 'COSCO', 'SINOKOR',
-  'FUJITRANS', 'SEALS', 'EASTERN', 'JJ', 'CU LINES',
+  'FUJITRANS', 'SEALS', 'EASTERN', 'JJ', 'CU LINES', 'KNOT GLOBAL',
 ] as const;
 
 /**
- * ชื่อบริษัทตัวแทนสายเรือ — ต่อท้าย "จัดการแผนกขาเข้า บริษัท" บนบรรทัด "เรียน"
+ * ชื่อบริษัทตัวแทนสายเรือ — ต่อท้าย "ผู้จัดการแผนกขาเข้า บริษัท" บนบรรทัด "เรียน"
  *
  * คัดจากไฟล์ต้นทางของผู้ใช้ ชีตละสายเรือ จึงเป็นชื่อที่ใช้ยื่นจริงกับแต่ละสาย
  * ตัวแทนของบางสายเป็นคนละบริษัทกับชื่อสายเรือ เช่น CNC ยื่นที่ CMA CGM
@@ -59,6 +59,7 @@ export const SHIPPING_LINE_COMPANIES: Record<string, string> = {
   'EASTERN': 'Eastern Shipping Agencies Co., Ltd.',
   'JJ': 'JINJIANG SHIPPING AGENCY CO.,LTD.',
   'CU LINES': 'CU LINES (THAILAND) CO., LTD.',
+  'KNOT GLOBAL': 'Knot Global Holdings Co.,Ltd.',
 };
 
 export type FormField = {
@@ -143,7 +144,7 @@ export const DO_LETTER_FIELDS: FormField[] = [
 
   { key: 'subject', label: 'เรื่อง', group: 'เนื้อความ', fallback: 'ขอแลก D/O', wide: true },
   { key: 'attention', label: 'เรียน', group: 'เนื้อความ',
-    fallback: 'จัดการแผนกขาเข้า บริษัท', wide: true,
+    fallback: 'ผู้จัดการแผนกขาเข้า บริษัท', wide: true,
     hint: 'ระบบจะต่อท้ายด้วยชื่อบริษัทตัวแทนสายเรือให้เอง' },
   { key: 'attentionCompany', label: 'ชื่อบริษัทตัวแทนสายเรือ', group: 'เนื้อความ',
     fallback: '', wide: true,
