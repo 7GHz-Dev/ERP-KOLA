@@ -111,6 +111,31 @@ const numOrNull = (v: unknown): string | null => {
 type Issue = { row: number; msg: string };
 
 /**
+ * ถอดรหัสไฟล์ CSV ให้ได้ภาษาไทยที่ถูกต้อง ไม่ว่าจะบันทึกมาแบบไหน
+ *
+ * Excel บน Windows ภาษาไทยบันทึก CSV เป็น cp874 (Windows-874) ไม่ใช่ UTF-8
+ * ถ้าอ่านเป็น UTF-8 ตรง ๆ ภาษาไทยจะกลายเป็นตัวยึกยืออย่าง "Ã¶Â¹µìà¡èÒ"
+ * แล้วเข้าฐานข้อมูลไปทั้งอย่างนั้น ซึ่งกู้คืนทีหลังยากกว่าดักตั้งแต่ตอนอ่าน
+ *
+ * ดูจากไบต์จริงว่าเป็น UTF-8 ที่ถูกต้องไหม ถ้าไม่ใช่ค่อยลอง cp874
+ * ไม่เดาจากนามสกุลหรือชื่อไฟล์ เพราะทั้งสองแบบใช้ .csv เหมือนกัน
+ */
+function decodeCsv(buf: Buffer): string {
+  // BOM ของ UTF-8 — ชัดเจนว่าเป็น UTF-8 ตัดทิ้งแล้วอ่านได้เลย
+  if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+    return buf.subarray(3).toString('utf8');
+  }
+
+  const utf8 = buf.toString('utf8');
+  // U+FFFD คือตัวที่ Node ใส่แทนไบต์ที่ถอดเป็น UTF-8 ไม่ได้ มีแปลว่าไม่ใช่ UTF-8
+  if (!utf8.includes('\uFFFD')) return utf8;
+
+  const thai = new TextDecoder('windows-874').decode(buf);
+  console.log('  ไฟล์นี้บันทึกเป็น Windows-874 (Excel ภาษาไทย) — ถอดรหัสให้แล้ว');
+  return thai;
+}
+
+/**
  * อ่านแถวจาก .xlsx หรือ .csv ให้เป็นรูปเดียวกัน
  *
  * ใช้ exceljs ที่โปรเจกต์มีอยู่แล้ว ไม่ต้องลงแพ็กเกจเพิ่ม
@@ -121,7 +146,7 @@ async function readRows(file: string) {
   const wb = new ExcelJS.Workbook();
   if (/\.csv$/i.test(file)) {
     // อ่านเป็นข้อความเองแทน exceljs.csv.readFile ซึ่งเดาชนิดค่าแล้วทำให้วันที่เพี้ยน
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/).filter((l) => l.trim());
+    const lines = decodeCsv(readFileSync(file)).split(/\r?\n/).filter((l) => l.trim());
     const split = (line: string) => {
       const out: string[] = [];
       let cur = '';
@@ -355,6 +380,9 @@ async function main() {
       ['bl_no', j.blNo], ['vessel', j.vessel], ['voyage', j.voyage],
       ['eta', j.eta], ['shipline', j.shipline], ['origin_port', j.originPort],
       ['dem/det', `${j.demDays} / ${j.detDays}`],
+      ['product', j.product],
+      ['จำนวน/หน่วย', `${j.unitAmount ?? '—'} ${j.packageType ?? ''}`.trim()],
+      ['gross_weight', j.grossWeight],
       ['อนุมัติ AN', p.anApproved ? 'ใช่ — สร้างแถวใน approvals ให้' : 'ยังไม่อนุมัติ'],
       ['shipper_id', j.shipperId], ['consignee_id', j.consigneeId],
       ['notify_party_id', j.notifyPartyId], ['person_id', j.personId],
@@ -427,6 +455,18 @@ async function main() {
         .set({ lastNumber: maxSeq, updatedAt: new Date() })
         .where(eq(jobSequences.id, seq.id));
       console.log(`\nดันลำดับเลขงาน KOLA-${year} จาก ${seq.lastNumber} → ${maxSeq}`);
+      /*
+       * เลขที่กระโดดไกลผิดปกติมักมาจากเลขทดสอบอย่าง 8888 หรือ 9999
+       * ปล่อยไว้แล้วงานจริงใบถัดไปจะได้เลข 8889 ต่อทันที ซึ่งย้อนกลับยาก
+       * เตือนให้เห็นตอนนี้ ก่อนจะมีคนรับงานใหม่เข้ามา
+       */
+      if (maxSeq - seq.lastNumber > 100) {
+        console.log(
+          `\n  ระวัง: เลขงานกระโดดไป ${maxSeq - seq.lastNumber} เลข`
+          + `\n  งานจริงใบถัดไปจะได้เลข KOLA-${year}-${String(maxSeq + 1).padStart(4, '0')}`
+          + '\n  ถ้าไม่ต้องการ ให้แก้ last_number ในตาราง job_sequences กลับเอง',
+        );
+      }
     }
   });
 
