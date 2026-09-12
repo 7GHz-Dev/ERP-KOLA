@@ -1,2 +1,0 @@
-id,job_no,status,an_approved,source_type,bl_no,bl_type,vessel,voyage,eta,shipline,origin_port,dem_days,det_days,product,unit_amount,package_type,gross_weight,shipper_id,consignee_id,notify_party_id,person_id,port_id,terminal_id,job_type_id
-,KOLA-2026-8888,DO_SENT,TRUE,AN,AMP99999,Original,SHUN LONG,0QIO9S1NC,7/9/26,CNC,NAGOYA,5,3,รถยนต์เก่าใช้แล้ว,4,UNIT,10370,ALI INTERPRISE,"MAESOT FREEZONE CO.,LTD.","KOLA SHIPPING CO.,LTD.",NILAR,ท่าเรือแหลมฉบัง (Laem Chabang Port),2853 (SiamCSP),MSFZ - USED CAR

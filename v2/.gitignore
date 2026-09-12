@@ -14,3 +14,6 @@ test/
 tests/fixtures/
 .vercel
 .env*
+
+# ไฟล์ข้อมูลที่ใช้ import/export งาน — เป็นข้อมูลลูกค้าจริง ไม่เอาขึ้น repo
+*.csv
