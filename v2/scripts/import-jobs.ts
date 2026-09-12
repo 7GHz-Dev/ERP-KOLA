@@ -21,7 +21,7 @@ import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { db } from '../src/db';
-import { bls, jobSequences, jobs, masterRecords } from '../src/db/schema';
+import { approvals, bls, jobSequences, jobs, masterRecords } from '../src/db/schema';
 
 const FILE = process.argv[2];
 const DRY = process.argv.includes('--dry');
@@ -97,6 +97,10 @@ const int = (v: unknown): number => {
   const n = Number(str(v).replace(/,/g, ''));
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 };
+/** ค่าจริง/เท็จจาก Excel ซึ่งพิมพ์กันหลายแบบ */
+const bool = (v: unknown): boolean =>
+  ['TRUE', 'YES', 'Y', '1', 'X', 'ใช่'].includes(str(v).toUpperCase());
+
 const numOrNull = (v: unknown): string | null => {
   const s = str(v);
   if (!s) return null;
@@ -218,7 +222,13 @@ async function main() {
 
   /* ---------- แปลงทีละแถว ---------- */
   const issues: Issue[] = [];
-  const planned: Array<{ job: typeof jobs.$inferInsert; blNo: string; shipperName: string }> = [];
+  const planned: Array<{
+    job: typeof jobs.$inferInsert;
+    blNo: string;
+    shipperName: string;
+    /** ให้ผ่านอนุมัติ AN ของ NAMKANG มาแล้ว — สร้างแถวใน approvals ให้ด้วย */
+    anApproved: boolean;
+  }> = [];
   const seenJobNo = new Set<string>();
 
   raw.forEach((rawRow, i) => {
@@ -242,9 +252,27 @@ async function main() {
       console.log(`  แถว ${n}: แปลง status "${rawStatus}" → "${status}"`);
     }
 
+    /*
+     * ผ่านอนุมัติ AN ของ NAMKANG มาแล้ว
+     *
+     * ตั้ง status เป็น AN_APPROVED อย่างเดียวไม่พอ คิวงานอ่านจากตาราง approvals
+     * ไม่ได้อ่านจาก status จึงต้องสร้างแถวอนุมัติให้ด้วย ตรงนี้ทำให้อัตโนมัติ
+     * จะได้ไม่ต้องทำชีตที่สองเอง แล้วเผลอใส่ไม่ครบจนงานหายไปจากทุกคิว
+     */
+    const anApproved = bool(r.an_approved);
+
     const sourceType = str(r.source_type).toUpperCase() || null;
     if (sourceType && !['AN', 'BL'].includes(sourceType)) {
       issues.push({ row: n, msg: `source_type ต้องเป็น AN หรือ BL: ${sourceType}` });
+    }
+
+    if (anApproved && status && status !== 'AN_APPROVED'
+        && !['FN_APPROVED', 'DO_SENT', 'RELEASED'].includes(status)) {
+      issues.push({
+        row: n,
+        msg: `an_approved = ใช่ แต่ status เป็น ${status}`
+          + ' — ต้องเป็น AN_APPROVED หรือขั้นที่เลยไปแล้ว',
+      });
     }
 
     const eta = str(r.eta) ? toDate(r.eta) : null;
@@ -262,6 +290,7 @@ async function main() {
     }
 
     planned.push({
+      anApproved,
       blNo: str(r.bl_no),
       shipperName: str(r.shipper_id),
       job: {
@@ -326,6 +355,7 @@ async function main() {
       ['bl_no', j.blNo], ['vessel', j.vessel], ['voyage', j.voyage],
       ['eta', j.eta], ['shipline', j.shipline], ['origin_port', j.originPort],
       ['dem/det', `${j.demDays} / ${j.detDays}`],
+      ['อนุมัติ AN', p.anApproved ? 'ใช่ — สร้างแถวใน approvals ให้' : 'ยังไม่อนุมัติ'],
       ['shipper_id', j.shipperId], ['consignee_id', j.consigneeId],
       ['notify_party_id', j.notifyPartyId], ['person_id', j.personId],
       ['port_id', j.portId], ['terminal_id', j.terminalId], ['job_type_id', j.jobTypeId],
@@ -361,6 +391,22 @@ async function main() {
           blType: p.job.blType ?? null,
           shipperId: p.job.shipperId ?? null,
           shipperName: p.shipperName,
+        });
+      }
+
+      /*
+       * แถวอนุมัติ AN ที่ NAMKANG กดผ่านแล้ว
+       *
+       * เขียนค่าเดียวกับที่ decideApproval() เขียนตอนกดบนหน้าจอจริง
+       * requested_at ใช้หาแถวล่าสุดของงาน จึงต้องมีค่าเสมอ ปล่อยให้ฐานข้อมูลใส่ now()
+       */
+      if (p.anApproved) {
+        await tx.insert(approvals).values({
+          id: newId('APR'),
+          jobId: p.job.id!,
+          approvalType: 'AN',
+          status: 'APPROVED',
+          decidedAt: new Date(),
         });
       }
     }
