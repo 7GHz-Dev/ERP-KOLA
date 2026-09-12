@@ -5,6 +5,7 @@ import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable, Tabs, type Column } from '@/components/JobTable';
 import { listJobs } from '@/lib/queries/jobs';
+import { ExportTemplateButton } from '@/components/ExportTemplateButton';
 import { FILE_ORDER, fileLabel } from '@/lib/queries/job-detail';
 
 export const dynamic = 'force-dynamic';
@@ -81,9 +82,16 @@ export default async function JobsPage({
 
   return (
     <>
-      <div className="page-head">
-        <h1>ทะเบียนงาน</h1>
-        <p>งานทุกใบพร้อมไฟล์แนบ · คลิกเลขลำดับหรือ Job No. เพื่อดูสรุปทั้งใบ</p>
+      <div className="page-head with-action">
+        <div>
+          <h1>ทะเบียนงาน</h1>
+          <p>งานทุกใบพร้อมไฟล์แนบ · คลิกเลขลำดับหรือ Job No. เพื่อดูสรุปทั้งใบ</p>
+        </div>
+        {/* หน้านี้เห็นทุกงาน จึงโหลดได้ทั้งสองแบบ */}
+        <span className="chip-row">
+          <ExportTemplateButton label="Export (อนุมัติแล้ว)" />
+          <ExportTemplateButton scope="all" label="Export (ทุกงาน)" />
+        </span>
       </div>
 
       <Tabs basePath="/jobs" items={TABS} active={tab} carry={carry} />

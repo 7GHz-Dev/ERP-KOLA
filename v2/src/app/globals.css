@@ -47,6 +47,14 @@ a { color: var(--blue); }
 
 .main { padding: 16px 20px 40px; min-width: 0; }
 .page-head { margin-bottom: 14px; }
+/* หัวหน้าที่มีปุ่มด้านขวา — ปุ่มชิดขวา ข้อความยังอยู่ซ้ายตามเดิม */
+.page-head.with-action {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+}
+.page-head.with-action > div { min-width: 0; }
+@media (max-width: 640px) {
+  .page-head.with-action { flex-direction: column; gap: 8px; }
+}
 .page-head h1 { margin: 0 0 2px; font-size: 18px; }
 .page-head p { margin: 0; color: var(--muted); }
 

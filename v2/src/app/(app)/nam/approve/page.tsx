@@ -2,6 +2,7 @@ import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable } from '@/components/JobTable';
 import { ApproveReject } from '@/components/ActionForms';
+import { ExportTemplateButton } from '@/components/ExportTemplateButton';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
 
 export const dynamic = 'force-dynamic';
@@ -16,9 +17,16 @@ export default async function NamApprovePage({
 
   return (
     <>
-      <div className="page-head">
-        <h1>อนุมัติข้อมูล BL เข้าตารางหลัก</h1>
-        <p>ตรวจข้อมูล BL ที่ PAINT ส่งมา</p>
+      {/*
+        ปุ่ม Export อยู่หน้านี้เพราะ NAMKANG เป็นคนอนุมัติเข้าตารางหลัก
+        อนุมัติเสร็จแล้วส่งตารางต่อได้เลยในหน้าเดียวกัน ไม่ต้องเปลี่ยนหน้า
+      */}
+      <div className="page-head with-action">
+        <div>
+          <h1>อนุมัติข้อมูล BL เข้าตารางหลัก</h1>
+          <p>ตรวจข้อมูล BL ที่ PAINT ส่งมา · อนุมัติแล้ว Export ตารางงานได้ที่ปุ่มขวา</p>
+        </div>
+        <ExportTemplateButton label="Export ตารางงาน (อนุมัติแล้ว)" />
       </div>
       <JobTable
         basePath="/nam/approve"
