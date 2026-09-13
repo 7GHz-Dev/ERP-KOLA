@@ -7,6 +7,7 @@ import { DoPayCards } from '@/components/DoPayCards';
 import { formatDateTime } from '@/lib/format';
 import { claimAmount } from '@/lib/do-claim';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
+import { DoPaySelection, DoPayCheckbox } from '@/components/DoPaySelection';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,7 @@ export default async function MayDoPayPage({
   });
 
   const columns: Column[] = [
+    { label: 'เลือก', render: r => <DoPayCheckbox id={r.id} label={r.blNo ?? r.jobNo} /> },
     {
       /*
        * ปุ่มดู — เปิดแผงที่มี Invoice DO คู่กับช่องกรอกยอดและข้อความเบิก
@@ -78,7 +80,11 @@ export default async function MayDoPayPage({
       label: 'Invoice DO', kind: 'wrap', className: 'col-file',
       render: (r) => (
         <div className="file-cell">
-          <FileChip file={r.currentFiles?.INVOICE_DO} />
+          {r.currentFiles?.INVOICE_DO ? (
+            <Link className="badge approved file-link" href={`/may/do-pay/${r.id}`} title={r.currentFiles.INVOICE_DO.fileName}>
+              {r.currentFiles.INVOICE_DO.fileName}
+            </Link>
+          ) : <span className="badge pending">รอดำเนินการ</span>}
         </div>
       ),
     },
@@ -117,6 +123,7 @@ export default async function MayDoPayPage({
         </p>
       </div>
       <Tabs basePath="/may/do-pay" items={TABS} active={tab} carry={carry} />
+      <DoPaySelection key={`${tab}:${JSON.stringify(search)}`} ids={rows.map(row => row.id)}>
 
       {/* จอมือถือใช้การ์ด จอใหญ่ใช้ตาราง สลับด้วย CSS ข้อมูลเป็นชุดเดียวกัน */}
       <div className="only-narrow">
@@ -139,6 +146,7 @@ export default async function MayDoPayPage({
             : 'กดปุ่ม ดู ที่ต้นแถวเพื่อเปิด Invoice DO คู่กับช่องกรอกยอด · อัป Slip ได้จากในแถว · ในแผงมีปุ่มไปใบถัดไปให้ไล่ทำจนครบ'}
         />
       </div>
+      </DoPaySelection>
     </>
   );
 }

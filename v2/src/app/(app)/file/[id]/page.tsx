@@ -19,6 +19,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
         <p>งาน {file.jobNo}</p>
       </div>
       <FilePreview file={file} />
+      {file.note?.includes('ยังขาด:') ? <p className="drawer-note warn">{file.note}</p> : null}
     </>
   );
 }

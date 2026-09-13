@@ -224,6 +224,8 @@ export const FILE_LABELS: Record<string, string> = {
   EOFFICE_MERGED: 'ชุด E-Office รวม',
   EOFFICE_SIGNED: 'ชุดปล่อย E-Office (เซ็นแล้ว)',
   DO_LETTER: 'จดหมายแลก DO',
+  DO_LETTER_UPLOADED: 'จดหมายแลก DO (อัปโหลดเอง)',
+  DO_BATCH_MERGED: 'ชุดแลก DO รวมหลายรายการ',
   DO_SLIP: 'Slip โอนเงิน',
   DO_OTHER: 'เอกสารแลก DO อื่น ๆ',
   DO_MERGED: 'ชุดแลก DO รวม',
@@ -238,5 +240,5 @@ export function fileLabel(category: string) {
 export const FILE_ORDER = [
   'ARRIVAL_NOTICE', 'BL', 'INVOICE_GOODS', 'FINAL_INVOICE', 'FINAL_INVOICE_PDF', 'INVOICE_DO', 'SURRENDER',
   'DRAFT_ENTRY', 'CUSTOMS_ENTRY_DOC', 'EOFFICE', 'EOFFICE_REQUEST', 'EOFFICE_MERGED', 'EOFFICE_SIGNED',
-  'DO_LETTER', 'DO_SLIP', 'DO_OTHER', 'DO_MERGED', 'OTHER',
+  'DO_LETTER', 'DO_LETTER_UPLOADED', 'DO_SLIP', 'DO_OTHER', 'DO_MERGED', 'DO_BATCH_MERGED', 'OTHER',
 ];

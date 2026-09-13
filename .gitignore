@@ -29,3 +29,4 @@ v2/.env.local
 .DS_Store
 .vercel
 .env*
+outputs/

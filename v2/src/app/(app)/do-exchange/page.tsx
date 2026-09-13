@@ -8,6 +8,7 @@ import { DoLetterButton } from '@/components/DoLetterButton';
 import { formatDateTime } from '@/lib/format';
 import { matchShippingLine } from '@/lib/do-letter';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
+import { DoBundleSelection, DoBundleCheckbox } from '@/components/DoBundleSelection';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ const TABS = [
   { key: 'wait', label: 'รอทำชุดแลก' },
   { key: 'sent', label: 'ส่งแลก DO แล้ว' },
 ];
-const SEARCH_KEYS = ['blNo', 'consignee', 'refNo', 'entryNo'];
+const SEARCH_KEYS = ['blNo', 'consignee', 'refNo'];
 
 export default async function DoExchangePage({
   searchParams,
@@ -45,7 +46,7 @@ export default async function DoExchangePage({
     },
     // ANN ดูจากวันเรือเข้ากับวันสุดท้ายของ DEM ว่าใบไหนต้องแลกก่อน จึงวางไว้ต้นแถว
     col.eta(), col.lastDem(),
-    col.blNo(), col.consignee(), col.declarationNo(),
+    col.blNo(), col.consignee(),
     {
       // สายเรือมาจาก SHIPLINE ของงาน ไม่ต้องเลือกซ้ำที่นี่
       label: 'SHIPLINE', kind: 'wrap', className: 'col-shipline',
@@ -70,6 +71,7 @@ export default async function DoExchangePage({
           <FileChip file={r.currentFiles?.DO_LETTER} />
           {/* ฉบับประทับตราเป็นคนละไฟล์ จึงต้องเห็นคู่กันว่ามีอันไหนแล้วบ้าง */}
           <FileChip file={r.currentFiles?.DO_LETTER_SIGNED} />
+          {r.currentFiles?.DO_LETTER_UPLOADED ? <FileChip file={r.currentFiles.DO_LETTER_UPLOADED} /> : null}
           <DoLetterButton
             jobId={r.id}
             ready={Boolean(matchShippingLine(r.shipline))}
@@ -79,8 +81,9 @@ export default async function DoExchangePage({
           {/* สายเรือที่ยังไม่มีแบบฟอร์ม หรือจดหมายที่ทำมาจากข้างนอก ก็แนบเข้ามาเองได้ */}
           <UploadForm
             jobId={r.id}
-            category="DO_LETTER"
-            label={r.currentFiles?.DO_LETTER ? 'อัปโหลดแทน' : 'อัปโหลดเอง'}
+            category="DO_LETTER_UPLOADED"
+            label="อัปโหลดเอง"
+            stayHere
           />
         </div>
       ),
@@ -121,13 +124,14 @@ export default async function DoExchangePage({
       // สายเรือแต่ละเจ้ารับคนละแบบ จึงให้เลือกเองว่าจะรวมด้วยจดหมายฉบับไหน
       label: 'รวมชุดแลก DO', kind: 'actions',
       render: (r) => (
-        <div className="row-actions">
+        <div className="row-actions do-bundle-actions">
           <FileChip file={r.currentFiles?.DO_MERGED} />
           {/* ส่งแลกไปแล้วเหลือไว้ให้โหลดดูอย่างเดียว รวมชุดใหม่ทับของที่ส่งไปแล้วไม่ได้ */}
           {sent ? null : (
             <>
               <MergeEofficeButton jobId={r.id} kind="do" />
               <MergeEofficeButton jobId={r.id} kind="doPlain" />
+              <MergeEofficeButton jobId={r.id} kind="doUploaded" />
             </>
           )}
         </div>
@@ -147,6 +151,7 @@ export default async function DoExchangePage({
           ),
         },
   ];
+  if (!sent) columns.unshift({ label: 'เลือก', render: r => <DoBundleCheckbox id={r.id} label={r.blNo ?? r.jobNo} /> });
 
   return (
     <>
@@ -158,6 +163,7 @@ export default async function DoExchangePage({
         </p>
       </div>
       <Tabs basePath="/do-exchange" items={TABS} active={tab} carry={carry} />
+      <DoBundleSelection key={`${tab}:${JSON.stringify(search)}`} ids={rows.map(row => row.id)} readyIds={rows.filter(row => row.currentFiles?.DO_MERGED).map(row => row.id)} enabled={!sent}>
       <JobTable
         basePath="/do-exchange"
         columns={columns}
@@ -167,6 +173,7 @@ export default async function DoExchangePage({
           ? 'รายการที่ส่งแลกไปแล้ว · ไฟล์ทั้งหมดยังโหลดดูย้อนหลังได้'
           : 'แบบฟอร์มจดหมายแต่ละสายเรือตั้งได้ที่ Master Data → ฟอร์มจดหมายแลก DO · รวมชุดแล้วกด "ส่งแลก DO แล้ว" เพื่อย้ายไปแท็บถัดไป'}
       />
+      </DoBundleSelection>
     </>
   );
 }

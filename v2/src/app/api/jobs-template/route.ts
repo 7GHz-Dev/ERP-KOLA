@@ -1,5 +1,6 @@
 import { currentUser, roleAllows } from '@/lib/auth';
 import { templateCsv, templateFileName, templateRows } from '@/lib/job-template';
+import { validJobDate } from '@/lib/job-created-date';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,8 +24,16 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const jobIds = params.getAll('jobId').filter(Boolean);
   const scope = params.get('scope') ?? 'approved';
+  const createdFrom = validJobDate(params.get('createdFrom'));
+  const createdTo = validJobDate(params.get('createdTo'));
+  if ((params.get('createdFrom') && !createdFrom) || (params.get('createdTo') && !createdTo)
+    || (createdFrom && createdTo && createdFrom > createdTo)) {
+    return new Response('ช่วงวันที่สร้าง JOB ไม่ถูกต้อง', { status: 400 });
+  }
 
   const rows = await templateRows({
+    createdFrom,
+    createdTo,
     jobIds: jobIds.length ? jobIds : undefined,
     // ระบุงานมาเองแล้วไม่ต้องกรองซ้ำ คนกดเลือกเองว่าจะเอาใบไหน
     anApprovedOnly: !jobIds.length && scope !== 'all',

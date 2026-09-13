@@ -11,6 +11,7 @@ import { approvals, files, jobs, masterRecords } from '@/db/schema';
  */
 
 export type JobFilter = {
+  archived?: boolean;
   where?: (ctx: JoinContext) => (SQL | undefined)[];
   search?: Record<string, string>;
   sortBy?: string;
@@ -71,7 +72,7 @@ export async function listJobs(filter: JobFilter = {}) {
   const an = latestApproval('AN');
   const fn = latestApproval('FN');
 
-  const conditions: (SQL | undefined)[] = [eq(jobs.isArchived, false)];
+  const conditions: (SQL | undefined)[] = [eq(jobs.isArchived, filter.archived ?? false)];
   if (filter.where) conditions.push(...filter.where({ an, fn }));
 
   Object.entries(filter.search ?? {}).forEach(([key, value]) => {
@@ -89,6 +90,8 @@ export async function listJobs(filter: JobFilter = {}) {
     .select({
       id: jobs.id,
       jobNo: jobs.jobNo,
+      createdAt: jobs.createdAt,
+      isArchived: jobs.isArchived,
       blNo: jobs.blNo,
       vessel: jobs.vessel,
       voyage: jobs.voyage,

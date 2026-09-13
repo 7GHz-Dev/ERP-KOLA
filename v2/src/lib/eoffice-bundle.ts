@@ -5,6 +5,8 @@ import { buildKey, downloadFile, ensureBucket, uploadFile } from '@/lib/storage'
 import { logActivity, newId } from '@/lib/actions/common';
 import { renderEofficeRequestPdf } from '@/lib/eoffice-pdf';
 import { xlsxToPdf } from '@/lib/xlsx-pdf';
+import { storeDoLetterPdf } from '@/lib/do-letter-store';
+import { doBundleFileName } from '@/lib/do-bundle-options';
 
 /**
  * ชุดเอกสาร E-Office
@@ -56,7 +58,7 @@ export const DO_BUNDLE_PARTS_PLAIN = [
 export const DO_MERGED_CATEGORY = 'DO_MERGED';
 
 /** ตั้งค่าของชุดเอกสารแต่ละแบบ ใช้ร่วมกับ buildBundle ตัวเดียวกัน */
-export type BundleKind = 'eoffice' | 'do' | 'doPlain';
+export type BundleKind = 'eoffice' | 'do' | 'doPlain' | 'doUploaded';
 
 const BUNDLE_KINDS: Record<BundleKind, {
   parts: Array<{ label: string; categories: string[] }>;
@@ -75,6 +77,10 @@ const BUNDLE_KINDS: Record<BundleKind, {
   doPlain: {
     parts: DO_BUNDLE_PARTS_PLAIN, mergedCategory: DO_MERGED_CATEGORY,
     title: 'ชุดแลก DO (ไม่ประทับตรา)', action: 'MERGE_DO',
+  },
+  doUploaded: {
+    parts: [{ label: 'จดหมายแลก DO (อัปโหลดเอง)', categories: ['DO_LETTER_UPLOADED'] }, ...DO_BUNDLE_REST],
+    mergedCategory: DO_MERGED_CATEGORY, title: 'ชุดแลก DO (อัปโหลดเอง)', action: 'MERGE_DO',
   },
 };
 
@@ -96,6 +102,7 @@ export type BundleStep = {
   label: string;
   status: 'reading' | 'added' | 'skipped' | 'saving' | 'done';
   detail?: string;
+  fileId?: string;
 };
 
 /**
@@ -151,13 +158,27 @@ export async function buildBundle(
 ) {
   const cfg = BUNDLE_KINDS[kind];
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
-  if (!job) throw new Error('ไม่พบงาน');
+  if (!job || job.isArchived) throw new Error('ไม่พบงานหรือถูกปิดการใช้งาน');
+  if (kind !== 'eoffice' && job.doExchangedAt) throw new Error('งานนี้ส่งแลก DO แล้ว');
+  const outputName = kind === 'eoffice' ? `${job.jobNo} [รวม${cfg.title}].pdf` : doBundleFileName(job.blNo ?? '', kind);
+  if (kind === 'do' || kind === 'doPlain') {
+    await onStep?.({ index: 0, total: cfg.parts.length + 1, label: 'ออกจดหมายแลก DO', status: 'reading' });
+    await storeDoLetterPdf(jobId, userId, kind === 'do');
+  }
 
   const current = await db
     .select()
     .from(files)
     .where(and(eq(files.jobId, jobId), eq(files.isCurrent, true)));
   const byCategory = new Map(current.map((f) => [f.category, f]));
+  // Older manually uploaded letters used DO_LETTER. Generated letters have an explicit system note.
+  if (kind === 'doUploaded' && !byCategory.has('DO_LETTER_UPLOADED')) {
+    const legacy = byCategory.get('DO_LETTER');
+    if (legacy && !legacy.note?.startsWith('ระบบออกให้')) byCategory.set('DO_LETTER_UPLOADED', legacy);
+  }
+  if (kind !== 'eoffice' && !byCategory.has(cfg.parts[0].categories[0])) {
+    throw new Error('ยังไม่มีจดหมายที่เลือก กรุณากด อัปโหลดเอง ในช่องจดหมายแลก DO ก่อน');
+  }
 
   const { PDFDocument } = await import('@cantoo/pdf-lib');
   const merged = await PDFDocument.create();
@@ -211,6 +232,7 @@ export async function buildBundle(
       continue;
     }
     if (record.storageKey.startsWith('drive:')) {
+      if (kind !== 'eoffice' && i === 0) throw new Error('จดหมายยังอยู่ใน Drive เดิม กรุณาอัปโหลดจดหมายใหม่');
       skipped.push(`${part.label} (ยังอยู่ที่ Drive เดิม)`);
       await onStep?.({ index: i, total, label: part.label, status: 'skipped', detail: 'ยังอยู่ที่ Drive เดิม' });
       continue;
@@ -224,6 +246,7 @@ export async function buildBundle(
         index: i, total, label: part.label, status: 'added', detail: `${pages} หน้า`,
       });
     } catch (error) {
+      if (kind !== 'eoffice' && i === 0) throw error;
       const why = error instanceof Error ? error.message : 'อ่านไฟล์ไม่ได้';
       const hint = /password|encrypt/i.test(why)
         ? 'ไฟล์ถูกล็อกด้วยรหัสผ่าน ต้องบันทึกใหม่เป็น PDF ที่เปิดได้ก่อน'
@@ -242,7 +265,7 @@ export async function buildBundle(
   await onStep?.({ index: cfg.parts.length, total, label: 'บันทึกชุดที่รวมแล้ว', status: 'saving' });
 
   const bytes = Buffer.from(await merged.save());
-  const fileName = `${job.jobNo} [รวม${cfg.title}].pdf`;
+  const fileName = outputName;
   const id = newId('FIL');
   const key = buildKey(jobId, cfg.mergedCategory, id, fileName);
 
@@ -258,14 +281,14 @@ export async function buildBundle(
     id, jobId, category: cfg.mergedCategory, version,
     storageKey: key, fileName, mimeType: 'application/pdf',
     sizeBytes: bytes.length, uploadedBy: userId,
-    note: `รวม ${used.length} ชิ้น: ${used.join(' → ')}`,
+    note: `รวม ${used.length} ชิ้น: ${used.join(' → ')}${skipped.length ? ` · ยังขาด: ${skipped.join(' · ')}` : ''}`,
   });
   await logActivity(userId, cfg.action, 'JOB', jobId, { used, skipped });
 
   const summary = `รวม${cfg.title} แล้ว ${used.length} ชิ้น (${used.join(' → ')})`;
   const message = skipped.length ? `${summary} · ยังขาด: ${skipped.join(' · ')}` : summary;
 
-  await onStep?.({ index: total, total, label: 'เสร็จแล้ว', status: 'done', detail: message });
+  await onStep?.({ index: total, total, label: 'เสร็จแล้ว', status: 'done', detail: message, fileId: id });
 
   return { fileId: id, pageCount: merged.getPageCount(), used, skipped, message };
 }

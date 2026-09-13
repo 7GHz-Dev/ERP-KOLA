@@ -21,6 +21,7 @@ export default async function FileDrawer({ params }: { params: Promise<{ id: str
       viewHref={`/files/${file.id}`}
       wide
     >
+      {file.note?.includes('ยังขาด:') ? <p className="drawer-note warn">{file.note}</p> : null}
       <FilePreview file={file} />
     </FileDrawerShell>
   );

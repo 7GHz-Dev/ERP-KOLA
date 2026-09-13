@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { jobs } from '@/db/schema';
+import { jobCreatedConditions } from './job-created-date';
 
 /**
  * ไฟล์ตารางงานตามแบบฟอร์มที่ทีมใช้กันอยู่เดิม
@@ -63,12 +64,12 @@ function shortName(name: string | null): string {
   return name;
 }
 
-export type TemplateFilter = { jobIds?: string[]; anApprovedOnly?: boolean };
+export type TemplateFilter = { jobIds?: string[]; anApprovedOnly?: boolean; createdFrom?: string; createdTo?: string };
 
 /**
  * ดึงงานออกมาเป็นแถวตามแบบฟอร์ม
  *
- * รวมเลขตู้ของงานเดียวกันไว้ช่องเดียวคั่นด้วย " / " เพราะไฟล์เดิมเป็นหนึ่งแถวต่อหนึ่งงาน
+ * รวมเลขตู้ของงานเดียวกันไว้ช่องเดียวคั่นด้วย "," เพราะไฟล์เดิมเป็นหนึ่งแถวต่อหนึ่งงาน
  * ไม่ใช่หนึ่งแถวต่อหนึ่งตู้
  */
 export async function templateRows(filter: TemplateFilter = {}) {
@@ -87,7 +88,7 @@ export async function templateRows(filter: TemplateFilter = {}) {
            notify.name                as notify_name,
            terminal.name              as terminal_name,
            job_type.name              as job_type_name,
-           (select string_agg(c.container_no, ' / ' order by c.container_no)
+           (select string_agg(c.container_no, ',' order by c.container_no)
               from containers c where c.job_id = j.id)          as container_nos,
            (select count(*)::int from containers c
              where c.job_id = j.id)                             as container_count,
@@ -103,6 +104,7 @@ export async function templateRows(filter: TemplateFilter = {}) {
       left join master_records terminal  on terminal.id  = j.terminal_id
       left join master_records job_type  on job_type.id  = j.job_type_id
      where j.is_archived = false
+       ${sql.join(jobCreatedConditions(sql`j.created_at`, filter.createdFrom, filter.createdTo).map(condition => sql`and ${condition}`), sql` `)}
        ${filter.jobIds?.length ? sql`and j.id in ${filter.jobIds}` : sql``}
        ${filter.anApprovedOnly
          ? sql`and exists (
@@ -119,11 +121,11 @@ export async function templateRows(filter: TemplateFilter = {}) {
     const cell: Record<string, string> = {
       CUSTOMER: (r.person_name as string) ?? '',
       ETA: tplDate(eta),
-      'ประเภท': (r.job_type_name as string) ?? '',
+      'ประเภท': r.job_type_name === 'MSFZ - USED CAR' ? 'MSFZ - รถยนต์เก่า' : (r.job_type_name as string) ?? '',
       // Y = แนบ Invoice สินค้าแล้ว · ยังไม่แนบปล่อยว่างตามไฟล์เดิม
       'INV.': Number(r.has_invoice) > 0 ? 'Y' : '',
-      // S = Surrender เคลียร์แล้ว
-      SUR: r.surrender_status === 'CLEARED' ? 'S' : '',
+      // เว้นว่างทุกงานตามแบบฟอร์มส่งออก
+      SUR: '',
       TRANSPORT: tplDate(transport),
       'AT-MAESOT': '',
       OPEN: '',

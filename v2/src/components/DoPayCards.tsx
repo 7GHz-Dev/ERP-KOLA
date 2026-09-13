@@ -4,6 +4,7 @@ import { UploadForm } from '@/components/ActionForms';
 import { claimAmount } from '@/lib/do-claim';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
 import type { JobRow } from '@/lib/queries/jobs';
+import { DoPayCheckbox } from '@/components/DoPaySelection';
 
 /**
  * รายการแบบการ์ดสำหรับจอมือถือ — ใช้แทนตารางที่ต้องเลื่อนซ้ายขวา
@@ -19,6 +20,7 @@ export function DoPayCards({ rows, claimed }: { rows: JobRow[]; claimed: boolean
       {rows.map((r) => (
         <article className="do-card" key={r.id}>
           <div className="do-card-head">
+            <DoPayCheckbox id={r.id} label={r.blNo ?? r.jobNo} />
             <div>
               <b>{r.blNo ?? '-'}</b>
               <small>{r.consigneeName ?? '-'}</small>
@@ -44,7 +46,11 @@ export function DoPayCards({ rows, claimed }: { rows: JobRow[]; claimed: boolean
           <div className="do-card-files">
             <span className="do-card-file">
               <small>Invoice DO</small>
-              <FileChip file={r.currentFiles?.INVOICE_DO} />
+              {r.currentFiles?.INVOICE_DO ? (
+                <Link className="badge approved file-link" href={`/may/do-pay/${r.id}`} title={r.currentFiles.INVOICE_DO.fileName}>
+                  {r.currentFiles.INVOICE_DO.fileName}
+                </Link>
+              ) : <span className="badge pending">รอดำเนินการ</span>}
             </span>
             <span className="do-card-file">
               <small>Slip</small>

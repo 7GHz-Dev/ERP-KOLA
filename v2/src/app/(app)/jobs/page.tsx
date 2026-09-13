@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { eq, ne } from 'drizzle-orm';
+import { eq, ne, sql } from 'drizzle-orm';
 import { jobs } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
@@ -7,6 +7,8 @@ import { JobTable, Tabs, type Column } from '@/components/JobTable';
 import { listJobs } from '@/lib/queries/jobs';
 import { ExportTemplateButton } from '@/components/ExportTemplateButton';
 import { FILE_ORDER, fileLabel } from '@/lib/queries/job-detail';
+import { jobCreatedConditions, validJobDate } from '@/lib/job-created-date';
+import { JobCreatedDateFilter } from '@/components/JobCreatedDateFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,9 +63,14 @@ export default async function JobsPage({
   const params = await searchParams;
   const { one, search, sortBy, sortDir, carry } = readParams(params, SEARCH_KEYS);
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'all';
+  const createdFrom = validJobDate(one('createdFrom'));
+  const createdTo = validJobDate(one('createdTo'));
+  if (createdFrom) carry.createdFrom = createdFrom;
+  if (createdTo) carry.createdTo = createdTo;
 
   const { rows, total } = await listJobs({
     where: () => [
+      ...jobCreatedConditions(sql`${jobs.createdAt}`, createdFrom, createdTo),
       tab === 'done' ? eq(jobs.customsStatus, 'FILED') : undefined,
       tab === 'active' ? ne(jobs.customsStatus, 'FILED') : undefined,
     ],
@@ -74,6 +81,10 @@ export default async function JobsPage({
   });
 
   const columns: Column[] = [
+    {
+      label: 'วันที่สร้าง JOB', sortKey: 'createdAt',
+      render: (r) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok' }).format(r.createdAt),
+    },
     col.jobNo(), col.source(), col.clientInCharge(), col.shipper(), col.blNo(),
     col.consignee(), col.eta(), col.lastDem(), col.lastDet(),
     col.refNo(), col.declarationNo(), col.anStatus(), col.fnStatus(),
@@ -89,12 +100,14 @@ export default async function JobsPage({
         </div>
         {/* หน้านี้เห็นทุกงาน จึงโหลดได้ทั้งสองแบบ */}
         <span className="chip-row">
-          <ExportTemplateButton label="Export (อนุมัติแล้ว)" />
-          <ExportTemplateButton scope="all" label="Export (ทุกงาน)" />
+          <ExportTemplateButton label="Export (อนุมัติแล้ว)" createdFrom={createdFrom} createdTo={createdTo} />
+          <ExportTemplateButton scope="all" label="Export (ทุกงาน)" createdFrom={createdFrom} createdTo={createdTo} />
         </span>
       </div>
 
       <Tabs basePath="/jobs" items={TABS} active={tab} carry={carry} />
+
+      <JobCreatedDateFilter key={`${createdFrom}:${createdTo}`} createdFrom={createdFrom} createdTo={createdTo} />
 
       <JobTable
         basePath="/jobs"

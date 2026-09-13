@@ -5,6 +5,7 @@ import { MASTER_TYPES } from '@/lib/queries/master';
 export const EOFFICE_FORM_MENU_KEY = 'eofficeForm';
 export const DO_LETTER_MENU_KEY = 'doLetterForm';
 export const USERS_MENU_KEY = 'users';
+export const JOBS_MENU_KEY = 'jobs';
 
 /** เมนูซ้ายของหมวด Master Data ใช้ร่วมกันทุกหน้าในหมวดนี้ */
 export function MasterMenu({
@@ -12,6 +13,9 @@ export function MasterMenu({
 }: { current: string; counts: Map<string, number> }) {
   return (
     <nav className="master-menu">
+      <Link href="/master/jobs" prefetch aria-current={current === JOBS_MENU_KEY ? 'page' : undefined}>
+        ปิดการใช้งาน JOB
+      </Link>
       {MASTER_TYPES.map((t) => (
         <Link
           key={t.key}

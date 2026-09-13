@@ -259,6 +259,7 @@ a.card:hover { background: #f7fafc; }
 /* ---------- ปุ่มและฟอร์มในแถวตาราง ---------- */
 
 .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.do-bundle-actions { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
 .inline-form { display: inline; }
 .button.danger { background: var(--red); border-color: var(--red); color: #fff; }
 .button.danger:hover { background: #8e252c; }
@@ -1178,8 +1179,9 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 /* ในแผงให้เนื้อในสูงเต็มช่อง รูปจะได้ไม่ลอยอยู่ครึ่งบน */
 /* เนื้อในไม่เลื่อนเอง ปล่อยให้ตัวอ่าน PDF จัดการ ไฟล์จึงเต็มความสูงแผงพอดี */
 .job-drawer .drawer-content:has(> .file-preview-view) {
-  display: flex; padding: 12px; overflow: hidden;
+  display: flex; flex-direction: column; padding: 12px; overflow: hidden;
 }
+.job-drawer .drawer-content:has(> .file-preview-view) > .drawer-note { flex: none; max-height: 20vh; overflow: auto; white-space: pre-line; }
 
 /* ผลการอ่าน Slip ด้วย OCR */
 .slip-read { display: flex; flex-direction: column; gap: 8px; }
@@ -1309,6 +1311,31 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-width: 96px; }
 .do-pay-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .do-pay-cell b { font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* MAY: desktop preview occupies 70% of the drawer, amounts the remaining 30%. */
+.do-pay { width: 100%; }
+.do-pay-selection { flex-wrap: wrap; gap: 12px; }
+.do-pay-selection input[type=checkbox] { width: auto; }
+.do-pay-batch-preview { overflow-y: auto; display: block; }
+.do-pay-invoice { margin-bottom: 20px; padding: 10px; background: #eef1f5; border-radius: 8px; }
+.do-pay-invoice h3, .do-pay-amount-entry h3 { font-size: 14px; overflow-wrap: anywhere; }
+.do-pay-invoice-image, .invoice-pdf-pages img { display: block; width: 100%; height: auto; }
+.invoice-pdf-pages { min-height: 200px; }
+.invoice-pdf-pages figure { margin: 0 0 12px; }
+.invoice-pdf-pages figcaption { text-align: center; font-size: 12px; color: var(--muted); }
+.do-pay-amount-entry { border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+.do-pay-amount-entry > p { font-size: 12px; overflow-wrap: anywhere; }
+.do-pay-entry { margin-top: 8px; }
+.do-pay-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.do-pay-batch-forms input[type=checkbox] { width: auto; }
+@media (min-width: 901px) {
+  .do-pay { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); }
+  .do-pay > .do-pay-view { min-width: 0; min-height: 0; }
+  .do-pay > .do-pay-side { overflow-y: auto; min-width: 0; min-height: 0; }
+}
+@media (max-width: 900px) {
+  .do-pay-batch-preview { height: 55vh; min-height: 240px; }
+}
 
 /*
  * สลับตาราง/การ์ดตามความกว้างจอ — ใช้ในหน้าของ MAY ที่ทำงานบนมือถือเป็นหลัก

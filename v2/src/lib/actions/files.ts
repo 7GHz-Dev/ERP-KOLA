@@ -27,6 +27,7 @@ const UPLOAD_ROLES: Record<string, string[]> = {
   EOFFICE_REQUEST: ['PAINT'],
   EOFFICE_SIGNED: ['PAINT'],
   DO_LETTER: ['ANN'],
+  DO_LETTER_UPLOADED: ['ANN'],
   DO_LETTER_SIGNED: ['ANN'],
   // MAY อัป Slip ได้ด้วย เป็นคนจ่ายเงินค่าแลก D/O จึงถือสลิปตัวจริงอยู่ในมือ
   DO_SLIP: ['ANN', 'MAY'],
@@ -105,7 +106,7 @@ async function uploadJobFileImpl(formData: FormData) {
    * จดหมายแลก D/O ที่อัปเข้ามาเอง ถือว่าผ่านขั้นทำจดหมายเหมือนกับที่ระบบออกให้
    * ไม่งั้นตัวเลขข้างเมนูจะยังนับงานนี้เป็นงานค้างทั้งที่มีจดหมายแล้ว
    */
-  if (category === 'DO_LETTER' || category === 'DO_LETTER_SIGNED') {
+  if (category === 'DO_LETTER' || category === 'DO_LETTER_SIGNED' || category === 'DO_LETTER_UPLOADED') {
     await db.update(jobs)
       .set({ doLetterAt: new Date(), doLetterBy: user.id, updatedAt: new Date() })
       .where(eq(jobs.id, jobId));

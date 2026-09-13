@@ -2,6 +2,7 @@
 
 import { startTransition, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { readMergeProgress, type MergeProgress } from '@/lib/merge-progress';
 
 /**
  * ปุ่มรวมชุด E-Office พร้อมความคืบหน้าทีละชิ้น
@@ -11,13 +12,7 @@ import { useRouter } from 'next/navigation';
  * ไม่ใช่แถบวิ่งหลอกตา
  */
 
-type Step = {
-  index: number;
-  total: number;
-  label: string;
-  status: 'reading' | 'added' | 'skipped' | 'saving' | 'done' | 'error';
-  detail?: string;
-};
+type Step = MergeProgress;
 
 /** ปุ่มและลำดับชิ้นงานของชุดแต่ละแบบ — ปุ่มเดียวใช้ได้ทุกชุด */
 const BUNDLE_CFG = {
@@ -36,12 +31,17 @@ const BUNDLE_CFG = {
     label: 'ไม่เซ็นประทับตรา',
     order: 'จดหมายแลก DO ฉบับเปล่า → Arrival Notice / BL → Invoice DO → Slip → เอกสารอื่น ๆ',
   },
+  doUploaded: {
+    title: 'รวมชุดแลก DO (อัปโหลดเอง)', label: 'แบบอัปโหลดเอง',
+    order: 'จดหมายที่อัปโหลดเอง → Arrival Notice / BL → Invoice DO → Slip → เอกสารอื่น ๆ',
+  },
 } as const;
 
 export function MergeEofficeButton({
-  jobId, kind = 'eoffice',
+  jobId, jobIds, kind = 'eoffice',
 }: {
-  jobId: string;
+  jobId?: string;
+  jobIds?: string[];
   /** ชุดเอกสารที่จะรวม — ปุ่มและลำดับชิ้นงานเปลี่ยนตามนี้ */
   kind?: keyof typeof BUNDLE_CFG;
 }) {
@@ -52,56 +52,65 @@ export function MergeEofficeButton({
   const [percent, setPercent] = useState<number | null>(null);
   const [done, setDone] = useState<string>('');
   const [error, setError] = useState('');
+  const [running, setRunning] = useState(false);
+  const ids = jobIds ?? (jobId ? [jobId] : []);
 
   const run = async () => {
     setSteps([]);
     setDone('');
     setError('');
     setPercent(0);
+    setRunning(true);
 
     try {
-      const res = await fetch('/api/eoffice/merge', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jobId, kind }),
-      });
-      if (!res.body) throw new Error('เซิร์ฟเวอร์ไม่ส่งข้อมูลกลับ');
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      for (;;) {
-        const { value, done: finished } = await reader.read();
-        if (finished) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const step = JSON.parse(line) as Step;
-          if (step.status === 'error') {
-            setError(step.detail ?? 'รวมชุดไม่สำเร็จ');
-            setPercent(null);
-            continue;
-          }
-          setPercent(Math.round(((step.index + 1) / step.total) * 100));
-          if (step.status === 'done') setDone(step.detail ?? 'เสร็จแล้ว');
-          if (step.status !== 'reading') setSteps((prev) => [...prev, step]);
-        }
+      if (!ids.length) throw new Error('กรุณาเลือกรายการ');
+      const fileIds: string[] = [];
+      const summaries: string[] = [];
+      for (let i = 0; i < ids.length; i++) {
+        const res = await fetch('/api/eoffice/merge', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ jobId: ids[i], kind }),
+        });
+        const result = await readMergeProgress(res, step => {
+          setPercent(Math.min(99, Math.round((i + Math.min(1, (step.index + 1) / step.total)) / ids.length * 100)));
+          if (step.status !== 'reading') setSteps(previous => [...previous, { ...step, label: `${i + 1}/${ids.length} · ${step.label}` }]);
+        });
+        fileIds.push(result.fileId!);
+        summaries.push(result.detail ?? 'เสร็จแล้ว');
+      }
+      let previewId = fileIds[0];
+      if (fileIds.length > 1) {
+        const response = await fetch('/api/do-bundle/combine', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fileIds, kind }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.fileId) throw new Error(result.error ?? 'รวมหลายรายการไม่สำเร็จ');
+        previewId = result.fileId;
+      }
+      setPercent(100);
+      setDone(summaries.join('\n'));
+      if (kind !== 'eoffice') {
+        dialog.current?.close();
+        router.push(`/file/${previewId}`);
       }
       // รีเฟรชให้เห็นไฟล์ที่รวมแล้วทันที ไม่ต้องให้ผู้ใช้กดเอง
       startTransition(() => router.refresh());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'รวมชุดไม่สำเร็จ');
       setPercent(null);
+    } finally {
+      setRunning(false);
     }
   };
 
-  const busy = percent !== null && !done && !error;
+  const busy = running;
 
   return (
     <>
-      <button type="button" className="button tiny ok" onClick={() => dialog.current?.showModal()}>
+      <button type="button" className="button tiny ok" disabled={busy || !ids.length} onClick={() => {
+        dialog.current?.showModal();
+        if (kind !== 'eoffice') void run();
+      }}>
         {cfg.label}
       </button>
 

@@ -1,5 +1,7 @@
 import { requireActiveSession } from '@/lib/auth';
 import { buildBundle, type BundleKind, type BundleStep } from '@/lib/eoffice-bundle';
+import { revalidatePath } from 'next/cache';
+import { isDoBundleKind } from '@/lib/do-bundle-options';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -15,13 +17,14 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { jobId?: string; kind?: string };
   // ชุดแลก DO มีสองแบบ (ประทับตรา / ไม่ประทับตรา) ทั้งคู่เป็นงานของ ANN
   // ส่วนชุด E-Office เป็นของ PAINT
-  const kind: BundleKind = body.kind === 'do' || body.kind === 'doPlain'
+  const kind: BundleKind = isDoBundleKind(body.kind)
     ? body.kind
     : 'eoffice';
 
   let user;
   try {
     user = await requireActiveSession(kind === 'eoffice' ? ['PAINT'] : ['ANN']);
+    if (user.mustChangePassword) throw new Error('กรุณาเปลี่ยนรหัสผ่านก่อนดำเนินการ');
   } catch (error) {
     return new Response(
       JSON.stringify({ status: 'error', detail: error instanceof Error ? error.message : 'ไม่มีสิทธิ์' }),
@@ -30,7 +33,7 @@ export async function POST(request: Request) {
   }
 
   const { jobId } = body;
-  if (!jobId) {
+  if (typeof jobId !== 'string' || !jobId || jobId.length > 80) {
     return new Response(JSON.stringify({ status: 'error', detail: 'ไม่ได้ระบุงาน' }), {
       status: 400, headers: { 'content-type': 'application/json' },
     });
@@ -44,6 +47,7 @@ export async function POST(request: Request) {
       };
       try {
         await buildBundle(jobId, user.id, send, kind);
+        revalidatePath('/do-exchange');
       } catch (error) {
         send({ status: 'error', detail: error instanceof Error ? error.message : 'รวมชุดไม่สำเร็จ' });
       } finally {

@@ -3,6 +3,21 @@ import { db } from '@/db';
 import { files, jobs, masterRecords } from '@/db/schema';
 import { letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
 
+export async function loadDoPayBatch(ids: string[]) {
+  if (!ids.length || ids.length > 100) return null;
+  const selected = await db.select({
+    id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo, eta: jobs.eta,
+    shipline: jobs.shipline, doPayAmount: jobs.doPayAmount, doClaimedAt: jobs.doClaimedAt,
+  }).from(jobs).where(and(inArray(jobs.id, ids), eq(jobs.isArchived, false)));
+  if (selected.length !== ids.length) return null;
+  const invoices = await db.select({
+    id: files.id, jobId: files.jobId, fileName: files.fileName, mimeType: files.mimeType,
+  }).from(files).where(and(inArray(files.jobId, ids), eq(files.category, 'INVOICE_DO'), eq(files.isCurrent, true)));
+  const byId = new Map(selected.map(job => [job.id, job]));
+  const byJob = new Map(invoices.map(file => [file.jobId, file]));
+  return ids.map(id => ({ job: byId.get(id)!, invoiceDo: byJob.get(id) }));
+}
+
 /** ไฟล์ที่ใช้เทียบยอดของงานหนึ่ง — Invoice DO กับ Slip */
 export async function loadSlipCheck(jobId: string) {
   const [job] = await db

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { markDoClaimed, saveDoPayAmount } from '@/lib/actions/jobs';
 import { claimText } from '@/lib/do-claim';
+import { claimAmountInput } from '@/lib/do-claim-batch';
 import { ConfirmSubmit } from '@/components/Interactions';
 import type { PreviewFile } from '@/components/SlipCheckPanel';
 
@@ -13,12 +14,11 @@ import type { PreviewFile } from '@/components/SlipCheckPanel';
  * ทำงานทีละใบตามลำดับ เปิดไฟล์ → อ่านยอดแล้วกรอก → คัดลอกข้อความ → ตั้งเบิก → ใบถัดไป
  * ทุกปุ่มของขั้นตอนนี้อยู่ในแผงเดียวกัน ไม่ต้องปิดกลับไปหาแถวถัดไปในตารางเอง
  *
- * วางไฟล์ไว้บน ฟอร์มอยู่ล่าง แบบเดียวกับแผงกรอก DO ของ FAH
- * เป็นงานลักษณะเดียวกันคืออ่านตัวเลขจากใบแล้วคีย์ตาม สายตาจึงไหลจากไฟล์ลงมาที่ช่องกรอกพอดี
- * และบนมือถือได้ความกว้างเต็มจอให้เอกสาร ซึ่งอ่านง่ายกว่าแบ่งซ้ายขวา
+ * คอมพิวเตอร์แบ่งไฟล์ 70% กับฟอร์ม 30% ส่วนมือถือวางไฟล์บนและฟอร์มล่าง
+ * formOnly ใช้ช่องกรอกเดียวกันในแผงหลายรายการ โดยมี preview รวมอยู่ด้านข้าง
  */
 export function DoPayPanel({
-  jobId, invoiceDo, blNo, eta, shipline, amount, claimedAt, nextId,
+  jobId, invoiceDo, blNo, eta, shipline, amount, claimedAt, nextId, formOnly = false, amountValue, onAmountChange, disabled = false,
 }: {
   jobId: string;
   invoiceDo?: PreviewFile;
@@ -29,13 +29,19 @@ export function DoPayPanel({
   claimedAt: Date | string | null;
   /** งานถัดไปที่ยังรอตั้งเบิก — ไม่มีแล้วแปลว่าทำครบทุกใบ */
   nextId: string | null;
+  formOnly?: boolean;
+  amountValue?: string;
+  onAmountChange?: (value: string) => void;
+  disabled?: boolean;
 }) {
   const router = useRouter();
-  const [value, setValue] = useState(amount ?? '');
+  const textArea = useRef<HTMLTextAreaElement>(null);
+  const [localValue, setValue] = useState(amount ?? '');
+  const value = amountValue ?? localValue;
   const [copied, setCopied] = useState(false);
-  const text = claimText({ blNo, eta, shipline, amount: value });
+  const text = claimText({ blNo, eta, shipline, amount: claimAmountInput(value) });
   const claimed = Boolean(claimedAt);
-  const ready = value.trim() !== '';
+  const ready = claimAmountInput(value) !== null;
 
   const copy = async () => {
     try {
@@ -47,7 +53,7 @@ export function DoPayPanel({
        * คลิปบอร์ดถูกปิดในบางเบราว์เซอร์หรือตอนไม่ได้เปิดผ่าน https
        * เลือกข้อความในกล่องให้แทน ผู้ใช้กด Ctrl+C เองได้ทันที ไม่ต้องพิมพ์ใหม่
        */
-      document.querySelector<HTMLTextAreaElement>('.do-pay-text')?.select();
+      textArea.current?.select();
     }
   };
 
@@ -55,9 +61,9 @@ export function DoPayPanel({
   const isImage = (invoiceDo?.mimeType ?? '').startsWith('image/');
 
   return (
-    <div className="do-pay">
+    <fieldset disabled={disabled} className={`${formOnly ? 'do-pay-entry' : 'do-pay'} do-pay-fieldset`}>
       {/* ไฟล์อยู่บนสุด — อ่านยอดจากใบแล้วสายตาไหลลงมาที่ช่องกรอกพอดี */}
-      <div className="do-pay-view">
+      {!formOnly && <div className="do-pay-view">
         {!src ? (
           <p className="drawer-note warn">ยังไม่ได้อัปโหลด Invoice DO ของงานนี้</p>
         ) : isImage ? (
@@ -70,7 +76,7 @@ export function DoPayPanel({
             </p>
           </object>
         )}
-      </div>
+      </div>}
 
       <div className="do-pay-side">
         {/* ขั้นที่ 1-2 — กรอกยอดที่อ่านได้จากใบที่เปิดดูอยู่ */}
@@ -88,7 +94,7 @@ export function DoPayPanel({
               autoComplete="off"
               placeholder="เช่น 18400"
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => { setValue(e.target.value); onAmountChange?.(e.target.value); }}
               disabled={claimed}
             />
           </label>
@@ -103,7 +109,7 @@ export function DoPayPanel({
             <span>ข้อความเบิก</span>
           </div>
           {/* อ่านอย่างเดียวแต่เลือกได้ เผื่อคลิปบอร์ดใช้ไม่ได้จะได้ลากคัดลอกเอง */}
-          <textarea className="do-pay-text" readOnly rows={2} value={text} />
+          <textarea ref={textArea} className="do-pay-text" readOnly rows={2} value={text} />
           <button
             type="button"
             className="button ok do-pay-copy"
@@ -141,7 +147,7 @@ export function DoPayPanel({
             ไปใบถัดไปโดยไม่ต้องปิดแผงกลับไปหาในตาราง
             ใช้ replace ไม่ push ประวัติย้อนกลับจะได้ไม่ยาวเป็นสิบชั้นตอนไล่ทำหลายใบ
           */}
-          {nextId ? (
+          {formOnly ? null : nextId ? (
             <button
               type="button"
               className="button primary do-pay-nextbtn"
@@ -154,6 +160,6 @@ export function DoPayPanel({
           )}
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }

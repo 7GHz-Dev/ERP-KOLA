@@ -12,6 +12,7 @@ export async function loadFileOne(fileId: string) {
       fileName: files.fileName,
       mimeType: files.mimeType,
       category: files.category,
+      note: files.note,
       jobNo: jobs.jobNo,
     })
     .from(files)
