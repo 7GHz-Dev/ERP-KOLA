@@ -20,7 +20,11 @@ export default async function JobDrawer({ params }: { params: Promise<{ id: stri
 
   return (
     <DrawerShell jobId={id} jobNo={detail.job.jobNo}>
-      <JobSummary detail={detail} canAck={roleAllows(user.role, ['PAINT', 'FAH'])} />
+      <JobSummary
+        detail={detail}
+        canAck={roleAllows(user.role, ['PAINT', 'FAH'])}
+        isAdmin={user.role === 'ADMIN'}
+      />
     </DrawerShell>
   );
 }

@@ -23,7 +23,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
       <div className="sum-page">
-        <JobSummary detail={detail} canAck={roleAllows(user.role, ['PAINT', 'FAH'])} />
+        <JobSummary
+        detail={detail}
+        canAck={roleAllows(user.role, ['PAINT', 'FAH'])}
+        isAdmin={user.role === 'ADMIN'}
+      />
       </div>
     </>
   );

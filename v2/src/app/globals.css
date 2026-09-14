@@ -1374,6 +1374,16 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
   display: block; width: 100%; text-align: center; padding: 11px 12px; font-size: 14px;
 }
 
+/*
+ * เครื่องมือจัดการไฟล์ของผู้ดูแล — แยกตัวเองออกจากรายการไฟล์ด้านบนด้วยเส้นคั่น
+ * ให้เห็นชัดว่าเป็นส่วนของผู้ดูแล ไม่ใช่ข้อมูลของงาน
+ */
+.admin-file-add {
+  display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.admin-file-add label { margin: 0; min-width: 240px; }
+
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }
 .shipline-cell b { display: block; font-size: 12px; font-weight: 600; line-height: 1.35; }

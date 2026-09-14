@@ -3,6 +3,7 @@ import { AcknowledgeInvoice } from '@/components/ActionForms';
 import { addDays, fileSize, formatDate, formatDateTime, num } from '@/lib/format';
 import { statusLabel, statusTone, surrenderLabel } from '@/lib/status';
 import { FILE_ORDER, fileLabel, type JobDetail } from '@/lib/queries/job-detail';
+import { AdminFileTools } from '@/components/AdminFileTools';
 
 /**
  * เนื้อในของ Drawer สรุปงาน — วางหัวข้อชุดเดียวกับระบบเดิม
@@ -34,7 +35,14 @@ const TASK_STATUS: Record<string, string> = {
   QUEUED: 'รอคิว', PROCESSING: 'กำลังทำ', DONE: 'สำเร็จ', ERROR: 'ผิดพลาด',
 };
 
-export function JobSummary({ detail, canAck }: { detail: JobDetail; canAck?: boolean }) {
+export function JobSummary({
+  detail, canAck, isAdmin,
+}: {
+  detail: JobDetail;
+  canAck?: boolean;
+  /** ผู้ดูแลระบบเปลี่ยนไฟล์แนบได้ทุกหมวดทุกงาน ไม่ต้องไปทำที่หน้าของแต่ละฝ่าย */
+  isAdmin?: boolean;
+}) {
   const { job, files, history, entries, handoff, eoffice, tasks, containers, bls } = detail;
 
   const current = files.filter((f) => f.isCurrent);
@@ -134,11 +142,24 @@ export function JobSummary({ detail, canAck }: { detail: JobDetail; canAck?: boo
               <span className="label">{fileLabel(f.category)}</span>
               <span className="badge approved">{f.fileName} · v{f.version}</span>
               <Link className="button tiny" href={`/file/${f.id}`}>ดูไฟล์</Link>
+              {/* ผู้ดูแลเปลี่ยนไฟล์ได้จากตรงนี้ ไม่ต้องไปหาหน้าของฝ่ายที่เป็นเจ้าของหมวด */}
+              {isAdmin ? (
+                <AdminFileTools jobId={job.id} category={f.category} mode="replace" />
+              ) : null}
             </div>
           ))
         ) : (
           <div className="drawer-empty">รอดำเนินการ</div>
         )}
+
+        {/* เพิ่มไฟล์หมวดที่งานนี้ยังไม่มี — เลือกหมวดได้ทั้งหมด */}
+        {isAdmin ? (
+          <AdminFileTools
+            jobId={job.id}
+            mode="add"
+            existing={ordered.map((f) => f.category)}
+          />
+        ) : null}
 
         {older.length ? (
           <details className="old-files">
