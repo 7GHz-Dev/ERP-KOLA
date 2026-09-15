@@ -74,6 +74,13 @@ const NAME_NOISE = /^(?:.*(?:@|\.COM|:)\s*)?(?:ATTN|PIC|TO|FM|EMAIL|TEL)?\s*/;
 /** คำที่เป็นท่าเรือหรือประเภทงาน ไม่ใช่ชื่อเรือ — เจอทั้งคำแปลว่าจับผิดช่อง */
 const NOT_A_VESSEL = /^(?:CY|CFS|FCL|LCL|HAKATA CY|LAEM CHABANG|BANGKOK)$/;
 
+/*
+ * ข้อความหมายเหตุที่มีคำว่า VOYAGE ปนอยู่ จนตัวจับคู่ชื่อเรือ/เที่ยวเรือไปคว้ามา
+ * เช่น ONE เขียนแจ้งแก้ไขว่า "CHANGE VOYAGE NUMBER FROM 0001W TO 001W"
+ * ซึ่งอ่านแล้วได้ชื่อเรือ "CHANGE" กับเที่ยวเรือ "0001W" ที่เป็นเลขเก่าที่ถูกยกเลิกไปแล้ว
+ */
+const VESSEL_NOISE = /\b(CHANGE|CORRECT|AMEND|REVISE|CANCEL|UPDATE|FROM|PLEASE|NOTE)\b/;
+
 function plausibleName(value: string | undefined): string {
   let s = clean(value);
   // ตัดเศษที่ติดมาจากที่อยู่หรืออีเมลข้างหน้า เช่น "...@GMAIL.COM HAKATA" หรือ "ATTN:PIC HAKATA"
@@ -93,6 +100,7 @@ function plausibleName(value: string | undefined): string {
   if (s.length < 3 || s.length > 40) return '';
   if (LABEL_WORDS.test(s)) return '';
   if (NOT_A_VESSEL.test(s)) return '';
+  if (VESSEL_NOISE.test(s)) return '';
   if (!/[A-Z]{3}/.test(s)) return '';
   return s;
 }
@@ -109,7 +117,8 @@ function toIsoDate(raw: string): string {
   const s = clean(raw);
   if (!s) return '';
 
-  const dmy = s.match(/\b(\d{1,2})[-/\s]([A-Za-z]{3,})[-/\s](\d{2,4})\b/);
+  // ยอมให้มีจุดหรือลูกน้ำคั่นด้วย เช่น "17 JUN, 2026" ของ OOCL และ "01-AUG.-2026"
+  const dmy = s.match(/\b(\d{1,2})[-/\s]([A-Za-z]{3,})\.?,?[-/\s]\s*(\d{2,4})\b/);
   if (dmy) {
     const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
     const idx = months.indexOf(dmy[2].slice(0, 3).toLowerCase());
@@ -263,6 +272,21 @@ export function parseArrivalText(raw: string): ParsedArrival {
   let vessel = plausibleName(pair?.[1]);
   let voyage = plausibleVoyage(pair?.[2]);
 
+  /*
+   * บางใบวางค่าไว้ "ก่อน" ป้าย เพราะ pdf.js อ่านคอลัมน์ขวาก่อนซ้าย
+   *   "001W HMM INTEGRAL VOYAGE : VESSEL :"
+   * อ่านย้อนจากป้าย VOYAGE/VESSEL ที่อยู่ติดกัน จึงได้ค่าที่เป็นของช่องนั้นจริง
+   */
+  if (!vessel || !voyage) {
+    const reversed = upper.match(
+      /\b([0-9]{3,5}[A-Z])\s+([A-Z][A-Z .\-]{3,28}?)\s+VOY(?:AGE)?\.?\s*:?\s*VESSEL\b/,
+    );
+    if (reversed) {
+      vessel = vessel || plausibleName(reversed[2]);
+      voyage = voyage || plausibleVoyage(reversed[1]);
+    }
+  }
+
   if (!vessel) {
     vessel = plausibleName(upper.match(/VESSEL\s*(?:NAME)?\s*:?\s*([A-Z][A-Z0-9 .\-]{2,30})/)?.[1]);
   }
@@ -282,11 +306,31 @@ export function parseArrivalText(raw: string): ParsedArrival {
     // ปีนำหน้าแบบ ISO ต้องจับก่อน ไม่งั้น pattern วันนำหน้าจะไปคว้าครึ่งหลังมา
     upper.match(/\bETA\b[^0-9]{0,24}([0-9]{4}-[0-9]{2}-[0-9]{2})/)?.[1] ??
     upper.match(/\bETA\b[^0-9]{0,24}([0-9]{1,2}[-/. ][A-Z0-9]{2,9}[-/. ][0-9]{2,4})/)?.[1] ??
-    // OOCL แทรกชื่อวันไว้ก่อนวันที่ เช่น "ON: WEDNESDAY, 17 JUN, 2026"
-    upper.match(/\bETA\b[^0-9]{0,60}?([0-9]{1,2}\s+[A-Z]{3,9},?\s+[0-9]{4})/)?.[1] ??
+    /*
+     * OOCL แทรกทั้งชื่อท่าและชื่อวันไว้ก่อนวันที่
+     *   "ETA AT POD: LAEM CHABANG ON: WEDNESDAY, 17 JUN, 2026 8:30 PM"
+     * ระยะจากป้ายถึงตัวเลขจึงยาวกว่า 60 ตัวอักษร ต้องเผื่อไว้ถึง 90
+     */
+    upper.match(/\bETA\b[^0-9]{0,90}?([0-9]{1,2}\s+[A-Z]{3,9}\.?,?\s+[0-9]{4})/)?.[1] ??
     upper.match(/(?:ESTIMATED\s*(?:TIME\s*OF\s*)?ARRIVAL|EST\.?\s*ARRIVAL\s*DATE|ARRIVAL\s*DATE)\s*:?\s*([0-9]{1,2}[-/. ][A-Z0-9]{2,9}[-/. ][0-9]{2,4})/)?.[1] ??
     // "AUG 01 2026" เดือนนำหน้า
     upper.match(/(?:EST\.?\s*ARRIVAL\s*DATE|ARRIVAL\s*DATE)\s*:?\s*([A-Z]{3,9}\s+[0-9]{1,2}\s+[0-9]{4})/)?.[1] ??
+    /*
+     * ใบที่วางเป็นตาราง (ONE, HMM) หัวช่องทุกช่องอยู่รวมกันแล้วค่าจริงตามมาทีหลัง
+     * ป้าย ETA จึงอยู่ไกลจากวันที่มากจนจับด้วยระยะไม่ได้
+     *
+     * แต่ค่าจะเรียงเป็น <ชื่อเรือ> <เที่ยวเรือ> <วันที่> ติดกันเสมอ
+     *   "BROOKLYN BRIDGE 0183W 16 JUN 2026 16:30"
+     * ใช้เที่ยวเรือที่อ่านได้แล้วเป็นหลักยึด จึงไม่ไปคว้าวันที่อื่นในเอกสาร
+     * (ใบพวกนี้มีวันที่ออกเอกสารและวันครบกำหนดแก้ไขปนอยู่ด้วย)
+     */
+    (voyage
+      ? upper.match(
+          new RegExp(`\\b${voyage}\\s+([0-9]{1,2}\\s+[A-Z]{3,9}\\.?\\s+[0-9]{4})\\b`),
+        )?.[1]
+      : undefined) ??
+    // ใบที่วางวันที่ไว้ก่อนป้าย เช่น "12 MAY 2026 22:00 ETA :"
+    upper.match(/([0-9]{1,2}\s+[A-Z]{3,9}\.?\s+[0-9]{4})(?:\s+[0-9]{1,2}:[0-9]{2})?\s*\bETA\b/)?.[1] ??
     '';
 
   /*
@@ -311,7 +355,18 @@ export function parseArrivalText(raw: string): ParsedArrival {
     .map((m) => weightOf(m[1]))
     .filter(Boolean);
 
-  const weightValue = totalWeight || Math.max(0, ...allWeights);
+  /*
+   * EVERGREEN วางน้ำหนักในตารางโดยไม่มีหน่วยกำกับเลย
+   *   หัวตาราง  "PACKAGE/UNIT   G.W   MEASUREMENT"
+   *   ค่าจริง    "2 / UNT   6260.00   45.4600"
+   * อ่านคู่ท้ายแถว: น้ำหนักมาก่อนปริมาตรเสมอ และปริมาตรมีทศนิยมสี่ตำแหน่ง
+   * ยึดจากรูปแบบ "<จำนวน> / <หน่วย>" ที่อยู่ข้างหน้า จึงไม่ไปคว้าตัวเลขอื่นในเอกสาร
+   */
+  const tableWeight = /G\.?\s?W\b/.test(upper)
+    ? weightOf(upper.match(/\d+\s*\/\s*[A-Z]{2,4}\s+([\d,]+\.\d{2})\s+[\d,]+\.\d{3,4}\b/)?.[1])
+    : 0;
+
+  const weightValue = totalWeight || tableWeight || Math.max(0, ...allWeights);
   const grossWeight = weightValue ? String(weightValue) : '';
 
   const unitsRaw = upper.match(/\b(\d{1,4})\s*(?:UNITS?|PACKAGES?|PKGS?|CTNS?)\b/)?.[1] ?? '';

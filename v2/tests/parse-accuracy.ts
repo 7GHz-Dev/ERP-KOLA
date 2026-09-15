@@ -19,17 +19,24 @@ const DIR = path.join(process.cwd(), 'tests', 'fixtures', 'arrival');
  * ไม่ใช่ว่าอ่านไม่ได้ ช่องที่ตรวจแล้วเท่านั้นที่ถูกนับเป็นคะแนนความถูกต้อง
  */
 const EXPECTED: Record<string, Partial<Record<'vessel' | 'voyage' | 'grossWeight' | 'portOfLoading' | 'eta' | 'shipperName', string>>> = {
+  // น้ำหนักในใบ EVERGREEN อยู่ในตารางโดยไม่มีหน่วยกำกับ ตรวจกับแถวในเอกสารแล้ว
+  '14_ARRIVAL_NOTICE_DB7RMX3I1': { grossWeight: '6270' },
+  '15_ARRIVAL_NOTICE_DB7RMX3I1': { grossWeight: '6270' },
+  '16_ARRIVAL_NOTICE_DB7RMX3I1': { grossWeight: '6270' },
+  '6_ARRIVAL_NOTICE_evergreen': { grossWeight: '6260' },
+  // ใบที่วางค่าไว้ก่อนป้าย (ONE/HMM) — ชื่อเรือกับ ETA ตรวจกับเอกสารแล้ว
+  '7_ARRIVAL_NOTICE_AN_20260512_2199806': { vessel: 'HMM INTEGRAL', eta: '2026-05-12' },
   '3_ARRIVAL_NOTICE_maersk': {
     vessel: 'MAERSK NAMSOS', voyage: '620S', grossWeight: '7600', portOfLoading: 'HAKATA,JAPAN',
   },
   '11_ARRIVAL_NOTICE_oocl': {
-    vessel: 'BRIGHT TSUBAKI', voyage: '031S', grossWeight: '11510', portOfLoading: 'NAGOYA',
+    vessel: 'BRIGHT TSUBAKI', voyage: '031S', grossWeight: '11510', portOfLoading: 'NAGOYA', eta: '2026-06-17',
   },
   '4_BL_oocl': {
-    vessel: 'BRIGHT TSUBAKI', voyage: '031S', grossWeight: '11510', portOfLoading: 'NAGOYA',
+    vessel: 'BRIGHT TSUBAKI', voyage: '031S', grossWeight: '11510', portOfLoading: 'NAGOYA', eta: '2026-06-17',
   },
   '8_ARRIVAL_NOTICE_one': {
-    vessel: 'BROOKLYN BRIDGE', voyage: '0183W', grossWeight: '16350',
+    vessel: 'BROOKLYN BRIDGE', voyage: '0183W', grossWeight: '16350', eta: '2026-06-16',
   },
   '1_ARRIVAL_NOTICE_EVERGR_1.PDF': {
     vessel: 'EVER BEING', voyage: '0849-071N', eta: '2026-06-01',
