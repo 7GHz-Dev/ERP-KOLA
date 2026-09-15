@@ -1384,6 +1384,9 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
 }
 .admin-file-add label { margin: 0; min-width: 240px; }
 
+/* คำอธิบายใต้ช่องกรอก เช่นบอกว่าระบบเปลี่ยนประเภทงานให้เพราะอะไร */
+.field-note { display: block; margin-top: 3px; font-size: 11px; color: var(--blue); }
+
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }
 .shipline-cell b { display: block; font-size: 12px; font-weight: 600; line-height: 1.35; }

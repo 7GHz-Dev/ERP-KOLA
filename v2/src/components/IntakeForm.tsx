@@ -32,6 +32,23 @@ type ContainerRow = { containerNo: string; containerType: string; sealNo: string
 
 const byCode = (list: Option[], code: string) => list.find((o) => o.code?.toUpperCase() === code)?.name ?? '';
 
+/** id ของ master จากรหัส — ไม่ผูก id ตรง ๆ เผื่อ Master Data ถูกสร้างใหม่ */
+const idByCode = (list: Option[], code: string) =>
+  list.find((o) => o.code?.toUpperCase() === code)?.id ?? '';
+
+/*
+ * รถยนต์เก่าที่ notify ไม่ใช่ KOLA ต้องเป็นงานประเภท MUO
+ *
+ * MU (MSFZ - USED CAR) ใช้กับงานที่ KOLA เป็น notify เอง
+ * ถ้า notify เป็นบริษัทอื่น แปลว่าเป็นงานที่เดินผ่านชิปปิ้งรายอื่น
+ * ซึ่งคิดค่าใช้จ่ายและเดินเอกสารคนละแบบ จึงต้องแยกประเภทตั้งแต่ตอนรับงาน
+ * เดิมต้องจำแล้วเปลี่ยนเองทุกครั้ง ซึ่งลืมกันบ่อยและไปรู้ตอนออกรายงานแล้ว
+ */
+const USED_CAR_CODES = ['MU', 'MUO'];
+const isUsedCarProduct = (product: string) =>
+  /รถยนต์|USED\s*CAR|USED\s*VEHICLE/i.test(product);
+const isKolaNotify = (name: string) => /KOLA\s*SHIPPING/i.test(name);
+
 export function IntakeForm({
   sourceType, options, defaults, action,
 }: {
@@ -43,6 +60,13 @@ export function IntakeForm({
 }) {
   const [blRows, setBlRows] = useState<BlRow[]>([{ blNo: '', shipperId: '', shipperName: '' }]);
   const [personId, setPersonId] = useState('');
+  /*
+   * สามช่องนี้ต้องคุมค่าเอง เพราะกฎ MUO ต้องเปลี่ยน JOB TYPE ให้อัตโนมัติ
+   * เมื่อผู้ใช้เปลี่ยน notify หรือชื่อสินค้า — <select> แบบ uncontrolled สั่งไม่ได้
+   */
+  const [jobTypeId, setJobTypeId] = useState(defaults.jobTypeId ?? '');
+  const [notifyId, setNotifyId] = useState(defaults.notifyId ?? '');
+  const [product, setProduct] = useState('รถยนต์เก่าใช้แล้ว');
   const [saved, setSaved] = useState('');
   // เปลี่ยน key แล้ว React สร้างฟอร์มใหม่ทั้งชุด ช่องทุกช่องกลับไปเป็นค่าตั้งต้น
   const [formKey, setFormKey] = useState(0);
@@ -60,6 +84,30 @@ export function IntakeForm({
    * ช่อง input ยังถือไฟล์ต้นฉบับไว้เพื่อให้ required ของเบราว์เซอร์ทำงานตามปกติ
    * ส่วนตัวที่จะอัปโหลดจริงเลือกตอนกดบันทึก ถ้ามีตัวที่ตัดแล้วก็ใช้ตัวนั้นแทน
    */
+  /*
+   * กฎ MUO — รถยนต์เก่าที่ notify ไม่ใช่ KOLA
+   *
+   * สลับให้เฉพาะตอนที่ประเภทงานปัจจุบันเป็น MU หรือ MUB อยู่แล้ว
+   * ถ้าผู้ใช้เลือกประเภทอื่นไว้เอง (เช่น TRANSIT) แปลว่าตั้งใจ ไม่ไปทับของเขา
+   */
+  const applyMuoRule = (nextNotifyId: string, nextProduct: string, currentJobType: string) => {
+    const currentCode = options.jobTypes
+      .find((o) => o.id === currentJobType)?.code?.toUpperCase() ?? '';
+    if (!USED_CAR_CODES.includes(currentCode)) return currentJobType;
+    if (!isUsedCarProduct(nextProduct)) return currentJobType;
+
+    const notifyName = options.notify.find((o) => o.id === nextNotifyId)?.name ?? '';
+    // ยังไม่ได้เลือก notify ก็ยังตัดสินไม่ได้ คงค่าเดิมไว้ก่อน
+    if (!nextNotifyId) return currentJobType;
+
+    const want = isKolaNotify(notifyName) ? 'MU' : 'MUO';
+    return idByCode(options.jobTypes, want) || currentJobType;
+  };
+
+  const jobTypeCode = options.jobTypes
+    .find((o) => o.id === jobTypeId)?.code?.toUpperCase() ?? '';
+  const muoApplied = jobTypeCode === 'MUO';
+
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [trimmedFile, setTrimmedFile] = useState<File | null>(null);
   const [pageInfo, setPageInfo] = useState<{ kept: number; total: number } | null>(null);
@@ -128,6 +176,10 @@ export function IntakeForm({
     setBlRows([{ blNo: '', shipperId: '', shipperName: '' }]);
     setContainerRows([{ containerNo: '', containerType: defaults.containerType, sealNo: '' }]);
     setPersonId('');
+    // สามช่องนี้อยู่นอกฟอร์ม การเปลี่ยน key จึงไม่ล้างให้ ต้องคืนค่าตั้งต้นเอง
+    setJobTypeId(defaults.jobTypeId ?? '');
+    setNotifyId(defaults.notifyId ?? '');
+    setProduct('รถยนต์เก่าใช้แล้ว');
     setParsed({});
     setReadStatus('ยังไม่ได้อ่านไฟล์');
     setStatusTone('');
@@ -187,12 +239,27 @@ export function IntakeForm({
       <div className="section-title">ข้อมูลจาก {sourceType === 'AN' ? 'Arrival Notice' : 'BL'}</div>
       <div className="extract-grid">
         <Field label="JOB TYPE">
-          <select name="jobTypeId" defaultValue={defaults.jobTypeId ?? ''}>
+          <select
+            name="jobTypeId"
+            value={jobTypeId}
+            onChange={(e) => setJobTypeId(e.target.value)}
+          >
             <Options list={options.jobTypes} />
           </select>
+          {/* บอกว่าทำไมประเภทถึงเปลี่ยนเอง ไม่งั้นผู้ใช้จะงงว่าใครแก้ */}
+          {muoApplied ? (
+            <small className="field-note">เปลี่ยนเป็น MUO ให้เพราะ notify ไม่ใช่ KOLA</small>
+          ) : null}
         </Field>
         <Field label="PRODUCT">
-          <input name="product" defaultValue="รถยนต์เก่าใช้แล้ว" />
+          <input
+            name="product"
+            value={product}
+            onChange={(e) => {
+              setProduct(e.target.value);
+              setJobTypeId((cur) => applyMuoRule(notifyId, e.target.value, cur));
+            }}
+          />
         </Field>
         <Field label="BL TYPE">
           <select name="blType" key={parsed.blType} defaultValue={parsed.blType ?? 'SWB'}>
@@ -293,7 +360,14 @@ export function IntakeForm({
           </select>
         </Field>
         <Field label="NOTIFY PARTY">
-          <select name="notifyPartyId" defaultValue={defaults.notifyId ?? ''}>
+          <select
+            name="notifyPartyId"
+            value={notifyId}
+            onChange={(e) => {
+              setNotifyId(e.target.value);
+              setJobTypeId((cur) => applyMuoRule(e.target.value, product, cur));
+            }}
+          >
             <Options list={options.notify} />
           </select>
         </Field>
