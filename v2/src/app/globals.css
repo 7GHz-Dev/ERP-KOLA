@@ -1384,6 +1384,18 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
 }
 .admin-file-add label { margin: 0; min-width: 240px; }
 
+/* โหมดรับงานหลายใบพร้อมกัน */
+.batch { display: flex; flex-direction: column; gap: 12px; }
+.batch-table { max-height: 52vh; }
+.batch-name { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.batch-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+.batch-foot > span { font-weight: 600; }
+.batch-note { margin: 0; font-size: 12px; color: var(--muted); }
+
 /* คำอธิบายใต้ช่องกรอก เช่นบอกว่าระบบเปลี่ยนประเภทงานให้เพราะอะไร */
 .field-note { display: block; margin-top: 3px; font-size: 11px; color: var(--blue); }
 

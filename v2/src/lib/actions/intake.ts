@@ -90,6 +90,33 @@ async function masterIdByCode(type: string, code: string): Promise<string | null
   return row?.id ?? null;
 }
 
+/*
+ * รถยนต์เก่าที่ notify ไม่ใช่ KOLA ต้องเป็นงานประเภท MUO
+ *
+ * ฟอร์มทีละใบสลับให้ตั้งแต่บนหน้าจอแล้ว แต่ตรงนี้ตรวจซ้ำฝั่งเซิร์ฟเวอร์
+ * เพราะโหมดรับหลายใบพร้อมกันส่งค่าตั้งต้นมาตรง ๆ ไม่ได้ผ่านหน้าจอนั้น
+ * และฟอร์มถูกยิงตรงได้ กติกาที่มีผลกับตัวเลขค่าใช้จ่ายจึงไม่ควรอยู่แค่ฝั่งเบราว์เซอร์
+ */
+async function applyUsedCarRule(
+  jobTypeId: string | null, notifyPartyId: string | null, product: string,
+): Promise<string | null> {
+  if (!jobTypeId || !notifyPartyId) return jobTypeId;
+  if (!/รถยนต์|USED\s*CAR|USED\s*VEHICLE/i.test(product)) return jobTypeId;
+
+  const [current] = await db.select({ code: masterRecords.code })
+    .from(masterRecords).where(eq(masterRecords.id, jobTypeId)).limit(1);
+  const code = (current?.code ?? '').toUpperCase();
+  // ผู้ใช้เลือกประเภทอื่นไว้เอง (เช่น TRANSIT) แปลว่าตั้งใจ ไม่ไปทับ
+  if (code !== 'MU' && code !== 'MUO') return jobTypeId;
+
+  const [notify] = await db.select({ name: masterRecords.name })
+    .from(masterRecords).where(eq(masterRecords.id, notifyPartyId)).limit(1);
+  const want = /KOLA\s*SHIPPING/i.test(notify?.name ?? '') ? 'MU' : 'MUO';
+  if (want === code) return jobTypeId;
+
+  return (await masterIdByCode('jobTypes', want)) ?? jobTypeId;
+}
+
 async function createJobFromIntakeImpl(formData: FormData) {
   const user = await requireActiveSession(['PAINT']);
 
@@ -117,7 +144,11 @@ async function createJobFromIntakeImpl(formData: FormData) {
   }
   if (blob.size > 8 * 1024 * 1024) throw new Error('ไฟล์ต้องมีขนาดไม่เกิน 8 MB');
 
-  const jobTypeId = text(formData.get('jobTypeId'), 80) || null;
+  const notifyPartyId = text(formData.get('notifyPartyId'), 80) || null;
+  const product = text(formData.get('product'), 1000);
+  const jobTypeId = await applyUsedCarRule(
+    text(formData.get('jobTypeId'), 80) || null, notifyPartyId, product,
+  );
 
   const jobId = newId('JOB');
   const fileId = newId('FIL');
@@ -141,7 +172,7 @@ async function createJobFromIntakeImpl(formData: FormData) {
       etaIsOfficial: false,
       shipperId: blRows[0].shipperId,
       consigneeId: text(formData.get('consigneeId'), 80) || null,
-      notifyPartyId: text(formData.get('notifyPartyId'), 80) || null,
+      notifyPartyId,
       portId: text(formData.get('portId'), 80) || null,
       // เมืองต้นทางใช้บนจดหมายแลก D/O ซึ่งเขียนเป็นตัวพิมพ์ใหญ่ทั้งหมด
       originPort: text(formData.get('originPort'), 120).toUpperCase() || null,
@@ -151,7 +182,7 @@ async function createJobFromIntakeImpl(formData: FormData) {
       status: sourceType === 'BL' ? 'WAITING_ARRIVAL_NOTICE_BL' : 'WAITING_ENTER_BL',
       sourceType,
       blType: text(formData.get('blType'), 40),
-      product: text(formData.get('product'), 1000),
+      product,
       unitAmount: String(number(formData.get('unitAmount'))),
       packageType: text(formData.get('packageType'), 40),
       grossWeight: String(number(formData.get('grossWeight'))),
