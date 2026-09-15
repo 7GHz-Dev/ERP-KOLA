@@ -1419,6 +1419,12 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
 .job-drawer .drawer-content:has(> .bl-edit) { display: flex; padding: 12px; overflow: hidden; }
 .main > .bl-edit { height: calc(100vh - 150px); min-height: 460px; }
 
+/* ความคืบหน้าตอนโหลด/ตัด/อัปไฟล์ในแผงแก้ข้อมูล */
+.trim-status {
+  margin: 0; padding: 5px 10px; font-size: 12px;
+  background: var(--blue-soft); color: var(--blue);
+}
+
 /* ตารางข้อมูลในแผงตรวจก่อนอนุมัติ */
 .review-kv { margin: 0; display: flex; flex-direction: column; gap: 1px; }
 .review-row {

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateBlInfo } from '@/lib/actions/jobs';
+import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 import type { Option } from '@/lib/queries/master';
 
 /**
@@ -50,6 +51,52 @@ export function BlEditPanel({
   const [shown, setShown] = useState(source?.id ?? '');
   const docs = [source, other].filter(Boolean) as PreviewDoc[];
   const doc = docs.find((d) => d.id === shown) ?? docs[0];
+
+  /*
+   * ตัดหน้าไฟล์ที่เก็บไว้แล้ว — ใช้แผงตัวเดียวกับตอนรับงาน
+   *
+   * ต่างกันตรงที่ตอนรับงานไฟล์ยังอยู่ในเครื่อง แต่ตรงนี้อยู่ใน storage แล้ว
+   * จึงต้องโหลดกลับมาเป็น File ก่อน ตัดในเบราว์เซอร์ แล้วอัปกลับเป็นเวอร์ชันใหม่
+   * ของเดิมไม่ถูกลบ ระบบเก็บเป็นเวอร์ชันเก่าไว้ตามปกติ
+   */
+  const [trimFile, setTrimFile] = useState<File | null>(null);
+  const [trimBusy, setTrimBusy] = useState('');
+
+  const openTrimmer = async () => {
+    if (!doc) return;
+    setTrimBusy('กำลังโหลดไฟล์…');
+    try {
+      const res = await fetch(`/files/${doc.id}`);
+      if (!res.ok) throw new Error('โหลดไฟล์ไม่สำเร็จ');
+      const blob = await res.blob();
+      setTrimFile(new File([blob], doc.fileName, { type: 'application/pdf' }));
+      setTrimBusy('');
+    } catch (e) {
+      setTrimBusy(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const saveTrimmed = async (trimmed: File | null, kept: number, total: number) => {
+    // ไม่ได้ตัดหน้าไหนออก ก็ไม่ต้องอัปทับให้เปลืองเวอร์ชัน
+    if (!trimmed || !doc) { setTrimFile(null); return; }
+    setTrimBusy(`กำลังบันทึก ${kept} จาก ${total} หน้า…`);
+    const fd = new FormData();
+    fd.set('jobId', job.id);
+    fd.set('category', doc.category);
+    fd.set('file', trimmed);
+    fd.set('changeReason', `ตัดเหลือ ${kept} จาก ${total} หน้า`);
+    try {
+      const res = await fetch('/api/files/upload', { method: 'POST', body: fd });
+      const body = await res.json() as { ok?: boolean; detail?: string };
+      if (!res.ok || !body.ok) throw new Error(body.detail ?? 'อัปโหลดไม่สำเร็จ');
+      setTrimFile(null);
+      setTrimBusy('');
+      // โหลดข้อมูลแผงใหม่ ให้ตัวอย่างชี้ไปไฟล์เวอร์ชันล่าสุด
+      router.refresh();
+    } catch (e) {
+      setTrimBusy(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const pick = (name: string, label: string, list: Option[], current: string | null) => (
     <label className="mini">
@@ -214,10 +261,16 @@ export function BlEditPanel({
           ) : (
             <span>{doc ? LABEL[doc.category] ?? doc.category : 'เอกสารต้นทาง'}</span>
           )}
+          {src && !isImage ? (
+            <button type="button" className="button tiny" onClick={() => void openTrimmer()}>
+              ดูตัวอย่าง / ตัดหน้า
+            </button>
+          ) : null}
           {src ? (
             <a className="button tiny" href={src} target="_blank" rel="noreferrer">เปิดเต็มจอ</a>
           ) : null}
         </div>
+        {trimBusy ? <p className="trim-status">{trimBusy}</p> : null}
         {!src ? (
           <div className="slip-empty">ไม่มีไฟล์ AN หรือ BL ของงานนี้</div>
         ) : isImage ? (
@@ -231,6 +284,15 @@ export function BlEditPanel({
           </object>
         )}
       </div>
+
+      {trimFile && doc ? (
+        <PdfPageTrimmer
+          file={trimFile}
+          title={`${LABEL[doc.category] ?? doc.category} · ${job.jobNo}`}
+          onApply={(trimmed, kept, total) => void saveTrimmed(trimmed, kept, total)}
+          onClose={() => setTrimFile(null)}
+        />
+      ) : null}
     </div>
   );
 }
