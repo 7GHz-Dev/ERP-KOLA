@@ -1390,7 +1390,17 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
  * ให้ไฟล์กว้างกว่าฟอร์ม เพราะต้องอ่านเลขจากในใบเป็นหลัก
  * ฟอร์มเลื่อนในตัวเอง ไฟล์จึงอยู่กับที่ ไม่ต้องเลื่อนตามลงไป
  */
-.bl-edit { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 12px; height: 100%; min-height: 0; }
+/*
+ * ไฟล์กว้าง 70% ของแผง ฟอร์มได้ 30% ที่เหลือ
+ * คิดเป็นสัดส่วน ไม่ใช่ความกว้างคงที่ แผงกว้างขึ้นเมื่อไหร่ไฟล์ก็ได้ที่เพิ่มตามไปด้วย
+ * ฝั่งฟอร์มมีขั้นต่ำ 250px เพราะแผงแคบสุด (638px) ถ้าคิด 30% ตรง ๆ จะเหลือ 181px
+ * ซึ่งช่องที่วางคู่กัน (ETA กับวันที่ขนย้าย) จะเบียดจนกรอกไม่ถนัด
+ * จอที่กว้างพอยังได้ 70% ตามที่ตั้งไว้ทุกประการ
+ */
+.bl-edit {
+  display: grid; grid-template-columns: minmax(250px, 30fr) minmax(0, 70fr);
+  gap: 12px; height: 100%; min-height: 0;
+}
 .bl-edit-form {
   display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto;
   padding-right: 4px;
