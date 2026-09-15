@@ -7,6 +7,7 @@ import {
 } from '@/components/ActionForms';
 import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
 import { requestApprovalMany } from '@/lib/actions/jobs';
+import { deleteJobs } from '@/lib/actions/job-delete';
 import Link from 'next/link';
 import { listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { pendingTabCounts } from '@/lib/queries/dashboard';
@@ -230,6 +231,14 @@ export default async function PendingPage({
           idName="jobIds"
           label="ส่งอนุมัติ {n} รายการ"
           confirmText="ส่งอนุมัติ {n} รายการใช่ไหม · ส่งแล้วแก้ไขไม่ได้จนกว่าจะมีผลตัดสิน"
+          extra={{
+            action: deleteJobs,
+            label: 'ลบ {n} รายการ',
+            danger: true,
+            confirmText:
+              'ลบ {n} รายการถาวรใช่ไหม\n\n'
+              + 'ข้อมูลงาน ไฟล์ AN/BL รายการตู้ และประวัติจะถูกลบทั้งหมด กู้คืนไม่ได้',
+          }}
         >
           {table}
         </BulkBar>

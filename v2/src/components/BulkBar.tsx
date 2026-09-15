@@ -12,8 +12,17 @@ import { useRouter } from 'next/navigation';
  *
  * แถบสรุปโผล่เฉพาะตอนเลือกแล้ว ไม่กินที่ตอนไม่ได้ใช้
  */
+/** ปุ่มหนึ่งปุ่มบนแถบ — {n} ในข้อความจะถูกแทนด้วยจำนวนที่เลือก */
+export type BulkAction = {
+  action: (formData: FormData) => Promise<unknown>;
+  label: string;
+  confirmText: string;
+  /** ปุ่มที่ทำสิ่งที่ย้อนไม่ได้ ใช้สีแดงให้ต่างจากปุ่มหลัก */
+  danger?: boolean;
+};
+
 export function BulkBar({
-  action, label, confirmText, idName, children,
+  action, label, confirmText, idName, extra, children,
 }: {
   action: (formData: FormData) => Promise<unknown>;
   /** ข้อความบนปุ่ม — {n} จะถูกแทนด้วยจำนวนที่เลือก */
@@ -21,6 +30,8 @@ export function BulkBar({
   confirmText: string;
   /** ชื่อช่องที่ส่งขึ้นเซิร์ฟเวอร์ เช่น jobIds หรือ approvalIds */
   idName: string;
+  /** ปุ่มเพิ่มเติมบนแถบเดียวกัน เช่นลบรายการที่เลือก */
+  extra?: BulkAction;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -44,7 +55,7 @@ export function BulkBar({
     }
   }, [picked]);
 
-  const run = async () => {
+  const run = async (fn: (formData: FormData) => Promise<unknown>) => {
     setBusy(true);
     setError('');
     const fd = new FormData();
@@ -55,7 +66,7 @@ export function BulkBar({
      * เหลือแค่ดัก error ของเครือข่ายที่ redirect ไปไม่ถึง
      */
     try {
-      await action(fd);
+      await fn(fd);
       setPicked([]);
       router.refresh();
     } catch (e) {
@@ -91,12 +102,26 @@ export function BulkBar({
           <button type="button" className="button tiny" onClick={() => setPicked([])}>
             ล้างที่เลือก
           </button>
+          {extra ? (
+            <button
+              type="button"
+              className={`button${extra.danger ? ' danger' : ''}`}
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm(extra.confirmText.replace('{n}', String(picked.length)))) {
+                  void run(extra.action);
+                }
+              }}
+            >
+              {extra.label.replace('{n}', String(picked.length))}
+            </button>
+          ) : null}
           <button
             type="button"
             className="button primary"
             disabled={busy}
             onClick={() => {
-              if (window.confirm(confirmText.replace('{n}', String(picked.length)))) void run();
+              if (window.confirm(confirmText.replace('{n}', String(picked.length)))) void run(action);
             }}
           >
             {busy ? 'กำลังทำ…' : label.replace('{n}', String(picked.length))}
