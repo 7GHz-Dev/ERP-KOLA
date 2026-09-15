@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateBlInfo } from '@/lib/actions/jobs';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
+import { SearchSelect } from '@/components/SearchSelect';
 import type { Option } from '@/lib/queries/master';
 
 /**
@@ -39,6 +40,26 @@ type Opts = {
 
 const LABEL: Record<string, string> = { ARRIVAL_NOTICE: 'Arrival Notice', BL: 'Bill of Lading' };
 
+/** ช่องกรอกหน้าตาเดียวกับหน้ารับงาน — ป้ายตัวพิมพ์ใหญ่อยู่บน ช่องอยู่ล่าง */
+function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={`extract-field ${wide ? 'wide' : ''}`}>
+      <div className="extract-label">{label}</div>
+      <div className="extract-control">{children}</div>
+    </div>
+  );
+}
+
+function Opts({ list }: { list: Option[] }) {
+  return (
+    <>
+      {list.map((o) => (
+        <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>
+      ))}
+    </>
+  );
+}
+
 export function BlEditPanel({
   job, options, source, other,
 }: {
@@ -49,6 +70,8 @@ export function BlEditPanel({
 }) {
   const router = useRouter();
   const [shown, setShown] = useState(source?.id ?? '');
+  // SearchSelect เป็นช่องพิมพ์ค้นหา ค่าจึงต้องเก็บเองแล้วส่งผ่าน hidden
+  const [personId, setPersonId] = useState(job.personId ?? '');
   const docs = [source, other].filter(Boolean) as PreviewDoc[];
   const doc = docs.find((d) => d.id === shown) ?? docs[0];
 
@@ -98,18 +121,6 @@ export function BlEditPanel({
     }
   };
 
-  const pick = (name: string, label: string, list: Option[], current: string | null) => (
-    <label className="mini">
-      <span>{label}</span>
-      <select name={name} defaultValue={current ?? ''}>
-        <option value="">— ไม่ระบุ —</option>
-        {list.map((o) => (
-          <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>
-        ))}
-      </select>
-    </label>
-  );
-
   const src = doc ? `/files/${doc.id}` : null;
   const isImage = (doc?.mimeType ?? '').startsWith('image/');
 
@@ -123,117 +134,117 @@ export function BlEditPanel({
       >
         <input type="hidden" name="jobId" value={job.id} />
 
-        <p className="edit-bl-group">ข้อมูลใบตราส่ง</p>
-        <label className="mini">
-          <span>B/L No.</span>
-          <input name="blNo" defaultValue={job.blNo ?? ''} />
-        </label>
-        <div className="field-pair">
-          <label className="mini">
-            <span>BL TYPE</span>
+        {/*
+          หัวข้อ ลำดับ และหน้าตาของช่อง ยกมาจากหน้ารับงาน AN/BL ทั้งชุด
+          เป็นข้อมูลชุดเดียวกัน คนที่คีย์ตอนรับงานจะได้ไม่ต้องเรียนตำแหน่งใหม่ตอนมาแก้
+        */}
+        <div className="extract-grid">
+          <Field label="JOB TYPE">
+            <select name="jobTypeId" defaultValue={job.jobTypeId ?? ''}>
+              <option value="">— ไม่ระบุ —</option>
+              <Opts list={options.jobTypes} />
+            </select>
+          </Field>
+          <Field label="PRODUCT">
+            <input name="product" defaultValue={job.product ?? ''} />
+          </Field>
+          <Field label="BL TYPE">
             <select name="blType" defaultValue={job.blType ?? ''}>
               <option value="">— ไม่ระบุ —</option>
               {['SWB', 'OBL', 'S', 'TWB', 'HBL', 'MBL', 'Original'].map((v) => (
                 <option key={v} value={v}>{v}</option>
               ))}
             </select>
-          </label>
-          <label className="mini">
-            <span>SHIPLINE</span>
+          </Field>
+          <Field label="SHIPLINE">
             <input name="shipline" defaultValue={job.shipline ?? ''} />
-          </label>
-        </div>
-        {pick('jobTypeId', 'Job Type', options.jobTypes, job.jobTypeId)}
+          </Field>
 
-        <p className="edit-bl-group">เรือและกำหนดการ</p>
-        <div className="field-pair">
-          <label className="mini">
-            <span>Vessel</span>
+          <Field label="B/L NO." wide>
+            <input name="blNo" defaultValue={job.blNo ?? ''} />
+          </Field>
+
+          <Field label="QUANTITY">
+            <div className="pair">
+              <input name="unitAmount" type="number" step="any" defaultValue={job.unitAmount ?? ''} />
+              <select name="packageType" defaultValue={job.packageType ?? ''}>
+                <option value="">— ไม่ระบุ —</option>
+                {options.packageTypes.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
+              </select>
+            </div>
+          </Field>
+          <Field label="WEIGHT (KG)">
+            <input name="grossWeight" type="number" step="any" defaultValue={job.grossWeight ?? ''} />
+          </Field>
+          <Field label="VESSEL">
             <input name="vessel" defaultValue={job.vessel ?? ''} />
-          </label>
-          <label className="mini">
-            <span>Voyage</span>
+          </Field>
+          <Field label="VOYAGE">
             <input name="voyage" defaultValue={job.voyage ?? ''} />
-          </label>
-        </div>
-        <div className="field-pair">
-          <label className="mini">
-            <span>ETA</span>
-            <input type="date" name="eta" defaultValue={job.eta ?? ''} />
-          </label>
-          <label className="mini">
-            <span>วันที่ขนย้าย</span>
-            <input type="date" name="transportDate" defaultValue={job.transportDate ?? ''} />
-          </label>
-        </div>
-        <div className="field-pair">
-          <label className="mini">
-            <span>DEM (วัน)</span>
-            <input type="number" min={0} name="demDays" defaultValue={job.demDays} />
-          </label>
-          <label className="mini">
-            <span>DET (วัน)</span>
-            <input type="number" min={0} name="detDays" defaultValue={job.detDays} />
-          </label>
-        </div>
-
-        <p className="edit-bl-group">ท่าเรือ</p>
-        <label className="mini">
-          <span>เมืองต้นทาง (Port of Loading)</span>
-          <input name="originPort" defaultValue={job.originPort ?? ''} list="bl-edit-origins" />
-          {/* เสนอชื่อที่เคยใช้ แต่ยังพิมพ์เองได้ เพราะท่าต้นทางมีมากกว่าที่เก็บไว้ */}
-          <datalist id="bl-edit-origins">
-            {options.originPorts.map((o) => <option key={o.id} value={o.name} />)}
-          </datalist>
-        </label>
-        <div className="field-pair">
-          {pick('portId', 'Port of Discharge', options.ports, job.portId)}
-          {pick('terminalId', 'Port Terminal', options.terminals, job.terminalId)}
-        </div>
-
-        <p className="edit-bl-group">สินค้า</p>
-        <label className="mini">
-          <span>สินค้า</span>
-          <input name="product" defaultValue={job.product ?? ''} />
-        </label>
-        <div className="field-pair">
-          <label className="mini">
-            <span>จำนวน</span>
-            <input type="number" step="any" name="unitAmount" defaultValue={job.unitAmount ?? ''} />
-          </label>
-          <label className="mini">
-            <span>หน่วยนับ</span>
-            <select name="packageType" defaultValue={job.packageType ?? ''}>
+          </Field>
+          <Field label="ETA">
+            <input name="eta" type="date" defaultValue={job.eta ?? ''} />
+          </Field>
+          <Field label="วันที่ขนย้าย">
+            <input name="transportDate" type="date" defaultValue={job.transportDate ?? ''} />
+          </Field>
+          <Field label="CONSIGNEE">
+            <select name="consigneeId" defaultValue={job.consigneeId ?? ''}>
               <option value="">— ไม่ระบุ —</option>
-              {options.packageTypes.map((o) => (
-                <option key={o.id} value={o.name}>{o.name}</option>
-              ))}
+              <Opts list={options.consignees} />
             </select>
-          </label>
+          </Field>
+          <Field label="NOTIFY PARTY">
+            <select name="notifyPartyId" defaultValue={job.notifyPartyId ?? ''}>
+              <option value="">— ไม่ระบุ —</option>
+              <Opts list={options.notify} />
+            </select>
+          </Field>
+          <Field label="CLIENT IN CHARGE">
+            {/* ค่าที่ส่งไปกับฟอร์มเก็บใน hidden เพราะ SearchSelect เป็นช่องพิมพ์ ไม่ใช่ <select> */}
+            <input type="hidden" name="personId" value={personId} />
+            <SearchSelect
+              choices={options.people}
+              value={personId}
+              placeholder="พิมพ์ค้นหาผู้รับผิดชอบ"
+              onChange={setPersonId}
+            />
+          </Field>
+          <Field label="PORT OF LOADING">
+            <input name="originPort" defaultValue={job.originPort ?? ''} list="bl-edit-origins" />
+            {/* เสนอชื่อที่เคยใช้ แต่ยังพิมพ์เองได้ เพราะท่าต้นทางมีมากกว่าที่เก็บไว้ */}
+            <datalist id="bl-edit-origins">
+              {options.originPorts.map((o) => <option key={o.id} value={o.name} />)}
+            </datalist>
+          </Field>
+          <Field label="PORT OF DISCHARGE">
+            <select name="portId" defaultValue={job.portId ?? ''}>
+              <option value="">— ไม่ระบุ —</option>
+              <Opts list={options.ports} />
+            </select>
+          </Field>
+          <Field label="PORT TERMINAL">
+            <select name="terminalId" defaultValue={job.terminalId ?? ''}>
+              <option value="">— ไม่ระบุ —</option>
+              <Opts list={options.terminals} />
+            </select>
+          </Field>
+          <Field label="DEM FREE (วัน)">
+            <input name="demDays" type="number" min={0} defaultValue={job.demDays} />
+          </Field>
+          <Field label="DET FREE (วัน)">
+            <input name="detDays" type="number" min={0} defaultValue={job.detDays} />
+          </Field>
+          <Field label="มูลค่าสินค้า">
+            <div className="pair">
+              <input name="goodsValue" type="number" step="any" defaultValue={job.goodsValue ?? ''} />
+              <input name="goodsCurrency" defaultValue={job.goodsCurrency ?? ''} maxLength={10} />
+            </div>
+          </Field>
+          <Field label="หมายเหตุถึงลูกค้า" wide>
+            <textarea name="customerNote" rows={2} defaultValue={job.customerNote ?? ''} />
+          </Field>
         </div>
-        <div className="field-pair">
-          <label className="mini">
-            <span>น้ำหนักรวม (KG)</span>
-            <input type="number" step="any" name="grossWeight" defaultValue={job.grossWeight ?? ''} />
-          </label>
-          <label className="mini">
-            <span>มูลค่าสินค้า</span>
-            <input type="number" step="any" name="goodsValue" defaultValue={job.goodsValue ?? ''} />
-          </label>
-        </div>
-        <label className="mini">
-          <span>สกุลเงิน</span>
-          <input name="goodsCurrency" defaultValue={job.goodsCurrency ?? ''} maxLength={10} />
-        </label>
-
-        <p className="edit-bl-group">คู่ค้าและผู้รับผิดชอบ</p>
-        {pick('consigneeId', 'Consignee', options.consignees, job.consigneeId)}
-        {pick('notifyPartyId', 'Notify Party', options.notify, job.notifyPartyId)}
-        {pick('personId', 'ผู้รับผิดชอบ', options.people, job.personId)}
-        <label className="mini">
-          <span>หมายเหตุถึงลูกค้า</span>
-          <textarea name="customerNote" rows={2} defaultValue={job.customerNote ?? ''} />
-        </label>
 
         {/* ปุ่มติดอยู่ท้ายแผงเสมอ ฟอร์มยาวกว่าจอจึงไม่ต้องเลื่อนลงไปหา */}
         <div className="bl-edit-actions">

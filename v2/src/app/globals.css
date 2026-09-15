@@ -6,6 +6,12 @@
    */
   --doc-drawer-w: clamp(638px, 70vw, 1042px);
   --doc-drawer-w-narrow: min(1042px, 96vw);
+  /*
+   * แผงแก้ข้อมูล BL กว้างกว่าแผงอื่น 30%
+   * เพราะต้องวางฟอร์มกรอกทั้งชุดคู่กับเอกสารพร้อมกัน ต่างจากแผงอื่นที่มีแค่เอกสาร
+   * ยังไม่เกิน 96vw จึงไม่ล้นจอ
+   */
+  --bl-drawer-w: clamp(638px, 91vw, 1355px);
 
   --navy: #183247;
   --navy-2: #24465f;
@@ -1134,6 +1140,8 @@ body.has-trim-pane .extract-field.wide { grid-column: 1 / -1; }
  * ผูกไว้กับตัวแปรเดียว แก้ที่เดียวได้ครบทุกแผง
  */
 .job-drawer.wide { width: var(--doc-drawer-w); }
+/* แผงที่มีทั้งฟอร์มและเอกสารกว้างกว่าแผงอ่านอย่างเดียว */
+.job-drawer.wide:has(.bl-edit) { width: min(var(--bl-drawer-w), 96vw); }
 
 /*
  * บนมือถือแผงอ่านเอกสารต้องเต็มจอ
@@ -1418,6 +1426,23 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
 }
 .job-drawer .drawer-content:has(> .bl-edit) { display: flex; padding: 12px; overflow: hidden; }
 .main > .bl-edit { height: calc(100vh - 150px); min-height: 460px; }
+
+/*
+ * ช่องกรอกในแผงแก้ข้อมูล — สองคอลัมน์คงที่
+ *
+ * ค่าตั้งต้นของ extract-grid เป็น auto-fill ซึ่งพอฟอร์มกว้าง 339px จะได้คอลัมน์เดียว
+ * แต่ 396px ได้สองคอลัมน์ จำนวนคอลัมน์จึงเปลี่ยนไปมาตามขนาดจอ ตำแหน่งช่องเลื่อนตาม
+ * ตรึงไว้สองคอลัมน์ ช่องอยู่ที่เดิมเสมอไม่ว่าเปิดบนจอไหน
+ */
+.bl-edit .extract-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.bl-edit .extract-control input,
+.bl-edit .extract-control select,
+.bl-edit .extract-control textarea { font-size: 13px; }
+/* ช่องที่วางคู่กันในกรอบเดียว เช่นจำนวนกับหน่วย */
+.bl-edit .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+@media (max-width: 900px) {
+  .bl-edit .extract-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ความคืบหน้าตอนโหลด/ตัด/อัปไฟล์ในแผงแก้ข้อมูล */
 .trim-status {
