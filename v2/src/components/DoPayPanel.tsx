@@ -43,17 +43,46 @@ export function DoPayPanel({
   const claimed = Boolean(claimedAt);
   const ready = claimAmountInput(value) !== null;
 
+  const [saveNote, setSaveNote] = useState('');
+
+  /*
+   * คัดลอกข้อความแล้วบันทึกยอดให้ในปุ่มเดียว
+   *
+   * เดิมมีปุ่มบันทึกยอดแยกอีกปุ่ม ซึ่งถ้าลืมกดแล้วปิดแผงไป ยอดที่พิมพ์ไว้หายหมด
+   * ต้องเปิดไฟล์อ่านใหม่ทั้งที่คัดลอกข้อความไปวางในแชทแล้ว
+   * คนที่กดคัดลอกคือคนที่อ่านยอดจนพอใจแล้ว จึงถือเป็นจังหวะที่ควรบันทึกพอดี
+   *
+   * บันทึกหลังคัดลอกสำเร็จ ไม่ใช่ก่อน เพราะถ้าคลิปบอร์ดพลาดผู้ใช้ยังต้องจัดการต่อ
+   * แต่ยอดถูกเก็บแล้ว เปิดกลับมาก็ไม่ต้องพิมพ์ใหม่
+   */
+  const saveAmount = async () => {
+    if (!ready) return;
+    const fd = new FormData();
+    fd.set('jobId', jobId);
+    fd.set('amount', value);
+    try {
+      await saveDoPayAmount(fd);
+      setSaveNote('บันทึกยอดแล้ว');
+      router.refresh();
+    } catch {
+      setSaveNote('คัดลอกแล้ว แต่บันทึกยอดไม่สำเร็จ — กด "ตั้งเบิกแล้ว" จะบันทึกให้อีกครั้ง');
+    }
+  };
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
+      await saveAmount();
     } catch {
       /*
        * คลิปบอร์ดถูกปิดในบางเบราว์เซอร์หรือตอนไม่ได้เปิดผ่าน https
        * เลือกข้อความในกล่องให้แทน ผู้ใช้กด Ctrl+C เองได้ทันที ไม่ต้องพิมพ์ใหม่
        */
       textArea.current?.select();
+      // คลิปบอร์ดใช้ไม่ได้ก็ยังบันทึกยอดให้ ผู้ใช้เหลือแค่กด Ctrl+C เอง
+      await saveAmount();
     }
   };
 
@@ -80,8 +109,8 @@ export function DoPayPanel({
 
       <div className="do-pay-side">
         {/* ขั้นที่ 1-2 — กรอกยอดที่อ่านได้จากใบที่เปิดดูอยู่ */}
-        <form action={saveDoPayAmount} className="do-pay-form">
-          <input type="hidden" name="jobId" value={jobId} />
+        {/* ไม่มีปุ่มส่งแล้ว ยอดถูกบันทึกตอนกดคัดลอกหรือกดตั้งเบิก */}
+        <div className="do-pay-form">
           <label className="mini">
             <span>ยอดชำระ (บาท)</span>
             {/*
@@ -98,13 +127,14 @@ export function DoPayPanel({
               disabled={claimed}
             />
           </label>
-          {claimed ? null : (
-            <button className="button tiny" type="submit">บันทึกยอด</button>
-          )}
-        </form>
+        </div>
 
-        {/* ขั้นที่ 2 ต่อ — คัดลอกข้อความไปวางในแชทเบิกเงิน */}
-        <div className="do-pay-claim">
+        {/*
+          ขั้นที่ 2 ต่อ — คัดลอกข้อความไปวางในแชทเบิกเงิน
+          โหมดหลายรายการมีปุ่มคัดลอกรวมและปุ่มตั้งเบิกรวมอยู่ที่แผงแม่แล้ว
+          ตรงนี้จึงแสดงเฉพาะตอนทำทีละใบ ไม่งั้นจะมีปุ่มซ้ำกันทุกแถว
+        */}
+        {formOnly ? null : <div className="do-pay-claim">
           <div className="do-pay-claim-head">
             <span>ข้อความเบิก</span>
           </div>
@@ -116,13 +146,14 @@ export function DoPayPanel({
             onClick={() => void copy()}
             disabled={!ready}
           >
-            {copied ? 'คัดลอกแล้ว' : 'คัดลอกข้อความเบิก'}
+            {copied ? 'คัดลอกแล้ว' : 'คัดลอกข้อความ · บันทึกยอด'}
           </button>
           {ready ? null : <p className="do-pay-note">กรอกยอดก่อนจึงจะคัดลอกได้</p>}
-        </div>
+          {saveNote ? <p className="do-pay-note" role="status">{saveNote}</p> : null}
+        </div>}
 
         {/* ขั้นที่ 3 — ตั้งเบิกแล้วไปใบถัดไป */}
-        <div className="do-pay-next">
+        {formOnly ? null : <div className="do-pay-next">
           {claimed ? (
             <p className="do-pay-done">ตั้งเบิกแล้ว · รายการอยู่ในแท็บ ตั้งเบิกแล้ว</p>
           ) : (
@@ -158,7 +189,7 @@ export function DoPayPanel({
           ) : (
             <p className="do-pay-note">ไม่มีใบที่รอตั้งเบิกแล้ว</p>
           )}
-        </div>
+        </div>}
       </div>
     </fieldset>
   );
