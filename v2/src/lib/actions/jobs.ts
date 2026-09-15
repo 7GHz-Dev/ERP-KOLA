@@ -49,6 +49,73 @@ async function requestApprovalImpl(formData: FormData) {
   revalidatePath('/pending');
 }
 
+/**
+ * ส่งอนุมัติหลายรายการพร้อมกัน
+ *
+ * ทำทีละใบด้วยตรรกะเดิม ไม่ได้เขียน query รวบ เพื่อให้เงื่อนไขทุกข้อ
+ * (รออนุมัติอยู่แล้ว · FN ต้องผ่าน AN ก่อน) มีผลเหมือนกดทีละใบเป๊ะ
+ *
+ * ใบไหนติดเงื่อนไขก็ข้ามไปทำใบถัดไป แล้วสรุปท้ายว่าทำได้กี่ใบ ติดกี่ใบ
+ * ถ้าล้มทั้งชุดเพราะใบเดียว ผู้ใช้ต้องมานั่งไล่หาว่าใบไหนพังเอง
+ */
+async function requestApprovalManyImpl(formData: FormData) {
+  const ids = String(formData.get('jobIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+  if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
+  const type = text(formData.get('type'), 4) === 'FN' ? 'FN' : 'AN';
+
+  let done = 0;
+  const failed: string[] = [];
+  for (const jobId of ids) {
+    const one = new FormData();
+    one.set('jobId', jobId);
+    one.set('type', type);
+    try {
+      await requestApprovalImpl(one);
+      done += 1;
+    } catch (error) {
+      failed.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (!done) throw new Error(failed[0] ?? 'ส่งอนุมัติไม่สำเร็จ');
+  if (failed.length) {
+    throw new Error(`ส่งอนุมัติแล้ว ${done} รายการ · ไม่สำเร็จ ${failed.length} รายการ: ${failed[0]}`);
+  }
+}
+
+/**
+ * อนุมัติหลายรายการพร้อมกัน — ของ NAMKANG ที่หน้าอนุมัติข้อมูล BL
+ *
+ * รับเป็น id ของรายการอนุมัติ ไม่ใช่ id งาน เพราะตรรกะเดิมยึดจากตรงนั้น
+ * และกันกรณีที่รายการถูกตัดสินไปแล้วระหว่างที่หน้าจอยังค้างอยู่
+ */
+async function decideApprovalManyImpl(formData: FormData) {
+  const ids = String(formData.get('approvalIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+  if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
+  const decision = text(formData.get('decision'), 10) === 'APPROVED' ? 'APPROVED' : 'REJECTED';
+  const reason = text(formData.get('reason'), 1000);
+
+  let done = 0;
+  const failed: string[] = [];
+  for (const approvalId of ids) {
+    const one = new FormData();
+    one.set('approvalId', approvalId);
+    one.set('decision', decision);
+    one.set('reason', reason);
+    try {
+      await decideApprovalImpl(one);
+      done += 1;
+    } catch (error) {
+      failed.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (!done) throw new Error(failed[0] ?? 'ดำเนินการไม่สำเร็จ');
+  if (failed.length) {
+    throw new Error(`ทำแล้ว ${done} รายการ · ไม่สำเร็จ ${failed.length} รายการ: ${failed[0]}`);
+  }
+}
+
 /** อนุมัติหรือตีกลับ — AN เป็นสิทธิ์ NAMKANG ส่วน FN เป็นของ FAH */
 async function decideApprovalImpl(formData: FormData) {
   const approvalId = required(formData.get('approvalId'), 'รายการอนุมัติ', 80);
@@ -529,6 +596,14 @@ async function fileCustomsEntryImpl(formData: FormData) {
 
 export async function requestApproval(formData: FormData) {
   return runAction(() => requestApprovalImpl(formData));
+}
+
+export async function requestApprovalMany(formData: FormData) {
+  return runAction(() => requestApprovalManyImpl(formData));
+}
+
+export async function decideApprovalMany(formData: FormData) {
+  return runAction(() => decideApprovalManyImpl(formData));
 }
 
 export async function decideApproval(formData: FormData) {

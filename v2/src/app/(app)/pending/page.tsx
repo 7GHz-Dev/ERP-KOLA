@@ -5,7 +5,10 @@ import {
   AcknowledgeInvoice, DraftActions, EditBlForm, EofficeRequestForm, MergeEofficeButton,
   RequestApproval, ShowReason, UploadForm,
 } from '@/components/ActionForms';
-import { listJobs, QUEUE } from '@/lib/queries/jobs';
+import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
+import { requestApprovalMany } from '@/lib/actions/jobs';
+import Link from 'next/link';
+import { listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { pendingTabCounts } from '@/lib/queries/dashboard';
 import { intakeOptions } from '@/lib/queries/master';
 
@@ -29,7 +32,14 @@ function columnsFor(
     col.eta(), col.lastDem(), col.lastDet()];
 
   if (tab === 'bl') {
-    return [col.clientInCharge(), col.source(), col.shipper(), col.blNo(), col.consignee(),
+    return [
+      // ช่องติ๊กไว้หน้าสุด ใช้เลือกหลายรายการแล้วส่งอนุมัติทีเดียว
+      ...(sub === 'wait' ? [{
+        label: '', kind: 'actions' as const, className: 'col-pick',
+        header: <PickAllBox />,
+        render: (r: JobRow) => <PickBox id={r.id} />,
+      }] : []),
+      col.clientInCharge(), col.source(), col.shipper(), col.blNo(), col.consignee(),
       col.eta(), col.demDet(),
       {
         label: 'สถานะ / จัดการ', kind: 'actions',
@@ -39,7 +49,11 @@ function columnsFor(
             <ShowReason reason={r.anStatus === 'REJECTED' ? r.anReason : null} />
             {sub === 'wait' ? (
               <>
-                <EditBlForm job={r} options={options} />
+                {/*
+                  เปิดเป็นแผงที่มีไฟล์ AN/BL อยู่ข้าง ๆ แทนแผงเล็กแบบเดิม
+                  เป็นลิงก์จริง จึงส่งต่อและกดรีเฟรชได้
+                */}
+                <Link className="button tiny" href={`/bl-edit/${r.id}`}>แก้ไข</Link>
                 <RequestApproval jobId={r.id} type="AN" label={r.anStatus === 'REJECTED' ? 'ส่งใหม่' : 'ส่งอนุมัติ'} />
               </>
             ) : null}
@@ -172,6 +186,18 @@ export default async function PendingPage({
 
   const fullCarry = { ...carry, tab, sub };
 
+  const table = (
+    <JobTable
+      basePath="/pending"
+      columns={columnsFor(tab, sub, options)}
+      rows={rows}
+      total={total}
+      carry={fullCarry}
+      sortBy={sortBy}
+      sortDir={sortDir}
+    />
+  );
+
   return (
     <>
       <div className="page-head">
@@ -198,15 +224,16 @@ export default async function PendingPage({
         </div>
       ) : null}
 
-      <JobTable
-        basePath="/pending"
-        columns={columnsFor(tab, sub, options)}
-        rows={rows}
-        total={total}
-        carry={fullCarry}
-        sortBy={sortBy}
-        sortDir={sortDir}
-      />
+      {tab === 'bl' && sub === 'wait' ? (
+        <BulkBar
+          action={requestApprovalMany}
+          idName="jobIds"
+          label="ส่งอนุมัติ {n} รายการ"
+          confirmText="ส่งอนุมัติ {n} รายการใช่ไหม · ส่งแล้วแก้ไขไม่ได้จนกว่าจะมีผลตัดสิน"
+        >
+          {table}
+        </BulkBar>
+      ) : table}
     </>
   );
 }

@@ -1384,6 +1384,63 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
 }
 .admin-file-add label { margin: 0; min-width: 240px; }
 
+/*
+ * แผงแก้ข้อมูล BL / ตรวจก่อนอนุมัติ — ฟอร์มซ้าย ไฟล์ขวา
+ *
+ * ให้ไฟล์กว้างกว่าฟอร์ม เพราะต้องอ่านเลขจากในใบเป็นหลัก
+ * ฟอร์มเลื่อนในตัวเอง ไฟล์จึงอยู่กับที่ ไม่ต้องเลื่อนตามลงไป
+ */
+.bl-edit { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 12px; height: 100%; min-height: 0; }
+.bl-edit-form {
+  display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto;
+  padding-right: 4px;
+}
+.bl-edit-view { display: flex; flex-direction: column; min-height: 0; }
+.bl-edit-file {
+  flex: 1; width: 100%; min-height: 280px;
+  border: 1px solid var(--line); border-radius: 8px; background: #f4f6f8; object-fit: contain;
+}
+/* ปุ่มบันทึกติดท้ายแผง ฟอร์มยาวกว่าจอจึงไม่ต้องเลื่อนลงไปหา */
+.bl-edit-actions {
+  position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end;
+  padding: 10px 0 2px; margin-top: 4px;
+  background: var(--canvas); border-top: 1px solid var(--line);
+}
+.job-drawer .drawer-content:has(> .bl-edit) { display: flex; padding: 12px; overflow: hidden; }
+.main > .bl-edit { height: calc(100vh - 150px); min-height: 460px; }
+
+/* ตารางข้อมูลในแผงตรวจก่อนอนุมัติ */
+.review-kv { margin: 0; display: flex; flex-direction: column; gap: 1px; }
+.review-row {
+  display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px;
+  padding: 5px 0; border-bottom: 1px solid var(--rule-2, var(--line)); font-size: 13px;
+}
+.review-row dt { color: var(--muted); }
+.review-row dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .bl-edit { grid-template-columns: 1fr; height: auto; }
+  .bl-edit-form { overflow: visible; }
+  .bl-edit-file { flex: none; height: 52vh; min-height: 0; }
+  .job-drawer .drawer-content:has(> .bl-edit) { display: block; overflow: auto; }
+  .main > .bl-edit { height: auto; }
+}
+
+/* เลือกหลายรายการแล้วสั่งทีเดียว */
+table.data td.col-pick, table.data th.col-pick { width: 34px; min-width: 34px; text-align: center; }
+.pick-box { width: 16px; height: 16px; cursor: pointer; accent-color: var(--blue); }
+.bulk-bar {
+  position: sticky; bottom: 12px; z-index: 30;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-top: 12px; padding: 11px 14px;
+  background: var(--sidebar); color: #fff; border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 35, 49, .3);
+}
+.bulk-bar > span:first-child { flex: 1; font-weight: 600; font-size: 13px; }
+.bulk-bar .button { color: #fff; border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.12); }
+.bulk-bar .button.primary { background: var(--blue); border-color: var(--blue); }
+.bulk-error { font-size: 12px; color: #ffc9c9; }
+
 /* โหมดรับงานหลายใบพร้อมกัน */
 .batch { display: flex; flex-direction: column; gap: 12px; }
 .batch-table { max-height: 52vh; }

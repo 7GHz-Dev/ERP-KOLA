@@ -26,6 +26,8 @@ export type Column = {
   kind?: 'text' | 'actions' | 'wrap';
   /** คลาสเพิ่มเติมของคอลัมน์ ใส่ทั้งหัวตารางและช่องข้อมูล เช่นกำหนดความกว้าง */
   className?: string;
+  /** เนื้อในหัวตารางแบบกำหนดเอง เช่นช่องติ๊กเลือกทั้งหมด — ไม่ใส่ก็ใช้ label */
+  header?: React.ReactNode;
   render: (row: JobRow) => React.ReactNode;
 };
 
@@ -115,7 +117,7 @@ export function JobTable({
                     .filter(Boolean).join(' ') || undefined}
                   style={c.align ? { textAlign: c.align } : undefined}
                 >
-                  {c.sortKey ? (
+                  {c.header ?? (c.sortKey ? (
                     <Link
                       className="sort-link"
                       href={href(basePath, carry, {
@@ -130,7 +132,7 @@ export function JobTable({
                     </Link>
                   ) : (
                     c.label
-                  )}
+                  ))}
                 </th>
               ))}
             </tr>
