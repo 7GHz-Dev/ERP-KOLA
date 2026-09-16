@@ -53,7 +53,7 @@ export default async function OverviewPage({
             </>
           );
           return c.href ? (
-            <Link key={c.key} className={`card ${c.tone ?? ''}`} href={c.href} prefetch>{body}</Link>
+            <Link key={c.key} className={`card ${c.tone ?? ''}`} href={c.href} prefetch={false}>{body}</Link>
           ) : (
             <div key={c.key} className={`card ${c.tone ?? ''}`}>{body}</div>
           );

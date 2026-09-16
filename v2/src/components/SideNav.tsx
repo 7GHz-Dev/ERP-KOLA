@@ -75,7 +75,13 @@ export function SideNav({ groups }: { groups: NavGroupView[] }) {
                 key={item.href}
                 className={`nav-button ${active ? 'active' : ''}`}
                 href={item.href}
-                prefetch
+                /*
+                 * ไม่โหลดล่วงหน้า — ทุกหน้าในเมนูเป็น force-dynamic และยิง query หลายตัว
+                 * เลื่อนเมาส์ผ่านเมนูทีเดียว Next จะโหลดพร้อมกันสิบกว่าหน้า
+                 * ซึ่งเกินขนาด pool ของฐานข้อมูล (5 connection) คำขอที่เหลือต้องรอคิว
+                 * ทำให้ตอนกดจริงค้างไปหลายวินาที ทั้งที่เปิดหน้าเดียวเร็วมาก
+                 */
+                prefetch={false}
                 aria-current={active ? 'page' : undefined}
               >
                 <span>{item.label}</span>
