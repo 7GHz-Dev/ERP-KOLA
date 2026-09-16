@@ -1471,6 +1471,15 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
  * ช่องแก้เลข BL ในแผงกรอก DO — ขึ้นเฉพาะสายเรือที่ออกเลขตัวจริงหลังเรือเข้า
  * ให้กว้างเต็มแถวเพราะเลข BL ยาวกว่าช่องอื่น และเป็นค่าที่ต้องอ่านทวนก่อนบันทึก
  */
+/* เพิ่ม Shipper ใหม่จากหน้ารับงาน */
+.repeat-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.quick-shipper {
+  display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 240px;
+  padding: 10px 12px; background: var(--surface);
+  border: 1px solid var(--blue); border-radius: 8px;
+}
+.quick-shipper-actions { display: flex; justify-content: flex-end; gap: 7px; }
+
 .do-cell-bl { grid-column: 1 / -1; }
 .do-cell-bl input { font-weight: 600; }
 

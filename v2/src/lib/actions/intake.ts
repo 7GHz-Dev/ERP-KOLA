@@ -279,6 +279,9 @@ async function quickAddShipperImpl(formData: FormData) {
   revalidatePath('/intake/an');
   revalidatePath('/intake/bl');
   revalidatePath('/master');
+
+  // คืนค่าให้หน้ารับงานเลือกรายการที่เพิ่งเพิ่มในแถวที่กำลังกรอกได้ทันที
+  return { id, name };
 }
 
 export async function intakeDefaults() {

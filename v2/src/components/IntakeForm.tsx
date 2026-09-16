@@ -5,6 +5,7 @@ import type { Option } from '@/lib/queries/master';
 import { extractPdfText, parseArrivalText } from '@/lib/parse-arrival';
 import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect } from '@/components/SearchSelect';
+import { QuickAddShipper } from '@/components/QuickAddShipper';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 
 /**
@@ -294,10 +295,23 @@ export function IntakeForm({
               </div>
             ))}
           </div>
-          <button type="button" className="button tiny"
-            onClick={() => setBlRows((rows) => [...rows, { blNo: '', shipperId: '', shipperName: '' }])}>
-            + เพิ่ม BL
-          </button>
+          <div className="repeat-actions">
+            <button type="button" className="button tiny"
+              onClick={() => setBlRows((rows) => [...rows, { blNo: '', shipperId: '', shipperName: '' }])}>
+              + เพิ่ม BL
+            </button>
+            {/*
+              เพิ่ม Shipper ที่ยังไม่มีในระบบได้จากตรงนี้เลย
+              เพิ่มเสร็จเลือกให้ในแถวแรกที่ยังว่าง ไม่ต้องไปหาในรายการเอง
+            */}
+            <QuickAddShipper
+              onAdded={(id, name) => setBlRows((rows) => {
+                const at = rows.findIndex((r) => !r.shipperId);
+                const target = at >= 0 ? at : rows.length - 1;
+                return rows.map((r, i) => (i === target ? { ...r, shipperId: id, shipperName: name } : r));
+              })}
+            />
+          </div>
         </Field>
 
         <Field label="CONTAINER NO." wide>
