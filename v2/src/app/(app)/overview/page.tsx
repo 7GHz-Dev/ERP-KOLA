@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { requireUserReady } from '@/lib/auth';
+import { homePageFor } from '@/lib/home-page';
 import { col, readParams } from '@/lib/columns';
 import { JobTable } from '@/components/JobTable';
 import { listJobs } from '@/lib/queries/jobs';
@@ -22,7 +24,13 @@ const CARDS: Array<{ key: keyof Awaited<ReturnType<typeof dashboardSummary>>; la
 export default async function OverviewPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUserReady();
+  /*
+   * ภาพรวมงานเป็นมุมของฝั่ง KOLA ที่ดูแลงานทั้งระบบ
+   * ANN · MAY · ACCOUNT ไม่มีเมนูนี้อยู่แล้ว ถ้าเผลอเปิด URL ตรงก็พากลับหน้างานตัวเอง
+   */
+  const user = await requireUserReady();
+  const home = homePageFor(user.role);
+  if (home !== '/overview') redirect(home);
   const { search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const [summary, { rows, total }] = await Promise.all([
     dashboardSummary(),

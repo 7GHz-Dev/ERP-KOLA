@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AppError, currentUser, login } from '@/lib/auth';
+import { homePageFor } from '@/lib/home-page';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,13 +8,14 @@ async function signIn(formData: FormData) {
   'use server';
   const username = String(formData.get('username') ?? '');
   const password = String(formData.get('password') ?? '');
+  let user;
   try {
-    await login(username, password);
+    user = await login(username, password);
   } catch (error) {
     const message = error instanceof AppError ? error.message : 'เข้าสู่ระบบไม่สำเร็จ';
     redirect(`/login?error=${encodeURIComponent(message)}`);
   }
-  redirect('/overview');
+  redirect(homePageFor(user.role));
 }
 
 export default async function LoginPage({
@@ -21,7 +23,8 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  if (await currentUser()) redirect('/overview');
+  const signedIn = await currentUser();
+  if (signedIn) redirect(homePageFor(signedIn.role));
   const { error } = await searchParams;
 
   return (

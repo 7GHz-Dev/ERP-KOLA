@@ -1,10 +1,11 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { homePageFor } from '@/lib/home-page';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { users } from '@/db/schema';
-import { refreshSessionCookie, requireActiveSession } from '@/lib/auth';
+import { currentUser, refreshSessionCookie, requireActiveSession } from '@/lib/auth';
 import { scryptHash, validatePassword, verifyPassword } from '@/lib/password';
 import { logActivity, required, runAction } from './common';
 
@@ -48,5 +49,7 @@ async function changeOwnPasswordImpl(formData: FormData) {
 
 export async function changeOwnPassword(formData: FormData) {
   await runAction(() => changeOwnPasswordImpl(formData));
-  redirect('/overview');
+  // พากลับหน้างานของ role นั้น ไม่ใช่ภาพรวมซึ่งบาง role ไม่มีสิทธิ์เข้า
+  const user = await currentUser();
+  redirect(homePageFor(user?.role));
 }
