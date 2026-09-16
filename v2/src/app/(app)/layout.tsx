@@ -26,11 +26,11 @@ type NavGroup = {
 const NAV: NavGroup[] = [
   {
     /*
-     * ANN กับ MAY เป็นพนักงาน SHIPME ที่รับงานต่อเป็นช่วง ๆ ไม่ได้ดูแลงานทั้งระบบ
+     * ANN · MAY · ACCOUNT เป็นพนักงาน SHIPME ที่รับงานต่อเป็นช่วง ๆ ไม่ได้ดูแลงานทั้งระบบ
      * ภาพรวมงานกับทะเบียนงานเป็นมุมของฝั่ง KOLA จึงไม่ต้องมีในเมนูของสองคนนี้
      * เมนูสั้นลงเหลือเฉพาะงานของตัวเอง ซึ่งช่วยมากตอนใช้บนมือถือ
      */
-    label: 'Overview', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY'],
+    label: 'Overview', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY', 'ACCOUNT'],
     items: [
       { href: '/overview', label: 'ภาพรวมงาน' },
       { href: '/jobs', label: 'ทะเบียนงาน' },
@@ -72,6 +72,12 @@ const NAV: NavGroup[] = [
     label: 'MAY', color: '#c2185b', roles: ['MAY'],
     items: [
       { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'doExchangeWait' },
+    ],
+  },
+  {
+    label: 'ACCOUNT', color: '#00838f', roles: ['ACCOUNT'],
+    items: [
+      { href: '/account/invoice-print', label: 'พิมพ์ Invoice DO' },
     ],
   },
   {

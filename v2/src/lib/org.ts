@@ -37,6 +37,12 @@ export const DEPARTMENTS = [
     roles: ['ANN', 'MAY'],
   },
   {
+    key: 'ACCOUNT',
+    label: 'บัญชี',
+    company: 'SHIPME' as CompanyKey,
+    roles: ['ACCOUNT'],
+  },
+  {
     key: 'SYSTEM',
     label: 'ผู้ดูแลระบบ',
     company: 'KOLA' as CompanyKey,
@@ -75,6 +81,10 @@ export const ROLE_INFO: Record<string, { label: string; detail: string }> = {
   MAY: {
     label: 'MAY',
     detail: 'รอแลก DO — กรอกยอดชำระจาก Invoice DO และคัดลอกข้อความเบิก',
+  },
+  ACCOUNT: {
+    label: 'ACCOUNT',
+    detail: 'เลือกเลข BL หลายใบเพื่อดึง Invoice DO มาพิมพ์รวมกัน',
   },
 };
 

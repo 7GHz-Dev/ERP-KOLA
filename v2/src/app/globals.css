@@ -1467,6 +1467,10 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
   .main > .bl-edit { height: auto; }
 }
 
+/* แถวที่ติ๊กเลือกไว้ — เห็นได้ชัดว่ากำลังจะพิมพ์ใบไหนบ้าง */
+table.data tbody tr.row-picked { background: var(--blue-soft); }
+table.data tbody tr.row-picked td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+
 /* เลือกหลายรายการแล้วสั่งทีเดียว */
 table.data td.col-pick, table.data th.col-pick { width: 34px; min-width: 34px; text-align: center; }
 .pick-box { width: 16px; height: 16px; cursor: pointer; accent-color: var(--blue); }
