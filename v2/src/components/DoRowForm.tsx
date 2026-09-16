@@ -14,6 +14,7 @@ export type Choice = { id: string; code: string | null; name: string };
 export function DoRowForm({
   jobId, eta, portId, terminalId, partnerName,
   ports, terminals, partners, sentAt, defaultPartnerId, readOnly,
+  blNo, canEditBl,
 }: {
   jobId: string;
   eta: string | null;
@@ -28,6 +29,9 @@ export function DoRowForm({
   defaultPartnerId?: string | null;
   /** ส่ง Partner แล้ว — แสดงค่าอย่างเดียว แก้ไม่ได้ */
   readOnly?: boolean;
+  blNo?: string | null;
+  /** สายเรือที่ออกเลข BL ตัวจริงหลังเรือเข้า จึงให้แก้ตรงนี้ได้ */
+  canEditBl?: boolean;
 }) {
   const partnerId =
     partners.find((p) => p.name === partnerName)?.id ?? defaultPartnerId ?? '';
@@ -58,6 +62,9 @@ export function DoRowForm({
     };
     return (
       <div className="do-row readonly">
+        {canEditBl ? (
+          <div className="do-cell"><span>BL No.</span><b>{blNo ?? '-'}</b></div>
+        ) : null}
         <div className="do-cell"><span>ETA official</span><b>{eta ?? '-'}</b></div>
         <div className="do-cell"><span>Port of Discharge</span><b>{nameOf(ports, portId)}</b></div>
         <div className="do-cell"><span>Terminal</span><b>{nameOf(terminals, terminalId)}</b></div>
@@ -75,6 +82,17 @@ export function DoRowForm({
   return (
     <form action={saveDoHandoff} className="do-row">
       <input type="hidden" name="jobId" value={jobId} />
+
+      {/*
+        เลข BL แก้ได้เฉพาะสายเรือที่ออกเลขตัวจริงหลังเรือเข้า
+        สายอื่นไม่แสดงช่องนี้ เพื่อไม่ให้แก้ผิดใบโดยไม่ตั้งใจ
+      */}
+      {canEditBl ? (
+        <label className="do-cell do-cell-bl">
+          <span>BL No. (แก้ได้)</span>
+          <input key={`bl-${blNo ?? ''}`} name="blNo" defaultValue={blNo ?? ''} />
+        </label>
+      ) : null}
 
       <label className="do-cell">
         <span>ETA official</span>

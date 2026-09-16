@@ -23,6 +23,8 @@ export type DoPaneJob = {
   releasePartner: string | null;
   invoiceFileId: string | null;
   invoiceFileName: string | null;
+  /** สายเรือที่ออกเลข BL ตัวจริงหลังเรือเข้า จึงให้แก้เลขตรงนี้ได้ */
+  canEditBl?: boolean;
 };
 
 export function DoFillPane({
@@ -100,6 +102,8 @@ export function DoFillPane({
               terminals={terminals}
               partners={partners}
               sentAt={sentAt}
+              blNo={job.blNo}
+              canEditBl={job.canEditBl}
             />
           </div>
         </div>

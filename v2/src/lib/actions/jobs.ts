@@ -3,8 +3,9 @@
 import { revalidatePath } from 'next/cache';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { approvals, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
+import { approvals, bls, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
+import { canEditBlAtDo } from '@/lib/do-letter';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
 /**
@@ -181,6 +182,21 @@ async function saveDoHandoffImpl(formData: FormData) {
 
   const terminalId = text(formData.get('terminalId'), 80) || job.terminalId;
   const portId = text(formData.get('portId'), 80) || job.portId;
+
+  /*
+   * เลข BL แก้ได้เฉพาะสายเรือที่ออกเลขตัวจริงหลังเรือเข้า
+   *
+   * ตรวจฝั่งเซิร์ฟเวอร์ด้วย ไม่พึ่งแค่การซ่อนช่องบนหน้าจอ เพราะฟอร์มถูกยิงตรงได้
+   * และเลข BL เป็นตัวที่ทุกฝ่ายใช้อ้างถึงงาน แก้ผิดใบแล้วตามแก้ยาก
+   *
+   * แก้ที่ตาราง bls ด้วย เพราะจดหมายแลก DO กับหน้าอื่นอ่านเลขจากตารางนั้น
+   * ถ้าแก้แค่ jobs.bl_no เลขสองที่จะไม่ตรงกัน
+   */
+  const blNo = text(formData.get('blNo'), 120);
+  const allowBlEdit = canEditBlAtDo(job.shipline);
+  if (blNo && blNo !== job.blNo && !allowBlEdit) {
+    throw new Error('สายเรือนี้แก้เลข BL ที่หน้านี้ไม่ได้ กรุณาแก้ที่หน้างานคงค้าง');
+  }
   // ปุ่ม "บันทึกอย่างเดียว" กับ "บันทึกและส่ง Partner" ยิง action เดียวกัน ต่างที่ค่านี้
   const sendToPartner = text(formData.get('sendToPartner'), 4) === '1';
 
@@ -197,10 +213,19 @@ async function saveDoHandoffImpl(formData: FormData) {
 
   await db.update(jobs).set({
     eta, etaIsOfficial: true, transportDate, portId, terminalId,
+    ...(allowBlEdit && blNo ? { blNo } : {}),
     releasePartner: partnerName || job.releasePartner,
     status: sendToPartner ? 'DO_SENT' : job.status,
     updatedBy: user.id, updatedAt: new Date(),
   }).where(eq(jobs.id, jobId));
+
+  // งานส่วนใหญ่มี BL ใบเดียว แก้ให้ตรงกัน ใบอื่นไม่แตะเพราะไม่รู้ว่าผู้ใช้หมายถึงใบไหน
+  if (allowBlEdit && blNo && blNo !== job.blNo) {
+    const rows = await db.select({ id: bls.id }).from(bls).where(eq(bls.jobId, jobId));
+    if (rows.length === 1) {
+      await db.update(bls).set({ blNo, updatedAt: new Date() }).where(eq(bls.id, rows[0].id));
+    }
+  }
   if (sendToPartner) {
     await recordStatus(jobId, job.status, 'DO_SENT',
       `ส่ง DO ให้ ${partnerName || 'Partner'}`, user.id);

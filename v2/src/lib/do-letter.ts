@@ -352,6 +352,21 @@ export function matchShippingLine(shipline: string | null): string | null {
   return SHIPPING_LINES.find((l) => target.includes(norm(l)) || norm(l).includes(target)) ?? null;
 }
 
+/*
+ * สายเรือที่ FAH แก้เลข BL ได้เองที่หน้า Invoice DO
+ *
+ * สองสายนี้ออกเลข BL ตัวจริงหลังเรือเข้า เลขที่คีย์ตอนรับงานจึงเป็นเลขชั่วคราว
+ * ต้องแก้ตอนที่ FAH ยืนยัน ETA พอดี ไม่ต้องย้อนกลับไปหน้ารับงานหรือรอ PAINT แก้ให้
+ * สายอื่นเลขนิ่งตั้งแต่ต้น จึงไม่เปิดให้แก้ตรงนี้ เพื่อไม่ให้แก้ผิดใบโดยไม่ตั้งใจ
+ */
+export const BL_EDITABLE_LINES = ['KNOT GLOBAL', 'M+R FORWARDING'];
+
+/** สายเรือของงานนี้อยู่ในกลุ่มที่แก้เลข BL ได้ไหม */
+export function canEditBlAtDo(shipline: string | null): boolean {
+  const matched = matchShippingLine(shipline);
+  return matched !== null && BL_EDITABLE_LINES.includes(matched);
+}
+
 export type DoLetterForm = {
   /** ค่าดิบที่บันทึกไว้ ยังไม่เติมค่าตั้งต้น */
   raw: (key: string) => string;

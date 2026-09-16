@@ -4,6 +4,7 @@ import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RequestEditButton, UploadForm } from '@/components/ActionForms';
 import { DoRowForm } from '@/components/DoRowForm';
 import { DoFillBoard } from '@/components/DoFillBoard';
+import { canEditBlAtDo } from '@/lib/do-letter';
 import { listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
 import { doHandoffSentAt } from '@/lib/queries/dashboard';
@@ -98,6 +99,8 @@ export default async function FahDoPage({
           terminals={terminals}
           partners={partners}
           sentAt={sentMap.get(r.id) ?? null}
+          blNo={r.blNo}
+          canEditBl={canEditBlAtDo(r.shipline)}
         />
       ),
     },
@@ -154,6 +157,7 @@ export default async function FahDoPage({
             releasePartner: r.releasePartner,
             invoiceFileId: r.currentFiles?.INVOICE_DO?.id ?? null,
             invoiceFileName: r.currentFiles?.INVOICE_DO?.fileName ?? null,
+            canEditBl: canEditBlAtDo(r.shipline),
           }))}
           ports={ports}
           terminals={terminals}
