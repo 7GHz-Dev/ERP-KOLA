@@ -336,8 +336,14 @@ export const QUEUE = {
    */
   mayDoPay: (sub: 'wait' | 'claimed') => () => [
     sentToPartner(),
-    // งานที่ ANN กดส่งแลกแล้วถือว่าจบ ไม่ต้องค้างในคิวของ MAY อีก
-    isNull(jobs.doExchangedAt),
+    /*
+     * ตัดงานที่ ANN ส่งแลกแล้วออกเฉพาะฝั่ง "รอตั้งเบิก" เท่านั้น
+     *
+     * ฝั่ง "ตั้งเบิกแล้ว" เป็นบันทึกงานที่ MAY ทำไปแล้ว ไม่ใช่คิวที่ต้องทำต่อ
+     * เดิมตัดออกทั้งสองฝั่ง พองานเดินต่อไปถึงขั้นที่ ANN ส่งแลก (ซึ่งเกิดทีหลังเสมอ)
+     * รายการที่ตั้งเบิกแล้วก็หายไปจากทั้งสองแท็บ MAY จึงไม่มีทางย้อนดูงานตัวเองได้เลย
+     */
+    ...(sub === 'claimed' ? [] : [isNull(jobs.doExchangedAt)]),
     sub === 'claimed' ? isNotNull(jobs.doClaimedAt) : isNull(jobs.doClaimedAt),
   ],
 
