@@ -20,6 +20,8 @@ const CODE_PREFIX: Record<string, string> = {
   notify: 'NTP',
   people: 'PSN',
   ports: 'PORT',
+  // ท่าต้นทาง แยกรหัสจาก ports (ท่าปลายทาง) เพราะเป็นคนละชุดข้อมูล
+  originPorts: 'POL',
   terminals: 'TML',
   jobTypes: 'JT',
   partners: 'PTN',
