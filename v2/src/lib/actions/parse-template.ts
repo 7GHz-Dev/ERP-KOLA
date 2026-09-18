@@ -6,7 +6,10 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
-import { TEMPLATE_FIELD_KEYS, type TemplateArea, type TemplateFieldKey } from '@/lib/parse-template';
+import {
+  EVERY_PAGE, LAST_PAGE, TEMPLATE_FIELD_KEYS,
+  type TemplateArea, type TemplateFieldKey,
+} from '@/lib/parse-template';
 import { PARSE_TEMPLATE_TYPE, serializeAreas } from '@/lib/parse-template-store';
 import { logActivity, newId, runAction, text } from './common';
 
@@ -36,7 +39,10 @@ function readAreas(raw: string): TemplateArea[] {
     const page = Number(row.page);
     const x = Number(row.x); const y = Number(row.y);
     const w = Number(row.w); const h = Number(row.h);
-    if (!Number.isInteger(page) || page < 1 || page > 50) throw new Error('เลขหน้าไม่ถูกต้อง');
+    // -1 = หน้าสุดท้าย · 0 = ทุกหน้า · 1 ขึ้นไป = เลขหน้าจริง
+    const validPage = Number.isInteger(page)
+      && (page === LAST_PAGE || page === EVERY_PAGE || (page >= 1 && page <= 50));
+    if (!validPage) throw new Error('เลขหน้าไม่ถูกต้อง');
     if ([x, y, w, h].some((v) => !Number.isFinite(v))) throw new Error('พิกัดกรอบไม่ถูกต้อง');
     if (w <= 0 || h <= 0) throw new Error('กรอบต้องมีขนาด ลากให้กว้างกว่านี้');
     if (x < 0 || y < 0 || x + w > 1.0001 || y + h > 1.0001) throw new Error('กรอบอยู่นอกหน้ากระดาษ');

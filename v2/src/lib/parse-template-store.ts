@@ -2,7 +2,8 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { masterRecords } from '@/db/schema';
 import {
-  TEMPLATE_FIELD_KEYS, type ParseTemplate, type TemplateArea, type TemplateFieldKey,
+  EVERY_PAGE, LAST_PAGE, TEMPLATE_FIELD_KEYS,
+  type ParseTemplate, type TemplateArea, type TemplateFieldKey,
 } from '@/lib/parse-template';
 
 /**
@@ -46,7 +47,9 @@ function parseAreas(raw: string | null): TemplateArea[] {
     const page = Math.trunc(num(row.page));
     const x = num(row.x); const y = num(row.y);
     const w = num(row.w); const h = num(row.h);
-    if (!Number.isFinite(page) || page < 1) continue;
+    // ยอมรับโหมดหน้าสุดท้าย (-1) และทุกหน้า (0) นอกเหนือจากเลขหน้าจริง
+    if (!Number.isFinite(page) || page < LAST_PAGE) continue;
+    if (page !== LAST_PAGE && page !== EVERY_PAGE && page < 1) continue;
     if ([x, y, w, h].some((v) => !Number.isFinite(v))) continue;
     // กรอบต้องมีพื้นที่จริงและอยู่ในหน้ากระดาษ
     if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > 1.0001 || y + h > 1.0001) continue;

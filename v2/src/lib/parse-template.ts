@@ -29,6 +29,18 @@ export const TEMPLATE_FIELDS = [
 
 export type TemplateFieldKey = (typeof TEMPLATE_FIELDS)[number]['key'];
 
+/** กรอบอยู่หน้าสุดท้าย ไม่ว่าเอกสารใบนั้นจะมีกี่หน้า */
+export const LAST_PAGE = -1;
+/** กรอบใช้กับทุกหน้า สำหรับค่าที่ไล่ต่อกันข้ามหน้า */
+export const EVERY_PAGE = 0;
+
+/** ชื่อโหมดหน้าที่เอาไปแสดงบนหน้าจอ */
+export function pageLabel(page: number, totalPages?: number): string {
+  if (page === EVERY_PAGE) return 'ทุกหน้า';
+  if (page === LAST_PAGE) return totalPages ? `หน้าสุดท้าย (${totalPages})` : 'หน้าสุดท้าย';
+  return `หน้า ${page}`;
+}
+
 export const TEMPLATE_FIELD_KEYS = TEMPLATE_FIELDS.map((f) => f.key) as readonly TemplateFieldKey[];
 
 export function fieldLabel(key: string): string {
@@ -43,6 +55,16 @@ export function fieldLabel(key: string): string {
  */
 export type TemplateArea = {
   field: TemplateFieldKey;
+  /**
+   * หน้าที่กรอบนี้อยู่ — เอกสารสายเรือมีจำนวนหน้าไม่เท่ากันทุกใบ
+   * ระบุเป็นเลขหน้าตายตัวอย่างเดียวจึงไม่พอ
+   *
+   *   1, 2, 3…  หน้าที่ระบุ (นับจากหน้าแรก)
+   *   LAST_PAGE  หน้าสุดท้าย ไม่ว่าใบนั้นจะมีกี่หน้า
+   *              เช่นยอดรวมทั้งใบของ CNC ที่อยู่ท้ายสุดเสมอ แต่ใบหนึ่งมี 2 หน้า อีกใบมี 7 หน้า
+   *   EVERY_PAGE ทุกหน้า ใช้กับค่าที่ไล่ต่อกันข้ามหน้า
+   *              เช่นเลขตู้ของ CNC ที่ขึ้นหน้าใหม่เรื่อย ๆ ตามความยาวรายการสินค้า
+   */
   page: number;
   x: number;
   y: number;
@@ -87,8 +109,19 @@ export type TextPiece = {
  * pdf.js คืนชิ้นข้อความตามลำดับที่ฝังในไฟล์ ซึ่งบางใบสลับคอลัมน์ขวามาก่อนซ้าย
  */
 export function piecesInArea(pieces: TextPiece[], area: TemplateArea): TextPiece[] {
+  /*
+   * แปลงโหมดหน้าให้เป็นเลขหน้าจริงของเอกสารใบนี้ก่อน
+   * หน้าสุดท้ายต้องดูจากจำนวนหน้าที่อ่านมาได้ ไม่ใช่ค่าที่เก็บไว้ในแบบร่าง
+   */
+  const lastPage = pieces.reduce((max, p) => Math.max(max, p.page), 0);
+  const onPage = (page: number) => {
+    if (area.page === EVERY_PAGE) return true;
+    if (area.page === LAST_PAGE) return page === lastPage;
+    return page === area.page;
+  };
+
   const inside = pieces.filter((p) => {
-    if (p.page !== area.page) return false;
+    if (!onPage(p.page)) return false;
     const cx = (p.left + p.right) / 2;
     const cy = (p.top + p.bottom) / 2;
     return cx >= area.x && cx <= area.x + area.w && cy >= area.y && cy <= area.y + area.h;
@@ -99,6 +132,8 @@ export function piecesInArea(pieces: TextPiece[], area: TemplateArea): TextPiece
    * ใช้ความสูงจริงของชิ้นเป็นเกณฑ์ ไม่ใช่ค่าคงที่ เพราะขนาดตัวอักษรต่างกันมากในใบเดียว
    */
   return inside.sort((a, b) => {
+    // กรอบแบบทุกหน้าเก็บข้อความจากหลายหน้า ต้องเรียงหน้าก่อน ไม่งั้นค่าหน้าหลังไปแทรกหน้าแรก
+    if (a.page !== b.page) return a.page - b.page;
     const lineH = Math.max(a.bottom - a.top, b.bottom - b.top, 0.004);
     if (Math.abs(a.top - b.top) > lineH / 2) return a.top - b.top;
     return a.left - b.left;
@@ -127,7 +162,8 @@ export function textInArea(pieces: TextPiece[], area: TemplateArea): string {
 
   for (const piece of inside) {
     if (previous) {
-      const sameLine = Math.abs(piece.top - previous.top) <= (piece.bottom - piece.top) / 2;
+      const sameLine = piece.page === previous.page
+        && Math.abs(piece.top - previous.top) <= (piece.bottom - piece.top) / 2;
       const glue = sameLine && piece.left < previous.right;
       if (!glue) out += ' ';
     }
@@ -227,8 +263,18 @@ export function valueFromText(field: TemplateFieldKey, raw: string): string | st
       return numberFrom(text);
 
     case 'containers':
-      // เลขตู้เป็น 4 ตัวอักษร + 7 ตัวเลข เสมอตามมาตรฐาน ISO 6346
-      return [...new Set(text.toUpperCase().replace(/\s+/g, '').match(/[A-Z]{4}\d{7}/g) ?? [])];
+      /*
+       * เลขตู้เป็น 4 ตัวอักษร + 7 ตัวเลข ตามมาตรฐาน ISO 6346
+       *
+       * ต้องอ่านทีละคำ ห้ามยุบช่องว่างทั้งก้อนก่อนแล้วค่อยจับ
+       * เพราะกรอบเลขตู้มักคาบบรรทัด "SEAL M5003182" ที่อยู่ใต้กัน
+       * ยุบช่องว่างแล้วจะกลายเป็น "SEALM5003182" ซึ่งเข้ารูปแบบเลขตู้พอดี
+       * ได้ตู้ปลอม "EALM5003182" ติดมาด้วยทุกใบ
+       */
+      return [...new Set(
+        text.toUpperCase().split(/[^A-Z0-9]+/)
+          .filter((token) => /^[A-Z]{4}\d{7}$/.test(token)),
+      )];
 
     case 'seals':
       /*

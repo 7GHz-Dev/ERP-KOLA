@@ -5,7 +5,7 @@ import type { Option } from '@/lib/queries/master';
 import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
 import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
 import { matchShipper } from '@/lib/match-shipper';
-import { SearchSelect } from '@/components/SearchSelect';
+import { SearchSelect, SearchText } from '@/components/SearchSelect';
 import { QuickAddShipper } from '@/components/QuickAddShipper';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 
@@ -71,6 +71,11 @@ export function IntakeForm({
   const [jobTypeId, setJobTypeId] = useState(defaults.jobTypeId ?? '');
   const [notifyId, setNotifyId] = useState(defaults.notifyId ?? '');
   const [product, setProduct] = useState('รถยนต์เก่าใช้แล้ว');
+  /*
+   * เมืองต้นทางต้องคุมค่าเอง เพราะเป็นช่องพิมพ์ค้นหาที่เลือกจากรายการได้ด้วย
+   * ค่าที่อ่านจากไฟล์เติมให้ตอนอ่าน แล้วผู้ใช้แก้ทับได้
+   */
+  const [originPort, setOriginPort] = useState('');
   const [saved, setSaved] = useState('');
   // เปลี่ยน key แล้ว React สร้างฟอร์มใหม่ทั้งชุด ช่องทุกช่องกลับไปเป็นค่าตั้งต้น
   const [formKey, setFormKey] = useState(0);
@@ -148,6 +153,9 @@ export function IntakeForm({
       setParsed(filled);
 
       // จับชื่อผู้ส่งออกที่อ่านได้กับรายชื่อใน Master Data — ไม่มั่นใจก็ปล่อยให้เลือกเอง
+      // เมืองต้นทางคุมค่าเอง จึงต้องเซ็ตตรงนี้ ไม่ได้มากับ parsed เหมือนช่องอื่น
+      if (result.portOfLoading) setOriginPort(result.portOfLoading);
+
       const shipper = matchShipper(result.shipperName, options.shippers);
       if (result.blNo || shipper) {
         setBlRows((rows) => [{
@@ -195,6 +203,7 @@ export function IntakeForm({
     setJobTypeId(defaults.jobTypeId ?? '');
     setNotifyId(defaults.notifyId ?? '');
     setProduct('รถยนต์เก่าใช้แล้ว');
+    setOriginPort('');
     setParsed({});
     setReadStatus('ยังไม่ได้อ่านไฟล์');
     setStatusTone('');
@@ -410,17 +419,17 @@ export function IntakeForm({
           />
         </Field>
         <Field label="PORT OF LOADING">
-          {/* เมืองต้นทาง อ่านจากไฟล์ให้ก่อน เลือกจากรายการที่ตั้งไว้หรือพิมพ์เองก็ได้ */}
-          <input
+          {/*
+            * เมืองต้นทาง อ่านจากไฟล์ให้ก่อน แล้วเลือกจากรายการหรือพิมพ์เองก็ได้
+            * กางรายการให้เห็นทั้งหมดตั้งแต่กดช่อง ไม่ต้องเดาว่าพิมพ์อะไรถึงจะขึ้น
+            */}
+          <SearchText
             name="originPort"
-            list="origin-port-list"
-            key={parsed.portOfLoading}
-            defaultValue={parsed.portOfLoading ?? ''}
-            placeholder="เช่น NAGOYA"
+            choices={options.originPorts}
+            value={originPort}
+            onChange={setOriginPort}
+            placeholder="เลือกหรือพิมพ์ เช่น NAGOYA"
           />
-          <datalist id="origin-port-list">
-            {options.originPorts.map((o) => <option key={o.id} value={o.name} />)}
-          </datalist>
         </Field>
         <Field label="PORT OF DISCHARGE">
           <select name="portId" defaultValue={defaults.portId ?? ''}>

@@ -8,6 +8,7 @@ import { submitCustomsTask, submitDraftTask } from '@/lib/actions/automation';
 import { createEofficeRequest } from '@/lib/actions/eoffice';
 import { saveMasterRecord } from '@/lib/actions/master';
 import { ConfirmSubmit, PopoverCancel, PopoverHead } from '@/components/Interactions';
+import { OriginPortField } from '@/components/SearchSelect';
 import type { Option } from '@/lib/queries/master';
 export { UploadForm } from '@/components/UploadForm';
 export { MergeEofficeButton } from '@/components/MergeEofficeButton';
@@ -484,11 +485,8 @@ export function EditBlForm({
         <p className="edit-bl-group">ท่าเรือ</p>
         <label className="mini">
           <span>เมืองต้นทาง (Port of Loading)</span>
-          <input name="originPort" defaultValue={job.originPort ?? ''} list="edit-bl-origins" />
-          {/* เสนอชื่อที่เคยใช้ แต่ยังพิมพ์เองได้ เพราะท่าต้นทางมีมากกว่าที่เก็บไว้ */}
-          <datalist id="edit-bl-origins">
-            {options.originPorts.map((o) => <option key={o.id} value={o.name} />)}
-          </datalist>
+          {/* กางรายการท่าต้นทางให้เลือก และยังพิมพ์ค่าที่ไม่มีในรายการได้ */}
+          <OriginPortField choices={options.originPorts} initial={job.originPort ?? ''} />
         </label>
         <div className="field-pair">
           {pick('portId', 'Port of Discharge', options.ports, job.portId)}

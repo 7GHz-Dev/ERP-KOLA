@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { extractPdfPieces, loadPdfjs } from '@/lib/parse-arrival';
 import {
-  TEMPLATE_FIELDS, fieldLabel, readByTemplate,
+  EVERY_PAGE, LAST_PAGE, TEMPLATE_FIELDS, fieldLabel, pageLabel, readByTemplate,
   type ParseTemplate, type TemplateArea, type TemplateFieldKey, type TextPiece,
 } from '@/lib/parse-template';
 import { saveParseTemplate } from '@/lib/actions/parse-template';
@@ -34,6 +34,14 @@ export function ParseTemplateEditor({ template }: Props) {
 
   /** ช่องที่กรอบถัดไปจะถูกกำหนดให้ */
   const [field, setField] = useState<TemplateFieldKey>('blNo');
+
+  /*
+   * กรอบที่ลากถัดไปจะผูกกับหน้าแบบไหน
+   *
+   * เอกสารสายเรือใบเดียวกันมีจำนวนหน้าไม่เท่ากัน ขึ้นกับว่ามีสินค้ากี่รายการ
+   * ระบุเป็นเลขหน้าตายตัวอย่างเดียวจึงใช้ไม่ได้กับค่าที่อยู่ท้ายใบหรือไล่ข้ามหน้า
+   */
+  const [pageMode, setPageMode] = useState<'this' | 'last' | 'every'>('this');
 
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [pieces, setPieces] = useState<TextPiece[]>([]);
@@ -141,9 +149,10 @@ export function ParseTemplateEditor({ template }: Props) {
      * เพราะผู้ใช้ที่ลากพลาดแล้วลากใหม่คาดหวังให้ของเดิมหายไป
      */
     const many = field === 'containers' || field === 'seals';
+    const boundPage = pageMode === 'last' ? LAST_PAGE : pageMode === 'every' ? EVERY_PAGE : page;
     setAreas((cur) => [
       ...(many ? cur : cur.filter((a) => a.field !== field)),
-      { field, page, x, y, w, h },
+      { field, page: boundPage, x, y, w, h },
     ]);
   }
 
@@ -159,7 +168,16 @@ export function ParseTemplateEditor({ template }: Props) {
     ? matchWords.filter((w) => !haystack.includes(w.toUpperCase().replace(/\s+/g, ' ')))
     : [];
 
-  const onThisPage = areas.filter((a) => a.page === page);
+  /*
+   * กรอบที่ต้องวาดทับหน้านี้ — รวมกรอบแบบทุกหน้าและหน้าสุดท้ายด้วย
+   * ผู้ใช้จึงเห็นว่ากรอบพวกนั้นตกตรงไหนของหน้าที่กำลังดูอยู่
+   */
+  const totalPages = pageImages.length;
+  const onThisPage = areas.filter((a) => (
+    a.page === page
+    || a.page === EVERY_PAGE
+    || (a.page === LAST_PAGE && page === totalPages)
+  ));
 
   return (
     <form action={saveParseTemplate} className="tpl-editor">
@@ -246,17 +264,41 @@ export function ParseTemplateEditor({ template }: Props) {
         {/* ---------- หน้าเอกสาร ---------- */}
         <div className="tpl-sheet-wrap">
           {pageImages.length > 1 ? (
-            <div className="tpl-pages">
-              {pageImages.map((_, i) => (
-                <button
-                  type="button" key={i}
-                  className={`button tiny${page === i + 1 ? ' primary' : ''}`}
-                  onClick={() => setPage(i + 1)}
-                >
-                  หน้า {i + 1}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="tpl-pages">
+                {pageImages.map((_, i) => (
+                  <button
+                    type="button" key={i}
+                    className={`button tiny${page === i + 1 ? ' primary' : ''}`}
+                    onClick={() => setPage(i + 1)}
+                  >
+                    หน้า {i + 1}
+                  </button>
+                ))}
+              </div>
+
+              {/*
+                * กรอบที่ลากถัดไปผูกกับหน้าแบบไหน
+                * เอกสารใบเดียวกันมีจำนวนหน้าไม่เท่ากันตามจำนวนสินค้า
+                * ค่าที่อยู่ท้ายใบหรือไล่ข้ามหน้าจึงผูกกับเลขหน้าตายตัวไม่ได้
+                */}
+              <div className="tpl-pagemode">
+                <span>กรอบถัดไปผูกกับ</span>
+                {([
+                  ['this', `หน้า ${page} เท่านั้น`, 'ค่าที่อยู่หน้าเดิมเสมอ เช่นเลข BL ชื่อเรือ'],
+                  ['last', 'หน้าสุดท้าย', 'ค่าท้ายใบ เช่นยอดรวม — ใบมีกี่หน้าก็หาเจอ'],
+                  ['every', 'ทุกหน้า', 'ค่าที่ไล่ต่อกันข้ามหน้า เช่นเลขตู้'],
+                ] as const).map(([key, label, hint]) => (
+                  <button
+                    type="button" key={key} title={hint}
+                    className={`button tiny${pageMode === key ? ' primary' : ''}`}
+                    onClick={() => setPageMode(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
           ) : null}
 
           {pageImages.length ? (
@@ -279,7 +321,11 @@ export function ParseTemplateEditor({ template }: Props) {
                     width: `${a.w * 100}%`, height: `${a.h * 100}%`,
                   }}
                 >
-                  <b>{fieldLabel(a.field)}</b>
+                  <b>
+                    {fieldLabel(a.field)}
+                    {a.page === EVERY_PAGE || a.page === LAST_PAGE
+                      ? ` · ${pageLabel(a.page)}` : ''}
+                  </b>
                   <button
                     type="button"
                     className="tpl-box-del"

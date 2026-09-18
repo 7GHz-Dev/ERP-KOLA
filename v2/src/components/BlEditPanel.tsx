@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateBlInfo } from '@/lib/actions/jobs';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
-import { SearchSelect } from '@/components/SearchSelect';
+import { SearchSelect, SearchText } from '@/components/SearchSelect';
 import type { Option } from '@/lib/queries/master';
 
 /**
@@ -72,6 +72,8 @@ export function BlEditPanel({
   const [shown, setShown] = useState(source?.id ?? '');
   // SearchSelect เป็นช่องพิมพ์ค้นหา ค่าจึงต้องเก็บเองแล้วส่งผ่าน hidden
   const [personId, setPersonId] = useState(job.personId ?? '');
+  // เมืองต้นทางคุมค่าเอง เพราะเป็นช่องพิมพ์ค้นหาที่เลือกจากรายการได้ด้วย
+  const [originPort, setOriginPort] = useState(job.originPort ?? '');
   const docs = [source, other].filter(Boolean) as PreviewDoc[];
   const doc = docs.find((d) => d.id === shown) ?? docs[0];
 
@@ -211,11 +213,14 @@ export function BlEditPanel({
             />
           </Field>
           <Field label="PORT OF LOADING">
-            <input name="originPort" defaultValue={job.originPort ?? ''} list="bl-edit-origins" />
-            {/* เสนอชื่อที่เคยใช้ แต่ยังพิมพ์เองได้ เพราะท่าต้นทางมีมากกว่าที่เก็บไว้ */}
-            <datalist id="bl-edit-origins">
-              {options.originPorts.map((o) => <option key={o.id} value={o.name} />)}
-            </datalist>
+            {/* กางรายการท่าต้นทางให้เลือก และยังพิมพ์ค่าที่ไม่มีในรายการได้ */}
+            <SearchText
+              name="originPort"
+              choices={options.originPorts}
+              value={originPort}
+              onChange={setOriginPort}
+              placeholder="เลือกหรือพิมพ์ เช่น NAGOYA"
+            />
           </Field>
           <Field label="PORT OF DISCHARGE">
             <select name="portId" defaultValue={job.portId ?? ''}>

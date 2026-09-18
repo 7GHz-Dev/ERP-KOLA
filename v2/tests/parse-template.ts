@@ -6,8 +6,8 @@
 import fs from 'node:fs';
 import { parseArrivalText } from '../src/lib/parse-arrival';
 import {
-  combineRead, matchTemplate, piecesInArea, readByTemplate, textInArea, valueFromText,
-  type ParseTemplate, type TextPiece,
+  EVERY_PAGE, LAST_PAGE, combineRead, matchTemplate, piecesInArea, readByTemplate,
+  textInArea, valueFromText, type ParseTemplate, type TextPiece,
 } from '../src/lib/parse-template';
 
 async function piecesOf(path: string) {
@@ -141,6 +141,44 @@ async function main() {
     { page: 2, left: .1, right: .2, top: .1, bottom: .11, str: 'หน้าสอง' },
   ];
   check('เอาแต่หน้าที่ระบุ', textInArea(twoPages, { ...all, page: 2 }), 'หน้าสอง');
+
+  console.log('\n— โหมดหน้า: หน้าสุดท้าย และ ทุกหน้า —');
+  /*
+   * เอกสารสายเรือใบเดียวกันมีจำนวนหน้าไม่เท่ากันตามจำนวนสินค้า
+   * ค่าท้ายใบ (ยอดรวม) กับค่าที่ไล่ข้ามหน้า (เลขตู้) จึงผูกกับเลขหน้าตายตัวไม่ได้
+   */
+  const threePages: TextPiece[] = [
+    { page: 1, left: .1, right: .3, top: .10, bottom: .11, str: 'MSKU1234567' },
+    { page: 2, left: .1, right: .3, top: .10, bottom: .11, str: 'TCNU7654321' },
+    { page: 3, left: .1, right: .3, top: .10, bottom: .11, str: 'APHU7044624' },
+    { page: 3, left: .5, right: .7, top: .50, bottom: .51, str: '28340.000' },
+  ];
+  const wide = { x: 0, y: 0, w: 1, h: .3 } as const;
+  check('ทุกหน้าเก็บตู้ครบทุกหน้า',
+    readByTemplate({ id: 't', name: 't', match: [], isActive: true,
+      areas: [{ field: 'containers', page: EVERY_PAGE, ...wide }] }, threePages).containers,
+    ['MSKU1234567', 'TCNU7654321', 'APHU7044624']);
+  check('หน้าสุดท้ายหาเจอเองว่าคือหน้า 3',
+    readByTemplate({ id: 't', name: 't', match: [], isActive: true,
+      areas: [{ field: 'grossWeight', page: LAST_PAGE, x: .4, y: .4, w: .5, h: .2 }] }, threePages).values.grossWeight,
+    '28340');
+  // ใบที่สั้นกว่า หน้าสุดท้ายต้องเลื่อนตาม ไม่ใช่ค้างที่หน้า 3
+  const twoOnly = threePages.filter((p) => p.page <= 2)
+    .concat([{ page: 2, left: .5, right: .7, top: .50, bottom: .51, str: '11660.000' }]);
+  check('ใบสั้นกว่า หน้าสุดท้ายเลื่อนตาม',
+    readByTemplate({ id: 't', name: 't', match: [], isActive: true,
+      areas: [{ field: 'grossWeight', page: LAST_PAGE, x: .4, y: .4, w: .5, h: .2 }] }, twoOnly).values.grossWeight,
+    '11660');
+
+  console.log('\n— กรอบเลขตู้ที่คาบบรรทัด SEAL ต้องไม่ได้ตู้ปลอม —');
+  /*
+   * กรอบเลขตู้มักคาบบรรทัด "SEAL M5003182" ที่อยู่ใต้กัน
+   * ถ้ายุบช่องว่างทั้งก้อนก่อนจับ จะกลายเป็น "SEALM5003182" ซึ่งเข้ารูปแบบเลขตู้พอดี
+   */
+  check('ไม่เอา SEAL มาต่อเป็นเลขตู้',
+    valueFromText('containers', 'CMAU7455074 SEAL M5003182'), ['CMAU7455074']);
+  check('ซีลยังอ่านได้ตามเดิม',
+    valueFromText('seals', 'CMAU7455074 SEAL M5003182'), ['M5003182']);
 
   console.log(`\nสรุป: ผ่าน ${pass} · ไม่ผ่าน ${fail}`);
   if (fail) process.exitCode = 1;

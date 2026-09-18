@@ -1741,3 +1741,10 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
   .tpl-work { grid-template-columns: 1fr; }
   .tpl-fields { position: static; }
 }
+
+/*
+ * ช่อง PORT OF LOADING เป็นช่องพิมพ์ค้นหาแล้ว รายการที่กางออกมาต้องล้นกรอบได้
+ * ไม่งั้นถูกตัดครึ่งจนเลือกท่าเรือท้าย ๆ ไม่ได้
+ */
+label.mini:has(.search-select) { overflow: visible; }
+.form-grid:has(.search-select-list) { overflow: visible; }
