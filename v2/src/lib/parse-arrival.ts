@@ -241,9 +241,45 @@ export function parseArrivalText(raw: string): ParsedArrival {
   const containers = [...new Set(upper.match(/\b[A-Z]{4}\d{7}\b/g) ?? [])];
   const isContainer = (v: string) => containers.includes(v.replace(/\s+/g, ''));
 
+  /*
+   * WAYBILL NUMBER — ใบ Sea Waybill เขียนเลขไว้ในช่องนี้ ไม่ใช่ช่อง B/L No.
+   *
+   * CNC/CMA CGM ออกเป็น Waybill โดยเลขขึ้นต้นด้วย AMP ซึ่งไม่เข้ารูปแบบ
+   * ของสายเรือตัวเอง (ที่คาดว่าขึ้นต้น CNC) จึงอ่านเลขไม่ได้เลยทั้งที่มีอยู่ในเอกสาร
+   *
+   * pdf.js อ่านใบนี้ได้สองแบบแล้วแต่ลำดับคอลัมน์
+   *   ป้ายก่อนค่า  "WAYBILL NUMBER AMP0562355"
+   *   ค่าก่อนป้าย  "AMP0562355 ... WAYBILL WAYBILL NUMBER"
+   * รับทั้งสองทาง และตัดคำว่า NUMBER/OF/ORIGINAL ที่อยู่ติดกันออกก่อน
+   */
+  const waybillNo = (() => {
+    const after = upper.match(
+      /WAYBILL\s*(?:NO\.?|NUMBER)\s*:?\s*([A-Z]{2,4}[0-9]{6,})\b/,
+    )?.[1];
+    if (after) return after;
+
+    /*
+     * ค่าอยู่ก่อนป้าย — เอาเลขเอกสารตัวที่ใกล้ป้ายที่สุด
+     *
+     * ไม่จำกัดระยะเป็นจำนวนตัวอักษร เพราะแต่ละใบมีข้อความคั่นไม่เท่ากัน
+     * (ใบที่เจอจริงคั่นอยู่ 408 ตัว ซึ่งเกินค่าที่เดาไว้ตอนแรก)
+     * ไล่หาจากตำแหน่งป้ายย้อนกลับไปแทน จึงไม่ต้องเดาระยะ
+     *
+     * ตัดเลขตู้ออกก่อน เพราะรูปแบบ 4 ตัวอักษร + 7 ตัวเลข เข้าเงื่อนไขเดียวกัน
+     */
+    const at = upper.search(/WAYBILL\s+(?:NO\.?|NUMBER)/);
+    if (at < 0) return '';
+    const candidates = [...upper.slice(0, at).matchAll(/\b([A-Z]{2,4}[0-9]{6,})\b/g)]
+      .map((m) => m[1])
+      .filter((v) => !/^[A-Z]{4}[0-9]{7}$/.test(v));
+    return candidates[candidates.length - 1] ?? '';
+  })();
+
   const blFromCarrier = first(upper, BL_PATTERNS[carrier] ?? []);
   const blNo =
     (blFromCarrier && !isContainer(blFromCarrier) ? blFromCarrier : '') ||
+    // เลขจากช่อง WAYBILL NUMBER มาก่อนการเดาจากรูปแบบทั่วไป เพราะเป็นช่องที่ระบุไว้ตรง ๆ
+    (waybillNo && !isContainer(waybillNo) ? waybillNo : '') ||
     [first(upper, [/B\/?L\s*(?:NO\.?|NUMBER)?\s*:?\s*([A-Z]{4}[A-Z0-9]{7,})/, /\b([A-Z]{4}\d{8,})\b/])]
       .filter((v) => v && !isContainer(v))[0] || '';
 

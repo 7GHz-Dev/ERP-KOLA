@@ -18,7 +18,15 @@ const DIR = path.join(process.cwd(), 'tests', 'fixtures', 'arrival');
  * ค่าที่ถูกต้องเท่าที่ตรวจด้วยตาแล้ว — เว้นช่องไหนไว้แปลว่ายังไม่ได้ตรวจ
  * ไม่ใช่ว่าอ่านไม่ได้ ช่องที่ตรวจแล้วเท่านั้นที่ถูกนับเป็นคะแนนความถูกต้อง
  */
-const EXPECTED: Record<string, Partial<Record<'vessel' | 'voyage' | 'grossWeight' | 'portOfLoading' | 'eta' | 'shipperName', string>>> = {
+const EXPECTED: Record<string, Partial<Record<'vessel' | 'voyage' | 'grossWeight' | 'portOfLoading' | 'eta' | 'shipperName' | 'blNo', string>>> = {
+  /*
+   * ใบ Sea Waybill ของ CNC/CMA CGM — เลขอยู่ช่อง WAYBILL NUMBER ไม่ใช่ B/L No.
+   * และขึ้นต้นด้วย AMP ซึ่งไม่เข้ารูปแบบของสายเรือตัวเอง
+   *
+   * ชื่อเรือกับเที่ยวเรือของใบนี้ยังอ่านไม่ได้ (อยู่ห่างจากป้ายมาก) จึงไม่ใส่ไว้ตรงนี้
+   * ใส่แล้วจะกลายเป็นคะแนนตกค้างที่ไม่ได้บอกอะไร นอกจากว่ายังทำไม่เสร็จ
+   */
+  '19_WAYBILL_cnc_amp': { blNo: 'AMP0562355' },
   // น้ำหนักในใบ EVERGREEN อยู่ในตารางโดยไม่มีหน่วยกำกับ ตรวจกับแถวในเอกสารแล้ว
   '14_ARRIVAL_NOTICE_DB7RMX3I1': { grossWeight: '6270' },
   '15_ARRIVAL_NOTICE_DB7RMX3I1': { grossWeight: '6270' },
