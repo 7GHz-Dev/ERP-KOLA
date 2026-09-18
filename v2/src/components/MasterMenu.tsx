@@ -6,6 +6,7 @@ export const EOFFICE_FORM_MENU_KEY = 'eofficeForm';
 export const DO_LETTER_MENU_KEY = 'doLetterForm';
 export const USERS_MENU_KEY = 'users';
 export const JOBS_MENU_KEY = 'jobs';
+export const PARSE_TEMPLATE_MENU_KEY = 'parseTemplate';
 
 /*
  * เมนูซ้ายของหมวด Master Data ใช้ร่วมกันทุกหน้าในหมวดนี้
@@ -50,6 +51,13 @@ export function MasterMenu({
         aria-current={current === DO_LETTER_MENU_KEY ? 'page' : undefined}
       >
         ฟอร์มจดหมายแลก DO
+      </Link>
+      <Link
+        href="/master/parse-template"
+        prefetch={false}
+        aria-current={current === PARSE_TEMPLATE_MENU_KEY ? 'page' : undefined}
+      >
+        ตั้งค่าการอ่าน AN / BL
       </Link>
       <Link
         href="/master/users"

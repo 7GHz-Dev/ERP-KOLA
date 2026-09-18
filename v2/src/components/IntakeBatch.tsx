@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import type { Option } from '@/lib/queries/master';
-import { extractPdfText, parseArrivalText } from '@/lib/parse-arrival';
+import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
+import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
 import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddShipper } from '@/components/QuickAddShipper';
@@ -44,10 +45,12 @@ type Row = {
 };
 
 export function IntakeBatch({
-  sourceType, options, defaults, action,
+  sourceType, options, defaults, action, templates = [],
 }: {
   sourceType: 'AN' | 'BL';
   options: { shippers: Option[] };
+  /** แบบร่างพื้นที่อ่านค่าที่ผู้ดูแลตั้งไว้ — ค่าจากกรอบมาก่อนตัวอ่านอัตโนมัติ */
+  templates?: ParseTemplate[];
   defaults: { containerType: string; jobTypeId: string | null; consigneeId: string | null;
               notifyId: string | null; portId: string | null; demDays: string; detDays: string };
   action: (formData: FormData) => Promise<string | void>;
@@ -75,12 +78,17 @@ export function IntakeBatch({
     for (let i = 0; i < picked.length; i += 1) {
       const file = picked[i];
       try {
-        const parsed = parseArrivalText(await extractPdfText(file));
+        // อ่านสองทางแล้วรวมกัน เหมือนหน้าอัปทีละใบ — กรอบที่ผู้ดูแลตั้งไว้มาก่อน
+        const read = await extractPdfPieces(file);
+        const parsed = combineRead(
+          parseArrivalText(read.text), matchTemplate(templates, read.text), read.pieces,
+        );
         const shipper = matchShipper(parsed.shipperName, options.shippers);
         setRows((cur) => cur.map((r, n) => n !== i ? r : {
           ...r,
           status: 'ok',
           message: [
+            parsed.templateName && `แบบร่าง ${parsed.templateName}`,
             parsed.carrier && `สายเรือ ${parsed.carrier}`,
             parsed.containers.length && `ตู้ ${parsed.containers.length}`,
             parsed.shipperName && !shipper && `อ่านชื่อได้ "${parsed.shipperName}" แต่ไม่มีใน Master`,

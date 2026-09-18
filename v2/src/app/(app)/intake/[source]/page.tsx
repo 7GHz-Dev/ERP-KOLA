@@ -5,6 +5,7 @@ import { IntakeBatch } from '@/components/IntakeBatch';
 import { Tabs } from '@/components/JobTable';
 import { createJobFromIntake, intakeDefaults } from '@/lib/actions/intake';
 import { intakeOptions, settingValue } from '@/lib/queries/master';
+import { activeParseTemplates } from '@/lib/parse-template-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,11 +27,17 @@ export default async function IntakePage({
   if (source !== 'an' && source !== 'bl') notFound();
   const sourceType = source === 'an' ? 'AN' : 'BL';
 
-  const [options, ids, demDays, detDays] = await Promise.all([
+  /*
+   * แบบร่างพื้นที่อ่านค่าที่ผู้ดูแลตั้งไว้ที่ /master/parse-template
+   * ส่งลงไปให้ฝั่งเบราว์เซอร์ เพราะการอ่าน PDF ทั้งหมดทำในเบราว์เซอร์
+   * ไฟล์จึงยังไม่ถูกส่งขึ้นเซิร์ฟเวอร์จนกว่าผู้ใช้จะกดบันทึก เหมือนเดิม
+   */
+  const [options, ids, demDays, detDays, templates] = await Promise.all([
     intakeOptions(),
     intakeDefaults(),
     settingValue('DEM_FREE_DAYS', '5'),
     settingValue('DET_FREE_DAYS', '3'),
+    activeParseTemplates(),
   ]);
 
   const pick = (list: { code: string | null; name: string }[], code: string) =>
@@ -52,6 +59,7 @@ export default async function IntakePage({
       {tab === 'batch' ? (
         <IntakeBatch
           sourceType={sourceType}
+          templates={templates}
           options={{ shippers: options.shippers }}
           defaults={{
             consigneeId: ids.consigneeId,
@@ -67,6 +75,7 @@ export default async function IntakePage({
       ) : (
         <IntakeForm
           sourceType={sourceType}
+          templates={templates}
           options={options}
           defaults={{
             consigneeId: ids.consigneeId,

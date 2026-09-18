@@ -1648,3 +1648,96 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
 .edit-bl-group:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
 .edit-bl .field-pair { gap: 8px; }
 .edit-bl label.mini { margin-bottom: 8px; }
+
+/* ---------- หน้าตั้งค่าการอ่าน AN / BL (ลากกรอบบอกพื้นที่อ่านค่า) ---------- */
+
+.tpl-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tpl-back a { font-size: 12px; font-weight: 600; text-decoration: none; color: var(--blue); }
+.tpl-list-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tpl-list-head .meta { flex: 1; min-width: 240px; margin: 0; }
+.tpl-empty {
+  background: var(--surface); border: 1px dashed var(--line); border-radius: 8px;
+  padding: 24px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.7;
+}
+
+.tpl-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tpl-head, .tpl-bar {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.tpl-head .field { flex: 1; min-width: 220px; }
+.tpl-head textarea {
+  min-height: 56px; padding: 6px 9px; font-size: 12px; font-family: inherit;
+  border: 1px solid var(--line); border-radius: 6px; color: var(--ink); resize: vertical;
+}
+.tpl-check { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding-top: 18px; }
+.tpl-warn { color: var(--red); }
+.tpl-bar .field { flex: 0 0 auto; }
+.tpl-status { margin: 0; flex: 1; min-width: 200px; font-size: 12px; font-weight: 600; color: var(--muted); padding-top: 18px; }
+.tpl-status.ok { color: var(--green); }
+.tpl-status.error { color: var(--red); }
+
+/* ซ้าย = ช่องที่กำหนดได้พร้อมค่าที่อ่านได้ · ขวา = หน้าเอกสารให้ลากกรอบ */
+.tpl-work { display: grid; grid-template-columns: 250px 1fr; gap: 12px; align-items: start; min-width: 0; }
+.tpl-fields {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+  position: sticky; top: 8px;
+}
+.tpl-fields .meta { margin: 0 0 4px; }
+.tpl-field {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer;
+  padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px;
+  background: #fff; font-family: inherit; font-size: 12px; color: var(--ink);
+}
+.tpl-field:hover { background: #eef3f6; }
+.tpl-field.picked { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
+.tpl-field.has { border-left: 3px solid var(--green); }
+.tpl-field b { font-weight: 600; }
+.tpl-field .tpl-value { color: var(--green); font-weight: 600; word-break: break-all; }
+.tpl-field .tpl-value i { color: var(--red); font-style: normal; font-weight: 400; }
+.tpl-field .tpl-none { color: var(--muted); }
+.tpl-field small { color: var(--muted); }
+
+.tpl-sheet-wrap { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.tpl-pages { display: flex; gap: 4px; flex-wrap: wrap; }
+/*
+ * หน้าเอกสารกับกรอบต้องซ้อนกันพอดี จึงให้ตัวครอบมีขนาดเท่ารูปเป๊ะ ๆ
+ * รูปเป็น block และกว้างเต็มตัวครอบ กรอบที่วางด้วย % จึงอ้างอิงขนาดเดียวกันกับรูป
+ */
+.tpl-sheet {
+  position: relative; line-height: 0; cursor: crosshair; touch-action: none;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff;
+  user-select: none;
+}
+.tpl-sheet img { display: block; width: 100%; height: auto; }
+.tpl-box {
+  position: absolute; box-sizing: border-box;
+  border: 2px solid var(--blue); background: rgba(37, 99, 235, .12);
+}
+.tpl-box b {
+  position: absolute; left: 0; bottom: 100%; white-space: nowrap;
+  background: var(--blue); color: #fff; font-size: 10px; font-weight: 600;
+  padding: 1px 5px; border-radius: 3px 3px 0 0; line-height: 1.5;
+}
+.tpl-box-del {
+  position: absolute; right: -9px; top: -9px; width: 18px; height: 18px;
+  border: none; border-radius: 50%; background: var(--red); color: #fff;
+  font-size: 13px; line-height: 1; cursor: pointer; padding: 0;
+}
+.tpl-box.drawing { border-style: dashed; background: rgba(37, 99, 235, .2); }
+
+.tpl-foot {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px;
+}
+.tpl-foot span { flex: 1; color: var(--muted); font-size: 12px; font-weight: 600; }
+
+/*
+ * บนมือถือวางช่องไว้บนหน้าเอกสาร เพราะต้องเลือกช่องก่อนลากกรอบทุกครั้ง
+ * และเลิกจอดค้างไว้ ไม่งั้นกินที่จนเหลือที่ลากกรอบน้อยเกินไป
+ */
+@media (max-width: 860px) {
+  .tpl-work { grid-template-columns: 1fr; }
+  .tpl-fields { position: static; }
+}

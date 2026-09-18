@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import type { Option } from '@/lib/queries/master';
-import { extractPdfText, parseArrivalText } from '@/lib/parse-arrival';
+import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
+import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
 import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddShipper } from '@/components/QuickAddShipper';
@@ -51,11 +52,13 @@ const isUsedCarProduct = (product: string) =>
 const isKolaNotify = (name: string) => /KOLA\s*SHIPPING/i.test(name);
 
 export function IntakeForm({
-  sourceType, options, defaults, action,
+  sourceType, options, defaults, action, templates = [],
 }: {
   sourceType: 'AN' | 'BL';
   options: Options;
   defaults: Defaults;
+  /** แบบร่างพื้นที่อ่านค่าที่ผู้ดูแลตั้งไว้ — ค่าจากกรอบมาก่อนตัวอ่านอัตโนมัติ */
+  templates?: ParseTemplate[];
   /** คืนเลขงานที่สร้าง เพื่อขึ้นข้อความแล้วล้างฟอร์มรอใบถัดไป */
   action: (formData: FormData) => Promise<string | undefined>;
 }) {
@@ -130,7 +133,14 @@ export function IntakeForm({
     setPageInfo(null);
     setShowPreview(true);
     try {
-      const result = parseArrivalText(await extractPdfText(file));
+      /*
+       * อ่านสองทางแล้วรวมกัน — ตัวอ่านอัตโนมัติจากรูปแบบข้อความ
+       * กับกรอบที่ผู้ดูแลลากไว้สำหรับเอกสารรูปแบบนี้ (ถ้ามีแบบที่ตรง)
+       * ค่าจากกรอบมาก่อน เพราะเป็นสิ่งที่คนชี้เองว่าอยู่ตรงนั้น
+       */
+      const read = await extractPdfPieces(file);
+      const template = matchTemplate(templates, read.text);
+      const result = combineRead(parseArrivalText(read.text), template, read.pieces);
       const filled: Record<string, string> = {};
       (['blNo', 'blType', 'vessel', 'voyage', 'eta', 'grossWeight', 'unitAmount', 'portOfLoading'] as const)
         .forEach((k) => { if (result[k]) filled[k] = result[k]; });
@@ -159,8 +169,12 @@ export function IntakeForm({
       const sealCount = result.seals.filter((v) => v).length;
       const found = Object.keys(filled).length + (result.containers.length ? 1 : 0);
       setStatusTone(found ? 'ok' : 'error');
+      // บอกด้วยว่าใช้แบบร่างไหน ผู้ดูแลจึงรู้ว่ากรอบที่ตั้งไว้ทำงานจริง
+      const byTemplate = result.templateName
+        ? ` · แบบร่าง ${result.templateName} (${result.fromTemplate.length} ช่อง)`
+        : '';
       setReadStatus(found
-        ? `อ่านได้ ${found} รายการ${result.carrier ? ` · สายเรือ ${result.carrier}` : ''}` +
+        ? `อ่านได้ ${found} รายการ${byTemplate}${result.carrier ? ` · สายเรือ ${result.carrier}` : ''}` +
           `${result.containers.length ? ` · ตู้ ${result.containers.length} ตู้` : ''}` +
           `${sealCount ? ` · ซีล ${sealCount} เลข` : ''}` +
           `${shipper ? ` · Shipper ${shipper.name}` : ''} — กรุณาตรวจทานก่อนบันทึก`

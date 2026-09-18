@@ -1,4 +1,5 @@
 import { parsePortOfLoading } from '@/lib/port-of-loading';
+import type { TextPiece } from '@/lib/parse-template';
 
 /**
  * อ่านข้อมูลจาก Arrival Notice / BL ที่เป็น PDF
@@ -51,7 +52,7 @@ const BL_PATTERNS: Record<string, RegExp[]> = {
   ESL: [/\b(EMIVA[A-Z0-9]{6,})\b/],
 };
 
-const clean = (v: string | undefined | null) => String(v ?? '').replace(/\s+/g, ' ').trim();
+export const clean = (v: string | undefined | null) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 /** คำที่เป็นหัวข้อในเอกสาร ไม่ใช่ค่าจริง — ถ้าเจอแปลว่าจับผิดช่อง */
 const LABEL_WORDS = /\b(VESSEL|VOYAGE|BILL|LADING|PLEASE|NOTIFY|DATE|PORT|TERMINAL|ARRIVAL|NOTICE|CONSIGNEE|SHIPPER|CARRIER|NUMBER|CONTAINER|DESCRIPTION|WEIGHT|TOTAL)\b/;
@@ -113,7 +114,8 @@ function plausibleVoyage(value: string | undefined): string {
   return s;
 }
 
-function toIsoDate(raw: string): string {
+/** แปลงวันที่หลายรูปแบบเป็น yyyy-mm-dd — ใช้ทั้งตัวอ่านอัตโนมัติและตัวอ่านตามกรอบ */
+export function toIsoDate(raw: string): string {
   const s = clean(raw);
   if (!s) return '';
 
@@ -464,4 +466,51 @@ export async function extractPdfText(file: File): Promise<string> {
     pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
   }
   return pages.join('\n');
+}
+
+/**
+ * ข้อความพร้อมพิกัด ใช้กับการอ่านตามกรอบที่ผู้ดูแลลากไว้
+ *
+ * ต่างจาก extractPdfText ที่คืนข้อความล้วน ตรงที่เก็บตำแหน่งของทุกชิ้นไว้ด้วย
+ * จึงบอกได้ว่าชิ้นไหนอยู่ในกรอบของช่องใด
+ *
+ * พิกัดคืนเป็นสัดส่วนของหน้า (0–1) นับจากมุมบนซ้าย ไม่ใช่พอยต์
+ * เพราะกรอบที่ผู้ดูแลลากไว้ต้องใช้ได้กับเอกสารที่ขนาดกระดาษไม่เท่ากัน
+ * (pdf.js นับ y จากมุมล่างซ้าย แปลงให้ที่นี่ที่เดียว)
+ */
+export async function extractPdfPieces(
+  file: File | ArrayBuffer,
+): Promise<{ pieces: TextPiece[]; text: string; pageSizes: Array<{ w: number; h: number }> }> {
+  const pdfjs = await loadPdfjs();
+  const data = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data }).promise;
+
+  const pieces: TextPiece[] = [];
+  const texts: string[] = [];
+  const pageSizes: Array<{ w: number; h: number }> = [];
+
+  for (let i = 1; i <= doc.numPages; i += 1) {
+    const page = await doc.getPage(i);
+    const viewport = page.getViewport({ scale: 1 });
+    pageSizes.push({ w: viewport.width, h: viewport.height });
+    const content = await page.getTextContent();
+
+    for (const item of content.items) {
+      if (!('str' in item) || !item.str.trim()) continue;
+      const [, , , , x, yBottom] = item.transform;
+      // บางชิ้นไม่มีความสูงมาให้ ใช้ค่าประมาณของตัวอักษรขนาดปกติแทน
+      const height = item.height || 8;
+      pieces.push({
+        page: i,
+        left: x / viewport.width,
+        right: (x + item.width) / viewport.width,
+        top: (viewport.height - (yBottom + height)) / viewport.height,
+        bottom: (viewport.height - yBottom) / viewport.height,
+        str: item.str,
+      });
+    }
+    texts.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
+  }
+
+  return { pieces, text: texts.join('\n'), pageSizes };
 }
