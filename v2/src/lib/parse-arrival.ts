@@ -259,6 +259,16 @@ export function parseArrivalText(raw: string): ParsedArrival {
     if (after) return after;
 
     /*
+     * Arrival Notice ของ CNC ใช้ป้าย "B/L-NO / DEST / TYPE:" แทน
+     * และคำว่า WAYBILL ในใบนี้เป็น "ชนิดเอกสาร" ไม่ใช่ป้ายของเลข
+     * ค่าจริงอยู่บนสุดของหน้า ห่างจากป้ายไปคนละที่ตามที่ pdf.js อ่านได้
+     */
+    const blLabel = upper.match(
+      /B\/L\s*-?\s*NO[^A-Z0-9]{0,40}([A-Z]{2,4}[0-9]{6,})\b/,
+    )?.[1];
+    if (blLabel) return blLabel;
+
+    /*
      * ค่าอยู่ก่อนป้าย — เอาเลขเอกสารตัวที่ใกล้ป้ายที่สุด
      *
      * ไม่จำกัดระยะเป็นจำนวนตัวอักษร เพราะแต่ละใบมีข้อความคั่นไม่เท่ากัน
@@ -267,7 +277,15 @@ export function parseArrivalText(raw: string): ParsedArrival {
      *
      * ตัดเลขตู้ออกก่อน เพราะรูปแบบ 4 ตัวอักษร + 7 ตัวเลข เข้าเงื่อนไขเดียวกัน
      */
-    const at = upper.search(/WAYBILL\s+(?:NO\.?|NUMBER)/);
+    /*
+     * ใบที่ไม่มีป้าย "WAYBILL NUMBER" แต่เป็นใบ Waybill จริง (Arrival Notice ของ CNC)
+     * ใช้คำว่า WAYBILL เดี่ยว ๆ เป็นหลักยึดแทน
+     * จำกัดเฉพาะใบที่บอกชนิดตัวเองว่าเป็น Arrival Notice หรือ Waybill
+     * เพื่อไม่ให้ใบอื่นที่บังเอิญมีคำนี้ในข้อความสัญญาไปคว้าเลขผิดมา
+     */
+    const at = upper.search(/WAYBILL\s+(?:NO\.?|NUMBER)/) >= 0
+      ? upper.search(/WAYBILL\s+(?:NO\.?|NUMBER)/)
+      : (/ARRIVAL\s+NOTICE|NON[\s-]*NEGOTIABLE/.test(upper) ? upper.search(/\bWAYBILL\b/) : -1);
     if (at < 0) return '';
     const candidates = [...upper.slice(0, at).matchAll(/\b([A-Z]{2,4}[0-9]{6,})\b/g)]
       .map((m) => m[1])

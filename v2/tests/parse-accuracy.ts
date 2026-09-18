@@ -27,6 +27,14 @@ const EXPECTED: Record<string, Partial<Record<'vessel' | 'voyage' | 'grossWeight
    * ใส่แล้วจะกลายเป็นคะแนนตกค้างที่ไม่ได้บอกอะไร นอกจากว่ายังทำไม่เสร็จ
    */
   '19_WAYBILL_cnc_amp': { blNo: 'AMP0562355' },
+  // ใบ Waybill อีกสองแบบที่ pdf.js เรียงข้อความต่างกัน
+  '20_WAYBILL_cnc_nazar': { blNo: 'AMP0560316' },
+  '21_WAYBILL_cnc_anisa': { blNo: 'AMP0563434' },
+  /*
+   * Arrival Notice ของ CNC — ไม่มีป้าย "WAYBILL NUMBER" เลย
+   * ใช้ป้าย "B/L-NO / DEST / TYPE:" แทน ส่วนคำว่า WAYBILL เป็นชนิดเอกสาร
+   */
+  '22_ARRIVAL_NOTICE_cnc_waybill': { blNo: 'AMP0560005' },
   // น้ำหนักในใบ EVERGREEN อยู่ในตารางโดยไม่มีหน่วยกำกับ ตรวจกับแถวในเอกสารแล้ว
   '14_ARRIVAL_NOTICE_DB7RMX3I1': { grossWeight: '6270' },
   '15_ARRIVAL_NOTICE_DB7RMX3I1': { grossWeight: '6270' },
