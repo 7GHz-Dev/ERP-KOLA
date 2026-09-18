@@ -1518,7 +1518,19 @@ table.data td.col-pick, table.data th.col-pick { width: 34px; min-width: 34px; t
 /* โหมดรับงานหลายใบพร้อมกัน */
 .batch { display: flex; flex-direction: column; gap: 12px; }
 .batch-table { max-height: 52vh; }
-.batch-name { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.batch-name { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+/* ชื่อไฟล์กดได้เพื่อเปิดดูเอกสาร ทำให้ดูเป็นลิงก์แม้เป็นปุ่ม */
+.batch-preview {
+  background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+  text-align: left; text-decoration: underline;
+}
+/* ช่องแก้ในตาราง — กว้างพอให้เห็นเลข BL เต็มโดยไม่ดันตารางจนต้องเลื่อน */
+table.data td .batch-input { width: 100%; min-width: 150px; font-size: 12px; }
+table.data th.batch-col-bl { min-width: 160px; }
+table.data th.batch-col-shipper { min-width: 230px; }
+.batch-shipper { display: flex; flex-direction: column; gap: 5px; min-width: 220px; }
+/* แถวที่บันทึกแล้วจางลง บอกว่าไม่ต้องทำอะไรต่อ */
+table.data tbody tr.batch-saved { opacity: .62; }
 .batch-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   flex-wrap: wrap; padding: 12px 14px;
