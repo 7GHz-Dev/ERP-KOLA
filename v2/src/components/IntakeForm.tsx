@@ -51,6 +51,13 @@ const isUsedCarProduct = (product: string) =>
   /รถยนต์|USED\s*CAR|USED\s*VEHICLE/i.test(product);
 const isKolaNotify = (name: string) => /KOLA\s*SHIPPING/i.test(name);
 
+/**
+ * ช่องที่ "สำคัญพอจะยอมรอ (และยอมจ่าย)" ให้ชั้น OCR/AI ช่วยอ่าน
+ *
+ * ถ้าครบแล้วไม่ต้องเรียกชั้นที่ช้ากว่า ช่องที่เหลือคนกรอกเองเร็วกว่ารอ
+ */
+const MUST_HAVE = ['blNo', 'vessel', 'voyage', 'eta', 'grossWeight', 'containers'] as const;
+
 export function IntakeForm({
   sourceType, options, defaults, action, templates = [],
 }: {
@@ -187,9 +194,92 @@ export function IntakeForm({
           `${sealCount ? ` · ซีล ${sealCount} เลข` : ''}` +
           `${shipper ? ` · Shipper ${shipper.name}` : ''} — กรุณาตรวจทานก่อนบันทึก`
         : 'อ่านไฟล์ได้แต่ไม่พบข้อมูลที่รู้จัก กรุณากรอกเอง');
+
+      /*
+       * ยังขาดช่องสำคัญ — ลองชั้นที่ต้องใช้เซิร์ฟเวอร์ต่อ (OCR / AI)
+       *
+       * ชั้นพวกนั้นช้ากว่าและบางชั้นมีค่าใช้จ่าย จึงเรียกเฉพาะตอนจำเป็นจริง ๆ
+       * ใบ PDF ปกติที่กรอบอ่านได้ครบอยู่แล้วจะไม่เข้าเงื่อนไขนี้เลย
+       */
+      const need = MUST_HAVE.filter((k) => !filled[k]
+        && !(k === 'containers' && result.containers.length));
+      if (need.length) await readDeeper(file, filled, result.containers.length > 0);
     } catch (error) {
       setStatusTone('error');
       setReadStatus(`อ่านไฟล์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * ชั้นที่ต้องใช้เซิร์ฟเวอร์ — OCR สำหรับไฟล์สแกน และ AI สำหรับใบที่รูปแบบยังไม่เคยเจอ
+   *
+   * ส่งค่าที่อ่านได้แล้วไปด้วย เซิร์ฟเวอร์จะเติมเฉพาะช่องที่ยังว่าง
+   * ไม่ทับของที่กรอบอ่านมาแล้ว เพราะกรอบแม่นกว่าเสมอ
+   *
+   * ชั้นนี้ล้มก็ไม่เป็นไร ค่าที่อ่านได้ก่อนหน้ายังอยู่ครบ แค่บอกให้รู้ว่าลองแล้วไม่ได้
+   */
+  async function readDeeper(
+    file: File, have: Record<string, string>, haveContainers: boolean,
+  ) {
+    setReadStatus((s) => `${s}\nกำลังลองอ่านด้วย OCR / AI...`);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      body.append('have', JSON.stringify(haveContainers ? { ...have, containers: ['x'] } : have));
+
+      const response = await fetch('/api/read-arrival', { method: 'POST', body });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        setReadStatus((s) => `${s.split('\n')[0]}\n(ลอง OCR/AI แล้วไม่สำเร็จ: ${data?.detail ?? 'ไม่ทราบสาเหตุ'})`);
+        return;
+      }
+
+      const got = data.values as Record<string, unknown>;
+      const added: string[] = [];
+
+      const scalars = ['blNo', 'blType', 'vessel', 'voyage', 'eta', 'grossWeight', 'unitAmount', 'portOfLoading'] as const;
+      const extra: Record<string, string> = {};
+      for (const k of scalars) {
+        const v = typeof got[k] === 'string' ? String(got[k]) : '';
+        if (v && !have[k]) { extra[k] = v; added.push(k); }
+      }
+      if (Object.keys(extra).length) setParsed((p) => ({ ...p, ...extra }));
+      if (extra.portOfLoading) setOriginPort(extra.portOfLoading);
+
+      if (typeof got.blNo === 'string' && got.blNo && !have.blNo) {
+        setBlRows((rows) => [{ ...rows[0], blNo: String(got.blNo) }, ...rows.slice(1)]);
+      }
+      if (typeof got.shipperName === 'string' && got.shipperName) {
+        const match = matchShipper(got.shipperName, options.shippers);
+        if (match) {
+          setBlRows((rows) => [{
+            ...rows[0], shipperId: match.id, shipperName: match.name,
+          }, ...rows.slice(1)]);
+          added.push('shipper');
+        }
+      }
+
+      const containers = Array.isArray(got.containers) ? got.containers as string[] : [];
+      const seals = Array.isArray(got.seals) ? got.seals as string[] : [];
+      if (containers.length && !haveContainers) {
+        setContainerRows(containers.map((c, i) => ({
+          containerNo: c,
+          containerType: defaults.containerType,
+          sealNo: seals[i] ?? '',
+        })));
+        added.push(`ตู้ ${containers.length} ตู้`);
+      }
+
+      // บอกให้ชัดว่าค่าพวกนี้มาจากการเดาของเครื่อง ต้องตรวจให้ดีกว่าปกติ
+      const from = (data.layers as Array<{ label: string; error?: string }> | undefined)
+        ?.filter((l) => !l.error).map((l) => l.label).join(' + ') || 'OCR/AI';
+      const cost = Number(data.baht) > 0 ? ` · ~${Number(data.baht).toFixed(2)} บาท` : '';
+      setReadStatus((s) => `${s.split('\n')[0]}\n${added.length
+        ? `${from} เติมให้อีก ${added.length} ช่อง${cost} — ค่าจากเครื่องอ่าน ควรตรวจทุกช่องก่อนบันทึก`
+        : `ลอง ${from} แล้วยังไม่พบข้อมูลเพิ่ม${cost} กรุณากรอกเอง`}`);
+    } catch (error) {
+      setReadStatus((s) => `${s.split('\n')[0]}\n(ลอง OCR/AI แล้วไม่สำเร็จ: ${
+        error instanceof Error ? error.message : String(error)})`);
     }
   }
 
