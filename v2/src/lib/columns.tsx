@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
-import { addDays, formatDate } from '@/lib/format';
+import { addDays, formatDate, formatDateTime } from '@/lib/format';
 import type { JobRow } from '@/lib/queries/jobs';
 
 /**
@@ -96,6 +96,19 @@ export const col = {
   file: (label: string, category: string): Column => ({
     label,
     render: (r) => <FileChip file={r.currentFiles?.[category]} />,
+  }),
+  /**
+   * วันเวลาที่รับงานเข้าระบบ
+   *
+   * ใช้แยกงานที่เพิ่งนำเข้ามาทั้งชุดออกจากงานเก่าที่ค้างอยู่ ซึ่งดูจาก ETA ไม่ได้
+   * เพราะงานที่นำเข้าพร้อมกันมี ETA เดียวกันทั้งชุด แต่คนละรอบที่นำเข้า
+   *
+   * แสดงเวลาด้วย ไม่ใช่แค่วันที่ เพราะการนำเข้าหลายรอบในวันเดียวกันเป็นเรื่องปกติ
+   * ถ้าเห็นแต่วันที่จะแยกไม่ออกว่าชุดไหนเข้ามาก่อนหลัง
+   */
+  createdAt: (): Column => ({
+    label: 'วันที่สร้างงาน', sortKey: 'createdAt', className: 'col-created',
+    render: (r) => formatDateTime(r.createdAt),
   }),
 };
 

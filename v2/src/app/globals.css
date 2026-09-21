@@ -95,6 +95,28 @@ a { color: var(--blue); }
 .tabs a[aria-current="page"] { background: var(--navy); border-color: var(--navy); color: #fff; }
 .tabs a small { opacity: .7; font-weight: 400; }
 
+/*
+  แถบตัวกรองใต้แท็บ — ตัวกรองที่เปิดค้างไว้ได้ ไม่ใช่การสลับมุมมองแบบแท็บ
+  จึงทำเป็นชิปกดสลับ ให้ต่างจากแท็บด้านบนอย่างเห็นได้ชัด ไม่งั้นจะนึกว่าเป็นแท็บที่ห้า
+*/
+.filter-bar {
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 12px;
+}
+.chip-toggle {
+  border: 1px dashed var(--line); background: var(--surface); color: var(--muted);
+  padding: 6px 13px; border-radius: 999px; text-decoration: none; font-size: 13px;
+}
+.chip-toggle:hover { border-color: var(--navy); color: var(--ink); }
+.chip-toggle.on {
+  background: var(--blue); border-color: var(--blue); border-style: solid;
+  color: #fff; font-weight: 600;
+}
+.filter-note { font-size: 12px; color: var(--muted); }
+
+/* วันเวลาที่สร้างงาน — กว้างพอให้ "dd/mm/yyyy, hh:mm" อยู่บรรทัดเดียว */
+table.data .col-created { color: var(--muted); font-variant-numeric: tabular-nums; }
+
 /* ---------- ตาราง ---------- */
 
 .table-wrap {

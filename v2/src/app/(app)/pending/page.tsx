@@ -9,7 +9,7 @@ import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
 import { requestApprovalMany } from '@/lib/actions/jobs';
 import { deleteJobs } from '@/lib/actions/job-delete';
 import Link from 'next/link';
-import { listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
+import { listJobs, missingArrivalFiles, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { pendingTabCounts } from '@/lib/queries/dashboard';
 import { intakeOptions } from '@/lib/queries/master';
 
@@ -30,7 +30,7 @@ function columnsFor(
   options: Awaited<ReturnType<typeof intakeOptions>>,
 ): Column[] {
   const base = [col.clientInCharge(), col.shipper(), col.blNo(), col.consignee(),
-    col.eta(), col.lastDem(), col.lastDet()];
+    col.eta(), col.lastDem(), col.lastDet(), col.createdAt()];
 
   if (tab === 'bl') {
     return [
@@ -41,7 +41,7 @@ function columnsFor(
         render: (r: JobRow) => <PickBox id={r.id} />,
       }] : []),
       col.clientInCharge(), col.source(), col.shipper(), col.blNo(), col.consignee(),
-      col.eta(), col.demDet(),
+      col.eta(), col.demDet(), col.createdAt(),
       {
         label: 'สถานะ / จัดการ', kind: 'actions',
         render: (r) => (
@@ -84,7 +84,7 @@ function columnsFor(
   }
   if (tab === 'edoc') {
     return [col.clientInCharge(), col.shipper(), col.blNo(), col.refNo(), col.declarationNo(),
-      col.consignee(), col.eta(), col.lastDem(), col.lastDet(),
+      col.consignee(), col.eta(), col.lastDem(), col.lastDet(), col.createdAt(),
       {
         label: 'คำร้อง E-Office', kind: 'actions',
         render: (r) => (
@@ -169,14 +169,37 @@ export default async function PendingPage({
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'bl';
   const sub: 'wait' | 'approve' = one('sub') === 'approve' ? 'approve' : 'wait';
 
-  const where =
+  /*
+   * กรองเฉพาะงานที่ยังไม่มีไฟล์ AN และ BL เลยสักใบ
+   *
+   * งานที่นำเข้าจากไฟล์ตารางมีข้อมูลครบแต่ยังไม่มีไฟล์แนบ ติ๊กช่องนี้แล้วจะเหลือ
+   * เฉพาะชุดนั้น เอาไปไล่อัปไฟล์ที่หน้า "แนบไฟล์ AN/BL เข้างาน" ได้ครบในรอบเดียว
+   */
+  const noFiles = one('noFiles') === '1';
+
+  /*
+   * ไม่ได้สั่งเรียง = เรียงตามวันที่สร้างงาน ใหม่สุดอยู่บนสุด
+   *
+   * listJobs() เรียงแบบนี้เป็นค่าตั้งต้นอยู่แล้ว แต่ต้องบอกซ้ำตรงนี้เพื่อให้หัวตาราง
+   * ขึ้นลูกศรว่ากำลังเรียงด้วยคอลัมน์ไหน ไม่งั้นจะขึ้น "↕" เหมือนยังไม่ได้เรียงอะไร
+   * ทั้งที่เรียงอยู่ แล้วกดครั้งแรกจะสลับเป็นเก่าสุดขึ้นก่อน ซึ่งสวนกับที่เห็นตรงหน้า
+   */
+  const sortKey = sortBy ?? 'createdAt';
+  const sortWay = sortBy ? sortDir : 'desc';
+
+  const queue =
     tab === 'bl' ? QUEUE.pendingBl(sub)
     : tab === 'fn' ? QUEUE.pendingFn(sub)
     : tab === 'draft' ? QUEUE.pendingDraft(sub)
     : QUEUE.pendingEdoc();
 
+  const where = (ctx: Parameters<typeof queue>[0]) => [
+    ...queue(ctx),
+    ...(noFiles ? [missingArrivalFiles()] : []),
+  ];
+
   const [{ rows, total }, counts, options] = await Promise.all([
-    listJobs({ where, search, sortBy, sortDir }),
+    listJobs({ where, search, sortBy: sortKey, sortDir: sortWay }),
     pendingTabCounts(),
     // ตัวเลือก master สำหรับฟอร์มแก้ BL — ดึงรอบเดียวแล้วส่งต่อให้ทุกแถวใช้ร่วมกัน
     intakeOptions(),
@@ -185,7 +208,12 @@ export default async function PendingPage({
   // แท็บ 1-3 เตือนจำนวนที่รอกดส่งอนุมัติ แท็บ 4 เตือนจำนวนที่ยังไม่ได้รวมชุด
   const tabsWithCount = TABS.map((t) => ({ ...t, count: counts[t.key] || undefined }));
 
-  const fullCarry = { ...carry, tab, sub };
+  /*
+   * ตัวกรองต้องติดไปกับทุกลิงก์ในหน้า (สลับแท็บ · เรียงลำดับ · ค้นหา)
+   * ไม่งั้นกดอะไรก็ตามแล้วตัวกรองหลุด ซึ่งงงกว่าไม่มีตัวกรองเลย
+   */
+  const filterCarry = { ...carry, ...(noFiles ? { noFiles: '1' } : {}) };
+  const fullCarry = { ...filterCarry, tab, sub };
 
   const table = (
     <JobTable
@@ -194,8 +222,8 @@ export default async function PendingPage({
       rows={rows}
       total={total}
       carry={fullCarry}
-      sortBy={sortBy}
-      sortDir={sortDir}
+      sortBy={sortKey}
+      sortDir={sortWay}
     />
   );
 
@@ -206,7 +234,8 @@ export default async function PendingPage({
         <p>BL → Final Invoice → Draft ใบขน → เตรียมเอกสารเดิน E</p>
       </div>
 
-      <Tabs basePath="/pending" items={tabsWithCount} active={tab} carry={carry} />
+      {/* ตัวกรองติดไปตอนสลับแท็บด้วย เพราะเป็นเรื่องเดียวกันทุกแท็บ ไม่ใช่ของแท็บใดแท็บหนึ่ง */}
+      <Tabs basePath="/pending" items={tabsWithCount} active={tab} carry={filterCarry} />
 
       {tab !== 'edoc' ? (
         <div className="tabs">
@@ -224,6 +253,28 @@ export default async function PendingPage({
           })}
         </div>
       ) : null}
+
+      {/*
+        ตัวกรองงานที่ยังไม่มีไฟล์ AN/BL — เป็นลิงก์สลับเปิด/ปิด ไม่ใช่ช่องติ๊กที่ต้องกดส่ง
+        หน้านี้เป็น server component ทั้งหน้า การเปลี่ยนตัวกรองจึงเป็นการเปลี่ยน URL
+        ซึ่งส่งต่อและกดรีเฟรชได้ เหมือนแท็บอื่นในหน้านี้
+      */}
+      <div className="filter-bar">
+        <a
+          className={`chip-toggle${noFiles ? ' on' : ''}`}
+          href={`/pending?${new URLSearchParams({
+            ...carry, tab, sub, ...(noFiles ? {} : { noFiles: '1' }),
+          }).toString()}`}
+        >
+          {noFiles ? '✓ ' : ''}เฉพาะงานที่ยังไม่ได้แนบไฟล์ AN / BL
+        </a>
+        {noFiles ? (
+          <span className="filter-note">
+            แสดง {total} งานที่ยังไม่มีไฟล์ AN และ BL ·{' '}
+            <Link href="/intake/an?tab=attach">ไปหน้าแนบไฟล์ AN/BL เข้างาน</Link>
+          </span>
+        ) : null}
+      </div>
 
       {tab === 'bl' && sub === 'wait' ? (
         <BulkBar

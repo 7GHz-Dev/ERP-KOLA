@@ -233,6 +233,24 @@ function sentToPartner() {
   );
 }
 
+/**
+ * งานที่ยังไม่มีไฟล์เอกสารต้นเรื่องเลยสักใบ — ทั้ง Arrival Notice และ BL
+ *
+ * ใช้คัดงานที่นำเข้ามาจากไฟล์ตาราง (CSV/Excel) ซึ่งมีข้อมูลครบแล้วแต่ยังไม่มีไฟล์แนบ
+ * จะได้ไล่อัปไฟล์ให้ครบได้ โดยไม่ต้องเปิดดูทีละงานว่าใบไหนยังขาด
+ *
+ * ต้องไม่มีทั้งสองหมวดถึงจะนับ งานที่มี AN แล้วแต่ยังขาด BL ถือว่ามีเอกสารต้นเรื่องแล้ว
+ * จึงไม่ใช่กลุ่มที่ต้องตามหาไฟล์
+ *
+ * not exists อ่านเร็วเพราะ files มี index (job_id, category, is_current) อยู่แล้ว
+ * และหยุดทันทีที่เจอแถวแรก ไม่ได้นับทั้งหมดก่อนค่อยเทียบ
+ */
+export const missingArrivalFiles = () =>
+  sql`not exists (select 1 from files f
+                   where f.job_id = ${jobs.id}
+                     and f.category in ('ARRIVAL_NOTICE', 'BL')
+                     and f.is_current = true)`;
+
 export const QUEUE = {
   /** งานคงค้าง แท็บ 1 — รอส่งอนุมัติ AN / รออนุมัติ */
   pendingBl: (sub: 'wait' | 'approve') => ({ an }: JoinContext) => [
