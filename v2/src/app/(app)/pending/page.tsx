@@ -41,8 +41,8 @@ function columnsFor(
   sub: 'wait' | 'approve',
   options: Awaited<ReturnType<typeof intakeOptions>>,
 ): Column[] {
-  const base = [col.clientInCharge(), col.shipper(), col.blNo(), col.consignee(),
-    col.eta(), col.lastDem(), col.lastDet(), col.createdAt()];
+  const base = [col.createdAt(), col.clientInCharge(), col.shipper(), col.blNo(),
+    col.consignee(), col.eta(), col.lastDem(), col.lastDet()];
 
   if (tab === 'bl') {
     return [
@@ -52,8 +52,8 @@ function columnsFor(
         header: <PickAllBox />,
         render: (r: JobRow) => <PickBox id={r.id} />,
       }] : []),
-      col.clientInCharge(), col.source(), col.shipper(), col.blNo(), col.consignee(),
-      col.eta(), col.demDet(), col.createdAt(),
+      col.createdAt(), col.clientInCharge(), col.source(), col.shipper(), col.blNo(),
+      col.consignee(), col.eta(), col.demDet(),
       {
         label: 'สถานะ / จัดการ', kind: 'actions',
         render: (r) => (
@@ -95,8 +95,8 @@ function columnsFor(
       }];
   }
   if (tab === 'edoc') {
-    return [col.clientInCharge(), col.shipper(), col.blNo(), col.refNo(), col.declarationNo(),
-      col.consignee(), col.eta(), col.lastDem(), col.lastDet(), col.createdAt(),
+    return [col.createdAt(), col.clientInCharge(), col.shipper(), col.blNo(), col.refNo(),
+      col.declarationNo(), col.consignee(), col.eta(), col.lastDem(), col.lastDet(),
       {
         label: 'คำร้อง E-Office', kind: 'actions',
         render: (r) => (

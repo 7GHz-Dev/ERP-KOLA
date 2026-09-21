@@ -123,8 +123,15 @@ a { color: var(--blue); }
 }
 .filter-note { font-size: 12px; color: var(--muted); }
 
-/* วันเวลาที่สร้างงาน — กว้างพอให้ "dd/mm/yyyy, hh:mm" อยู่บรรทัดเดียว */
+/*
+  วันเวลาที่สร้างงาน — อยู่คอลัมน์แรกของตาราง
+
+  ต้องทับกฎ td:first-child ที่จัดกึ่งกลางไว้ให้คอลัมน์ลำดับเลข
+  ไม่งั้น "22/09/2026, 14:35" จะไปกองกลางช่อง ซึ่งกวาดตาอ่านยากกว่าชิดซ้าย
+  เวลาไล่ดูว่างานชุดไหนเข้ามาพร้อมกัน
+*/
 table.data .col-created { color: var(--muted); font-variant-numeric: tabular-nums; }
+table.data tbody td.col-created:first-child { text-align: left; }
 
 /* ---------- ตาราง ---------- */
 
