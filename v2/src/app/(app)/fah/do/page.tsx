@@ -4,8 +4,9 @@ import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RequestEditButton, UploadForm } from '@/components/ActionForms';
 import { DoRowForm } from '@/components/DoRowForm';
 import { DoFillBoard } from '@/components/DoFillBoard';
+import { VesselFilter } from '@/components/VesselFilter';
 import { canEditBlAtDo } from '@/lib/do-letter';
-import { listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
+import { fahDoVessels, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
 import { doHandoffSentAt } from '@/lib/queries/dashboard';
 
@@ -27,11 +28,13 @@ export default async function FahDoPage({
   const sortBy = params.sortBy ?? 'eta';
   const sortDir = params.sortBy ? params.sortDir : 'asc';
 
-  const [{ rows, total }, portRows, terminalRows, partnerRows] = await Promise.all([
+  const [{ rows, total }, portRows, terminalRows, partnerRows, vessels] = await Promise.all([
     listJobs({ where: QUEUE.fahDo(tab as 'wait' | 'sent'), search, sortBy, sortDir }),
     listMaster('ports'),
     listMaster('terminals'),
     listMaster('partners'),
+    // รายการเรือใช้ชุดเดียวกันทั้งสองแท็บ — เที่ยวที่ยังมีงานค้างรอส่ง Partner
+    fahDoVessels(),
   ]);
   const active = (list: typeof portRows) =>
     list.filter((p) => p.isActive).map((p) => ({ id: p.id, code: p.code, name: p.name }));
@@ -54,11 +57,12 @@ export default async function FahDoPage({
   const columns: Column[] = [
     col.shipper(), col.blNo(), col.consignee(),
     /*
-     * เรือ/เที่ยว — มีไว้เพื่อกรองงานทั้งเที่ยวมาทำต่อเนื่องกัน
-     * ซึ่งเป็นวิธีที่หน้านี้ถูกใช้จริง ไม่ใช่ไล่ทีละใบตาม ETA อย่างเดียว
-     * ค้นด้วยชื่อเรือต่อเที่ยวได้เลย เช่น "BANGKOK BRIDGE 0518W"
+     * เรือ/เที่ยว — มีไว้ดูว่าแถวไหนเป็นของเที่ยวไหน
+     * การกรองอยู่ที่ dropdown เหนือตาราง ไม่ใช่ช่องพิมพ์ในหัวคอลัมน์
+     * เพราะชื่อเรือพิมพ์ผิดง่ายและเลือกจากรายการที่มีอยู่จริงแม่นกว่า
      */
-    col.vessel(), col.lastDem(),
+    { ...col.vessel(), searchKey: undefined, searchHint: undefined },
+    col.lastDem(),
     {
       // ชื่อไฟล์อยู่คนละบรรทัดกับปุ่ม ช่องจึงแคบลงและชื่อยาวขึ้นบรรทัดใหม่ได้
       label: 'Invoice DO', kind: 'wrap', className: 'col-file',
@@ -150,6 +154,17 @@ export default async function FahDoPage({
         <p>ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port · Terminal · Partner แล้วจึงส่ง Partner</p>
       </div>
       <Tabs basePath="/fah/do" items={TABS} active={tab} carry={carry} />
+
+      {/*
+        กรองทั้งตารางด้วยเรือ/เที่ยว — เลือกจากรายการที่ยังมีงานค้างจริง
+        อยู่เหนือตารางเพราะกรองทั้งหน้า ไม่ใช่ค้นเฉพาะคอลัมน์เดียวแบบช่องในหัวตาราง
+      */}
+      <VesselFilter
+        options={vessels}
+        value={one('vessel')}
+        basePath="/fah/do"
+        carry={{ ...carry, tab }}
+      />
       {sent ? table : (
         <DoFillBoard
           jobs={rows.map((r) => ({

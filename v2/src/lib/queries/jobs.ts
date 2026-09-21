@@ -431,3 +431,52 @@ export const QUEUE = {
   ],
   namRelease: () => ({ an }: JoinContext) => [eq(an.status, 'APPROVED')],
 } as const;
+
+/**
+ * รายการเรือ/เที่ยวที่ยังมีงานค้างอยู่ในคิว Upload InvDO — ใช้เป็นตัวเลือกในช่องกรอง
+ *
+ * ให้เลือกจากรายการแทนพิมพ์เอง เพราะชื่อเรือสะกดยาวและมีเที่ยวต่อท้าย
+ * พิมพ์ผิดตัวเดียวก็ได้ตารางว่างโดยไม่รู้ว่าพิมพ์ผิดหรือไม่มีงานจริง ๆ
+ *
+ * เอาเฉพาะงานที่ยังไม่ได้ส่ง Partner เสมอ แม้ตอนเปิดแท็บ "ส่ง Partner แล้ว"
+ * เพราะสิ่งที่คนทำงานถามคือ "เที่ยวไหนยังเหลือให้ทำ" ไม่ใช่ "เที่ยวไหนเคยมีงาน"
+ * เงื่อนไขยกมาจาก QUEUE.fahDo('wait') ให้ตรงกับที่ตารางใช้
+ *
+ * คืนค่าเป็นข้อความสำหรับส่งเข้าช่องค้นหาเดิม ไม่ได้เปลี่ยนวิธีกรองที่ฝั่ง SQL
+ * ตัวเลือกจึงใช้เส้นทางเดียวกับการพิมพ์เอง และลิงก์ที่แชร์กันยังเปิดได้เหมือนเดิม
+ */
+export async function fahDoVessels(): Promise<Array<{ value: string; label: string; count: number }>> {
+  /*
+   * เขียน SQL ตรง ๆ แทนการประกอบจาก latestApproval()
+   *
+   * ตัวนั้นเป็น subquery ที่มี alias ในตัวอยู่แล้ว พอเอามาแทรกใน join จะได้
+   * alias ซ้อนกันสองชั้นซึ่ง Postgres ไม่ยอมรับ
+   * เงื่อนไขที่ต้องตรงกับ QUEUE.fahDo('wait') คือ AN อนุมัติแล้ว และยังไม่ส่ง Partner
+   */
+  const rows = await db.execute(sql`
+    select j.vessel, j.voyage, count(*)::int as count
+      from jobs j
+     where j.is_archived = false
+       and j.vessel is not null and j.vessel <> ''
+       and exists (
+             select 1 from approvals a
+              where a.job_id = j.id and a.approval_type = 'AN'
+                and a.status = 'APPROVED'
+                and a.requested_at = (select max(a2.requested_at) from approvals a2
+                                       where a2.job_id = j.id and a2.approval_type = 'AN'))
+       and not exists (select 1 from do_handoffs dh
+                        where dh.job_id = j.id and dh.sent_at is not null)
+     group by j.vessel, j.voyage
+     order by j.vessel, j.voyage
+  `) as unknown as Array<{ vessel: string; voyage: string | null; count: number }>;
+
+  return rows.map((r) => {
+    const label = [r.vessel, r.voyage].filter(Boolean).join(' / ');
+    return {
+      // ค่าที่ส่งเข้าช่องค้นหา — ตัวคั่นเป็นอะไรก็ได้ ฝั่ง SQL ตัดทิ้งก่อนเทียบอยู่แล้ว
+      value: [r.vessel, r.voyage].filter(Boolean).join(' '),
+      label,
+      count: r.count,
+    };
+  });
+}
