@@ -118,7 +118,21 @@ async function requestApprovalManyImpl(formData: FormData) {
 async function decideApprovalManyImpl(formData: FormData) {
   const ids = String(formData.get('approvalIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean);
   if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
-  const decision = text(formData.get('decision'), 10) === 'APPROVED' ? 'APPROVED' : 'REJECTED';
+
+  /*
+   * ต้องระบุมาให้ชัดว่าอนุมัติหรือตีกลับ ไม่เดาให้
+   *
+   * เดิมค่าที่ไม่ใช่ APPROVED ตกเป็น REJECTED ทั้งหมด รวมถึงกรณีที่ไม่ได้ส่งมาเลย
+   * ซึ่งทำให้ปุ่ม "อนุมัติ" ที่ลืมส่งค่ากลายเป็นการตีกลับ แล้วไปติดเงื่อนไข
+   * ว่าต้องมีเหตุผล จนขึ้น error ที่อ่านแล้วไม่รู้ว่าเกี่ยวอะไรกับปุ่มที่เพิ่งกด
+   *
+   * ปฏิเสธไปเลยดีกว่าเดา เพราะสองทางนี้ให้ผลตรงข้ามกันและย้อนคืนยาก
+   */
+  const raw = text(formData.get('decision'), 10);
+  if (raw !== 'APPROVED' && raw !== 'REJECTED') {
+    throw new Error('ไม่ได้ระบุว่าอนุมัติหรือตีกลับ');
+  }
+  const decision = raw;
   const reason = text(formData.get('reason'), 1000);
 
   let done = 0;

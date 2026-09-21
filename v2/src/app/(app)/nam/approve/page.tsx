@@ -40,6 +40,8 @@ export default async function NamApprovePage({
         idName="approvalIds"
         label="อนุมัติ {n} รายการ"
         confirmText="อนุมัติ {n} รายการเข้าตารางหลักใช่ไหม"
+        // ต้องบอกให้ชัดว่าเป็นการอนุมัติ ไม่งั้นฝั่งเซิร์ฟเวอร์จะตีเป็นตีกลับตามค่าตั้งต้น
+        fields={{ decision: 'APPROVED' }}
       >
         <JobTable
           basePath="/nam/approve"

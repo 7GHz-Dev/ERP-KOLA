@@ -19,10 +19,18 @@ export type BulkAction = {
   confirmText: string;
   /** ปุ่มที่ทำสิ่งที่ย้อนไม่ได้ ใช้สีแดงให้ต่างจากปุ่มหลัก */
   danger?: boolean;
+  /**
+   * ค่าคงที่อื่นที่ต้องส่งไปด้วย นอกจากรายการที่เลือก
+   *
+   * มีบาง action ที่รับ id อย่างเดียวไม่พอ เช่นการตัดสินอนุมัติที่ต้องบอกว่า
+   * อนุมัติหรือตีกลับ ถ้าไม่ส่งมา ฝั่งเซิร์ฟเวอร์จะใช้ค่าตั้งต้นซึ่งอาจไม่ใช่
+   * สิ่งที่ปุ่มนั้นตั้งใจทำ
+   */
+  fields?: Record<string, string>;
 };
 
 export function BulkBar({
-  action, label, confirmText, idName, extra, children,
+  action, label, confirmText, idName, fields, extra, children,
 }: {
   action: (formData: FormData) => Promise<unknown>;
   /** ข้อความบนปุ่ม — {n} จะถูกแทนด้วยจำนวนที่เลือก */
@@ -30,6 +38,8 @@ export function BulkBar({
   confirmText: string;
   /** ชื่อช่องที่ส่งขึ้นเซิร์ฟเวอร์ เช่น jobIds หรือ approvalIds */
   idName: string;
+  /** ค่าคงที่ของปุ่มหลัก — ดูคำอธิบายใน BulkAction */
+  fields?: Record<string, string>;
   /** ปุ่มเพิ่มเติมบนแถบเดียวกัน เช่นลบรายการที่เลือก */
   extra?: BulkAction;
   children: React.ReactNode;
@@ -55,11 +65,15 @@ export function BulkBar({
     }
   }, [picked]);
 
-  const run = async (fn: (formData: FormData) => Promise<unknown>) => {
+  const run = async (
+    fn: (formData: FormData) => Promise<unknown>,
+    extraFields?: Record<string, string>,
+  ) => {
     setBusy(true);
     setError('');
     const fd = new FormData();
     fd.set(idName, picked.join(','));
+    for (const [key, value] of Object.entries(extraFields ?? {})) fd.set(key, value);
     /*
      * runAction ของระบบนี้ไม่ได้คืน error กลับมา แต่ redirect กลับหน้าเดิมพร้อม ?err=
      * แล้วแถบ ActionAlert ที่ layout เป็นคนแสดงข้อความ ตรงนี้จึงไม่ต้องจัดการเอง
@@ -109,7 +123,7 @@ export function BulkBar({
               disabled={busy}
               onClick={() => {
                 if (window.confirm(extra.confirmText.replace('{n}', String(picked.length)))) {
-                  void run(extra.action);
+                  void run(extra.action, extra.fields);
                 }
               }}
             >
@@ -121,7 +135,7 @@ export function BulkBar({
             className="button primary"
             disabled={busy}
             onClick={() => {
-              if (window.confirm(confirmText.replace('{n}', String(picked.length)))) void run(action);
+              if (window.confirm(confirmText.replace('{n}', String(picked.length)))) void run(action, fields);
             }}
           >
             {busy ? 'กำลังทำ…' : label.replace('{n}', String(picked.length))}
