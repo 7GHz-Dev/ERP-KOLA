@@ -38,8 +38,16 @@ export const col = {
     label: 'Consignee', searchKey: 'consignee',
     render: (r) => r.consigneeName ?? '-',
   }),
+  /**
+   * เรือ/เที่ยว — ค้นได้ทั้งชื่อเรืออย่างเดียว และชื่อเรือต่อเที่ยวเรือ
+   *
+   * ตัวคั่นพิมพ์แบบไหนก็ได้ ฝั่ง query ตัดอักขระที่ไม่ใช่ตัวอักษรหรือตัวเลขทิ้งก่อนเทียบ
+   * จะพิมพ์ตามที่เห็นบนจอ ("BANGKOK BRIDGE / 0518W") หรือตามไฟล์ตาราง
+   * ("BANGKOK BRIDGE V.0518W") หรือเว้นวรรคเฉย ๆ ก็เจอเหมือนกัน
+   */
   vessel: (): Column => ({
     label: 'Vessel / Voyage', searchKey: 'vessel', sortKey: 'vessel',
+    searchHint: 'เช่น BANGKOK BRIDGE 0518W',
     render: (r) => [r.vessel, r.voyage].filter(Boolean).join(' / ') || '-',
   }),
   /** (OFC) = FAH ยืนยัน ETA ที่หน้า Invoice DO แล้ว ก่อนหน้านั้นเป็นค่าเบื้องต้นจาก PAINT */

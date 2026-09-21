@@ -19,6 +19,8 @@ export type Column = {
   label: string;
   /** ชื่อพารามิเตอร์ค้นหา ต้องตรงกับ SEARCHABLE ใน queries/jobs.ts */
   searchKey?: string;
+  /** ข้อความในช่องค้นหา ใช้บอกรูปแบบที่พิมพ์ได้เมื่อไม่ใช่การค้นตรง ๆ */
+  searchHint?: string;
   /** ชื่อคอลัมน์สำหรับเรียงลำดับ ต้องตรงกับ SORTABLE */
   sortKey?: string;
   align?: 'left' | 'center' | 'right';
@@ -147,7 +149,8 @@ export function JobTable({
                         type="search"
                         name={c.searchKey}
                         defaultValue={carry[c.searchKey] ?? ''}
-                        placeholder="ค้นหา"
+                        /* คอลัมน์ที่ค้นได้ไม่ตรงไปตรงมาบอกตัวอย่างไว้ ไม่งั้นไม่มีทางเดาได้ */
+                        placeholder={c.searchHint ?? 'ค้นหา'}
                         aria-label={`ค้นหา ${c.label}`}
                       />
                     ) : null}

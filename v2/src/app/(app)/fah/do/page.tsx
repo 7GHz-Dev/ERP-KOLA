@@ -14,7 +14,7 @@ const TABS = [
   { key: 'wait', label: 'รอส่ง Partner' },
   { key: 'sent', label: 'ส่ง Partner แล้ว' },
 ];
-const SEARCH_KEYS = ['shipper', 'blNo', 'consignee'];
+const SEARCH_KEYS = ['shipper', 'blNo', 'consignee', 'vessel'];
 
 export default async function FahDoPage({
   searchParams,
@@ -52,7 +52,13 @@ export default async function FahDoPage({
   const sent = tab === 'sent';
 
   const columns: Column[] = [
-    col.shipper(), col.blNo(), col.consignee(), col.lastDem(),
+    col.shipper(), col.blNo(), col.consignee(),
+    /*
+     * เรือ/เที่ยว — มีไว้เพื่อกรองงานทั้งเที่ยวมาทำต่อเนื่องกัน
+     * ซึ่งเป็นวิธีที่หน้านี้ถูกใช้จริง ไม่ใช่ไล่ทีละใบตาม ETA อย่างเดียว
+     * ค้นด้วยชื่อเรือต่อเที่ยวได้เลย เช่น "BANGKOK BRIDGE 0518W"
+     */
+    col.vessel(), col.lastDem(),
     {
       // ชื่อไฟล์อยู่คนละบรรทัดกับปุ่ม ช่องจึงแคบลงและชื่อยาวขึ้นบรรทัดใหม่ได้
       label: 'Invoice DO', kind: 'wrap', className: 'col-file',

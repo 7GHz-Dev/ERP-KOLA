@@ -58,7 +58,46 @@ const SORTABLE: Record<string, AnyPgColumn | SQL> = {
 const SEARCHABLE: Record<string, (value: string) => SQL> = {
   jobNo: (v) => ilike(jobs.jobNo, `%${v}%`),
   blNo: (v) => ilike(jobs.blNo, `%${v}%`),
-  vessel: (v) => ilike(jobs.vessel, `%${v}%`),
+  /*
+   * ค้นชื่อเรือกับเที่ยวเรือต่อกันเป็นข้อความเดียว
+   *
+   * เรือลำเดียวกันวิ่งหลายเที่ยว งานคนละเที่ยวจึงคนละชุดกัน การค้นด้วยชื่อเรือ
+   * อย่างเดียวได้งานปนกันทุกเที่ยว ซึ่งไม่ตรงกับที่คนทำงานถามว่า
+   * "ของเที่ยวนี้มีอะไรบ้าง"
+   *
+   * ตัดอักขระที่ไม่ใช่ตัวอักษรหรือตัวเลขออกทั้งสองฝั่งก่อนเทียบ เพราะตัวคั่น
+   * เขียนกันหลายแบบ — บนจอเป็น "BANGKOK BRIDGE / 0518W" ในไฟล์ตารางเป็น
+   * "BANGKOK BRIDGE V.0518W" ส่วนคนพิมพ์มักเว้นวรรคเฉย ๆ ถ้าเทียบตรง ๆ
+   * จะพิมพ์ตามที่เห็นบนจอแล้วไม่เจอ ซึ่งงงกว่าไม่มีช่องค้นหาเลย
+   *
+   * ผลข้างเคียงคือพิมพ์ชื่อเรืออย่างเดียวก็ยังเจอทุกเที่ยวเหมือนเดิม
+   * เพราะเป็นการค้นแบบมีคำนั้นอยู่ข้างใน ไม่ใช่ตรงกันทั้งหมด
+   */
+  vessel: (v) => {
+    /*
+     * "V." ที่คั่นระหว่างชื่อเรือกับเที่ยวเป็นตัวคั่น ไม่ใช่ส่วนหนึ่งของเลขเที่ยว
+     *
+     * ไฟล์ตารางงานเขียน "BANGKOK BRIDGE V.0518W" ซึ่งคนคัดลอกมาวางในช่องค้นหาตรง ๆ
+     * แต่ฐานข้อมูลเก็บชื่อเรือกับเที่ยวแยกช่อง ต่อกันแล้วไม่มี V คั่น
+     * ถ้าไม่ตัดออกก่อน จะค้นด้วยรูปแบบที่คนเห็นบ่อยที่สุดแล้วไม่เจอ
+     *
+     * ตัดเฉพาะ V ที่ตามด้วยจุดหรือคั่นด้วยช่องว่างแล้วตามด้วยตัวเลข
+     * เพื่อไม่ให้ไปโดนชื่อเรือที่ลงท้ายด้วย V จริง ๆ
+     */
+    const key = v
+      // "V." ที่มีจุดกำกับเป็นตัวคั่นเสมอ ไม่ว่าจะมีอะไรตามหลังหรือไม่
+      .replace(/\bV\.\s*/gi, '')
+      // "V" ที่คั่นด้วยช่องว่างแล้วตามด้วยตัวเลข เช่น "BANGKOK BRIDGE V 0518W"
+      .replace(/\bV\s+(?=\d)/gi, '')
+      .replace(/[^a-zA-Z0-9]/g, '');
+    // พิมพ์มาแต่ตัวคั่นอย่าง "/" หรือ "V." — ไม่เหลืออะไรให้ค้น ถือว่าไม่ตรงกับงานไหน
+    // ปล่อยผ่านจะกลายเป็นค้นด้วยค่าว่างซึ่ง match ทุกแถว แล้วดูเหมือนตัวกรองไม่ทำงาน
+    if (!key) return sql`false`;
+    return sql`regexp_replace(
+                 coalesce(${jobs.vessel}, '') || coalesce(${jobs.voyage}, ''),
+                 '[^a-zA-Z0-9]', '', 'g')
+               ilike ${`%${key}%`}`;
+  },
   refNo: (v) => ilike(jobs.draftRefNo, `%${v}%`),
   entryNo: (v) => sql`entry.declaration_no ilike ${`%${v}%`}`,
   shipper: (v) => sql`shipper.name ilike ${`%${v}%`}`,
@@ -68,6 +107,18 @@ const SEARCHABLE: Record<string, (value: string) => SQL> = {
   port: (v) => sql`port.name ilike ${`%${v}%`}`,
 };
 
+/**
+ * เงื่อนไขค้นหาของช่องหนึ่ง — คืน undefined ถ้าไม่รู้จักช่องนั้นหรือคำค้นว่าง
+ *
+ * แยกออกมาเพื่อให้ตรวจ SQL ที่ประกอบออกมาได้โดยไม่ต้องต่อฐานข้อมูล
+ * ซึ่งจำเป็นกับการค้นที่ไม่ตรงไปตรงมาอย่างชื่อเรือต่อเที่ยวเรือ
+ */
+export function searchCondition(key: string, value: string): SQL | undefined {
+  const build = SEARCHABLE[key];
+  if (!build || !value.trim()) return undefined;
+  return build(value.trim());
+}
+
 export async function listJobs(filter: JobFilter = {}) {
   const an = latestApproval('AN');
   const fn = latestApproval('FN');
@@ -76,8 +127,7 @@ export async function listJobs(filter: JobFilter = {}) {
   if (filter.where) conditions.push(...filter.where({ an, fn }));
 
   Object.entries(filter.search ?? {}).forEach(([key, value]) => {
-    const build = SEARCHABLE[key];
-    if (build && value.trim()) conditions.push(build(value.trim()));
+    conditions.push(searchCondition(key, value));
   });
 
   const sortColumn = SORTABLE[filter.sortBy ?? 'createdAt'] ?? jobs.createdAt;

@@ -30,7 +30,8 @@
     "test:layers": "tsx --tsconfig tsconfig.json tests/read-layers.ts && tsx --tsconfig tsconfig.json tests/read-ai-sanitize.ts",
     "test:import": "tsx --tsconfig tsconfig.json tests/shipment-import.ts && tsx --tsconfig tsconfig.json tests/shipment-xlsx.ts",
     "test:pending": "tsx --tsconfig tsconfig.json tests/pending-filter.ts",
-    "test:bulk": "tsx --tsconfig tsconfig.json tests/bulk-decision.ts"
+    "test:bulk": "tsx --tsconfig tsconfig.json tests/bulk-decision.ts",
+    "test:vessel": "tsx --tsconfig tsconfig.json tests/vessel-search.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",
