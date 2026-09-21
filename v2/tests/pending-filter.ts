@@ -81,15 +81,52 @@ function combineWithQueueTest() {
  */
 function readFilterTest() {
   const FILTERS = [{ key: 'all' }, { key: 'no' }, { key: 'yes' }] as const;
-  const read = (v: string) => (FILTERS.find((f) => f.key === v) ?? FILTERS[0]).key;
+  /* ยกตรรกะจากหน้า pending มาทั้งก้อน รวมเงื่อนไขว่าใช้ได้เฉพาะแท็บ bl */
+  const read = (v: string, tab: string) =>
+    (tab === 'bl' ? FILTERS.find((f) => f.key === v) ?? FILTERS[0] : FILTERS[0]).key;
 
-  assert.equal(read(''), 'all', 'ไม่ระบุ = ทั้งหมด');
-  assert.equal(read('no'), 'no');
-  assert.equal(read('yes'), 'yes');
-  assert.equal(read('1'), 'all', 'ค่าเดิมจากลิงก์เก่าต้องตกกลับเป็นทั้งหมด ไม่ใช่พัง');
-  assert.equal(read('ไม่รู้จัก'), 'all');
+  assert.equal(read('', 'bl'), 'all', 'ไม่ระบุ = ทั้งหมด');
+  assert.equal(read('no', 'bl'), 'no');
+  assert.equal(read('yes', 'bl'), 'yes');
+  assert.equal(read('1', 'bl'), 'all', 'ค่าเดิมจากลิงก์เก่าต้องตกกลับเป็นทั้งหมด ไม่ใช่พัง');
+  assert.equal(read('ไม่รู้จัก', 'bl'), 'all');
 
-  console.log('PASS: อ่านค่าตัวกรองจาก URL — ค่าที่ไม่รู้จักตกกลับเป็นทั้งหมด');
+  /*
+   * แท็บอื่นต้องเป็น "ทั้งหมด" เสมอ แม้ URL จะพา files=no ติดมา
+   * ไม่งั้นกดจากแท็บ 1 ที่กรองอยู่ไปแท็บอื่น แล้วตารางจะหายไปเกือบหมด
+   * โดยไม่มีปุ่มให้กดปิดตัวกรอง เพราะแถบถูกซ่อนไปแล้ว
+   */
+  for (const tab of ['fn', 'draft', 'edoc']) {
+    assert.equal(read('no', tab), 'all', `แท็บ ${tab} ต้องไม่รับตัวกรองไฟล์`);
+    assert.equal(read('yes', tab), 'all', `แท็บ ${tab} ต้องไม่รับตัวกรองไฟล์`);
+  }
+
+  console.log('PASS: ตัวกรองมีเฉพาะแท็บ bl · ค่าที่ไม่รู้จักตกกลับเป็นทั้งหมด');
+}
+
+/**
+ * ส่งอนุมัติ AN ได้ต่อเมื่อมีไฟล์ AN หรือ BL แนบแล้ว
+ *
+ * ยกเงื่อนไขที่หน้าจอใช้ตัดสินใจแสดงปุ่มมาตรวจ ให้ตรงกับที่ฝั่งเซิร์ฟเวอร์บังคับ
+ * ถ้าสองฝั่งไม่ตรงกัน จะได้ปุ่มที่กดแล้ว error ทุกครั้ง หรือแย่กว่านั้นคือ
+ * ซ่อนปุ่มทั้งที่ส่งได้จริง แล้วงานค้างโดยไม่มีใครรู้ว่าติดอะไร
+ */
+function canSubmitTest() {
+  type Files = Record<string, { id: string; fileName: string }> | null;
+  const hasFile = (f: Files) => Boolean(f?.ARRIVAL_NOTICE || f?.BL);
+  const file = { id: 'FIL-1', fileName: 'x.pdf' };
+
+  assert.equal(hasFile({ ARRIVAL_NOTICE: file }), true, 'มีไฟล์ AN ส่งได้');
+  assert.equal(hasFile({ BL: file }), true, 'มีไฟล์ BL ส่งได้ — อย่างใดอย่างหนึ่งก็พอ');
+  assert.equal(hasFile({ ARRIVAL_NOTICE: file, BL: file }), true, 'มีทั้งคู่ส่งได้');
+
+  assert.equal(hasFile(null), false, 'ไม่มีไฟล์เลย ส่งไม่ได้');
+  assert.equal(hasFile({}), false, 'ไม่มีไฟล์เลย ส่งไม่ได้');
+  // ไฟล์หมวดอื่นไม่นับ เพราะไม่ใช่เอกสารต้นเรื่องที่ NAMKANG ใช้ตรวจ
+  assert.equal(hasFile({ FINAL_INVOICE: file, INVOICE_GOODS: file }), false,
+    'ไฟล์หมวดอื่นไม่นับเป็นเอกสารต้นเรื่อง');
+
+  console.log('PASS: ส่งอนุมัติได้เฉพาะงานที่มีไฟล์ AN หรือ BL');
 }
 
 /**
@@ -121,5 +158,6 @@ function sortDefaultTest() {
 filterShapeTest();
 combineWithQueueTest();
 readFilterTest();
+canSubmitTest();
 sortDefaultTest();
 console.log('\nทั้งหมดผ่าน');

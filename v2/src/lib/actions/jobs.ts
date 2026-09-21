@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, bls, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
@@ -36,6 +36,31 @@ async function requestApprovalImpl(formData: FormData) {
   if (type === 'FN') {
     const an = await latestApprovalRow(jobId, 'AN');
     if (an?.status !== 'APPROVED') throw new Error('ต้องผ่านการอนุมัติ AN ก่อน');
+  }
+
+  /*
+   * ส่งอนุมัติ AN ต้องมีไฟล์เอกสารต้นเรื่องแนบอยู่ก่อน
+   *
+   * NAMKANG อนุมัติโดยเปิดไฟล์ AN/BL ดูเทียบกับข้อมูลที่คีย์ไว้ ถ้าไม่มีไฟล์
+   * ก็ไม่มีอะไรให้ตรวจ รายการจะไปค้างอยู่ในคิวเขาจนกว่าจะมีคนย้อนกลับมาแนบให้
+   *
+   * งานที่นำเข้าจากไฟล์ตาราง (CSV/Excel) เข้าข่ายนี้ทั้งชุด เพราะมีข้อมูลครบ
+   * แต่ยังไม่มีไฟล์ ก่อนหน้านี้กดส่งอนุมัติได้เลยซึ่งไปตกค้างฝั่งปลายทาง
+   *
+   * ตรวจฝั่งเซิร์ฟเวอร์ด้วย ไม่ใช่แค่ซ่อนปุ่ม เพราะการกดหลายรายการพร้อมกัน
+   * ส่ง id มาตรง ๆ และฟอร์มถูกยิงตรงได้ กติกาจึงไม่ควรอยู่แค่ฝั่งเบราว์เซอร์
+   */
+  if (type === 'AN') {
+    const [file] = await db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(
+        eq(files.jobId, jobId),
+        eq(files.isCurrent, true),
+        inArray(files.category, ['ARRIVAL_NOTICE', 'BL']),
+      ))
+      .limit(1);
+    if (!file) throw new Error('ยังไม่มีไฟล์ AN หรือ BL แนบไว้ — แนบไฟล์ก่อนส่งอนุมัติ');
   }
 
   const id = newId('APR');

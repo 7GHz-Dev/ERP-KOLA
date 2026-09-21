@@ -45,12 +45,23 @@ function columnsFor(
     col.consignee(), col.eta(), col.lastDem(), col.lastDet()];
 
   if (tab === 'bl') {
+    /*
+     * ส่งอนุมัติได้ต่อเมื่อมีไฟล์ AN หรือ BL แนบแล้ว
+     *
+     * NAMKANG อนุมัติโดยเปิดไฟล์ดูเทียบกับข้อมูลที่คีย์ไว้ ไม่มีไฟล์ก็ไม่มีอะไรให้ตรวจ
+     * ฝั่งเซิร์ฟเวอร์กันไว้อีกชั้นแล้ว ตรงนี้กันไม่ให้กดตั้งแต่แรก จะได้ไม่ต้องเจอ error
+     * หลังกดไปแล้ว และบอกไปเลยว่าต้องทำอะไรต่อ
+     */
+    const hasFile = (r: JobRow) =>
+      Boolean(r.currentFiles?.ARRIVAL_NOTICE || r.currentFiles?.BL);
+
     return [
       // ช่องติ๊กไว้หน้าสุด ใช้เลือกหลายรายการแล้วส่งอนุมัติทีเดียว
       ...(sub === 'wait' ? [{
         label: '', kind: 'actions' as const, className: 'col-pick',
         header: <PickAllBox />,
-        render: (r: JobRow) => <PickBox id={r.id} />,
+        // งานที่ยังไม่มีไฟล์ติ๊กไม่ได้ ไม่งั้นกด "ส่งอนุมัติทั้งหมด" แล้วจะติดเป็นใบ ๆ
+        render: (r: JobRow) => (hasFile(r) ? <PickBox id={r.id} /> : null),
       }] : []),
       col.createdAt(), col.clientInCharge(), col.source(), col.shipper(), col.blNo(),
       col.consignee(), col.eta(), col.demDet(),
@@ -67,7 +78,14 @@ function columnsFor(
                   เป็นลิงก์จริง จึงส่งต่อและกดรีเฟรชได้
                 */}
                 <Link className="button tiny" href={`/bl-edit/${r.id}`}>แก้ไข</Link>
-                <RequestApproval jobId={r.id} type="AN" label={r.anStatus === 'REJECTED' ? 'ส่งใหม่' : 'ส่งอนุมัติ'} />
+                {hasFile(r) ? (
+                  <RequestApproval jobId={r.id} type="AN" label={r.anStatus === 'REJECTED' ? 'ส่งใหม่' : 'ส่งอนุมัติ'} />
+                ) : (
+                  /* บอกว่าติดอะไรและไปทำต่อที่ไหน ดีกว่าปุ่มหายไปเฉย ๆ แล้วงงว่าทำไม */
+                  <Link className="badge pending file-link" href="/intake/an?tab=attach">
+                    ยังไม่มีไฟล์ AN/BL — แนบก่อน
+                  </Link>
+                )}
               </>
             ) : null}
           </div>
@@ -188,7 +206,20 @@ export default async function PendingPage({
    * แล้วจะเหลือเฉพาะชุดนั้น เอาไปไล่อัปที่หน้าแนบไฟล์ AN/BL ได้ครบในรอบเดียว
    * ส่วน "มีไฟล์" ใช้ดูว่าอัปไปแล้วเท่าไหร่ เป็นฝั่งตรงข้ามกันพอดี
    */
-  const files = (FILE_FILTERS.find((f) => f.key === one('files')) ?? FILE_FILTERS[0]).key;
+  /*
+   * มีเฉพาะแท็บ 1 งานใส่ข้อมูล BL
+   *
+   * ไฟล์ AN/BL เป็นเรื่องของขั้นรับงานซึ่งจบไปตั้งแต่แท็บนี้ พอถึงแท็บถัด ๆ ไป
+   * (Final Invoice · Draft ใบขน · เตรียมเอกสารเดิน E) งานผ่านการอนุมัติ AN มาแล้ว
+   * ซึ่งบังคับว่าต้องมีไฟล์ ตัวกรองจึงไม่เหลืออะไรให้แยก
+   *
+   * บังคับเป็น all ตรงนี้จุดเดียว ทั้งเงื่อนไข query และลิงก์ที่พาค่าต่อจึงถูกตามไปเอง
+   * ไม่ต้องไปไล่เช็กแท็บซ้ำในแต่ละที่ แล้วเสี่ยงลืมที่ใดที่หนึ่ง
+   */
+  const canFilterFiles = tab === 'bl';
+  const files = canFilterFiles
+    ? (FILE_FILTERS.find((f) => f.key === one('files')) ?? FILE_FILTERS[0]).key
+    : 'all';
 
   /*
    * ไม่ได้สั่งเรียง = เรียงตามวันที่สร้างงาน ใหม่สุดอยู่บนสุด
@@ -268,10 +299,11 @@ export default async function PendingPage({
       ) : null}
 
       {/*
-        ตัวกรองงานที่ยังไม่มีไฟล์ AN/BL — เป็นลิงก์สลับเปิด/ปิด ไม่ใช่ช่องติ๊กที่ต้องกดส่ง
-        หน้านี้เป็น server component ทั้งหน้า การเปลี่ยนตัวกรองจึงเป็นการเปลี่ยน URL
-        ซึ่งส่งต่อและกดรีเฟรชได้ เหมือนแท็บอื่นในหน้านี้
+        ตัวกรองไฟล์ AN/BL — มีเฉพาะแท็บ 1 ซึ่งเป็นขั้นที่ยังตามหาไฟล์กันอยู่
+        เป็นลิงก์เปลี่ยน URL ไม่ใช่ช่องติ๊กที่ต้องกดส่ง เพราะหน้านี้เป็น server component
+        ทั้งหน้า จึงส่งต่อและกดรีเฟรชได้ เหมือนแท็บอื่นในหน้านี้
       */}
+      {canFilterFiles ? (
       <div className="filter-bar">
         <span className="filter-label">ไฟล์ AN / BL</span>
         <div className="chip-group">
@@ -293,11 +325,12 @@ export default async function PendingPage({
         </div>
         {files === 'no' ? (
           <span className="filter-note">
-            {total} งานยังไม่มีไฟล์ AN และ BL ·{' '}
+            {total} งานยังไม่มีไฟล์ AN และ BL · ส่งอนุมัติไม่ได้จนกว่าจะแนบไฟล์ ·{' '}
             <Link href="/intake/an?tab=attach">ไปหน้าแนบไฟล์ AN/BL เข้างาน</Link>
           </span>
         ) : null}
       </div>
+      ) : null}
 
       {tab === 'bl' && sub === 'wait' ? (
         <BulkBar
