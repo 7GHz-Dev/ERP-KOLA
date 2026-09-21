@@ -94,7 +94,11 @@ const normHeader = (v: string) => v.trim().toUpperCase().replace(/[\s.]/g, '');
 export type SheetRow = { lineNo: number; cell: Record<string, string> };
 
 /**
- * อ่านไฟล์เป็นแถวตามหัวคอลัมน์มาตรฐาน
+ * จัดตารางดิบให้เป็นแถวตามหัวคอลัมน์มาตรฐาน
+ *
+ * `grid` คือช่องทั้งหมดเรียงตามแถวและคอลัมน์ ซึ่งได้มาจากทั้ง CSV และ Excel
+ * กฎการจับคอลัมน์จึงเป็นชุดเดียวกัน ไม่ว่าผู้ใช้จะส่งไฟล์แบบไหนมา
+ * ถ้าแยกกันเขียนสองที่ จะมีวันที่แก้กฎที่หนึ่งแล้วลืมอีกที่ แล้วผลต่างกันเงียบ ๆ
  *
  * รับสองแบบที่ผู้ใช้ส่งมาจริง
  *   1. มีหัวคอลัมน์ — จับคู่ตามชื่อ สลับลำดับคอลัมน์ได้
@@ -103,40 +107,53 @@ export type SheetRow = { lineNo: number; cell: Record<string, string> };
  * แบบที่สองมีคอลัมน์ลำดับแถวนำหน้าอยู่ด้วย (1834, 1835, …) ซึ่งเป็นเลขที่ Excel
  * ใส่ไว้เอง ไม่ใช่ข้อมูลของงาน ตรวจจากจำนวนช่องว่าเกินมาหนึ่งแล้วตัดทิ้ง
  * ไม่ได้ดูว่าเป็นตัวเลขไหม เพราะช่อง CUSTOMER ก็เป็นตัวเลขได้เหมือนกัน
+ *
+ * `lineAt` แปลงลำดับแถวในตารางเป็นเลขบรรทัดที่ผู้ใช้เห็นในโปรแกรมของตัวเอง
+ * CSV กับ Excel นับไม่เหมือนกันเมื่อมีแถวว่างคั่น จึงให้ผู้เรียกบอกมา
  */
-export function readSheet(content: string): { rows: SheetRow[]; hasHeader: boolean } {
-  const lines = csvLines(content);
-  if (!lines.length) return { rows: [], hasHeader: false };
+export function rowsFromGrid(
+  grid: string[][],
+  lineAt: (index: number) => number = (i) => i + 1,
+): { rows: SheetRow[]; hasHeader: boolean } {
+  if (!grid.length) return { rows: [], hasHeader: false };
 
-  const firstCells = splitCsvLine(lines[0]).map(normHeader);
   const wanted = COLUMNS.map(normHeader);
+  const firstCells = grid[0].map(normHeader);
   // ถือว่ามีหัวคอลัมน์เมื่อบรรทัดแรกมีชื่อที่รู้จักอย่างน้อยครึ่งหนึ่ง
   const known = firstCells.filter((c) => wanted.includes(c)).length;
   const hasHeader = known >= Math.ceil(wanted.length / 2);
 
   if (hasHeader) {
-    const head = splitCsvLine(lines[0]).map((h) => h.trim());
-    const rows = lines.slice(1).map((line, i) => {
-      const cells = splitCsvLine(line);
+    const head = grid[0].map((h) => h.trim());
+    // หาตำแหน่งของแต่ละคอลัมน์ครั้งเดียว ไม่ต้องค้นซ้ำทุกแถว
+    const at = new Map(COLUMNS.map((col) => [
+      col, head.findIndex((h) => normHeader(h) === normHeader(col)),
+    ]));
+    const rows = grid.slice(1).map((cells, i) => {
       const cell: Record<string, string> = {};
       for (const col of COLUMNS) {
-        const at = head.findIndex((h) => normHeader(h) === normHeader(col));
-        cell[col] = at >= 0 ? (cells[at] ?? '').trim() : '';
+        const n = at.get(col)!;
+        cell[col] = n >= 0 ? (cells[n] ?? '').trim() : '';
       }
-      return { lineNo: i + 2, cell };
+      return { lineNo: lineAt(i + 1), cell };
     });
     return { rows, hasHeader };
   }
 
-  const rows = lines.map((line, i) => {
-    const cells = splitCsvLine(line);
+  const rows = grid.map((cells, i) => {
     // เลขลำดับแถวที่ Excel ใส่ไว้หน้าสุด ตัดออกก่อนจับคู่คอลัมน์
     const body = cells.length > COLUMNS.length ? cells.slice(1) : cells;
     const cell: Record<string, string> = {};
     COLUMNS.forEach((col, n) => { cell[col] = (body[n] ?? '').trim(); });
-    return { lineNo: i + 1, cell };
+    return { lineNo: lineAt(i), cell };
   });
   return { rows, hasHeader };
+}
+
+/** อ่านไฟล์ CSV เป็นแถว — ตัดข้อความเป็นตารางแล้วส่งต่อให้ rowsFromGrid() */
+export function readSheet(content: string): { rows: SheetRow[]; hasHeader: boolean } {
+  const grid = csvLines(content).map(splitCsvLine);
+  return rowsFromGrid(grid);
 }
 
 /* ---------------- แปลงค่าในช่อง ---------------- */

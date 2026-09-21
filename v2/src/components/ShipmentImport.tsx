@@ -73,10 +73,10 @@ export function ShipmentImport({
       <div className="section-title">นำเข้า Shipment Detail จากไฟล์ตาราง</div>
 
       <label className="drop-zone">
-        เลือกไฟล์ .csv ของตารางงาน · หนึ่งแถวเป็นหนึ่งงาน
+        เลือกไฟล์ตารางงาน — Excel (.xlsx) หรือ .csv · หนึ่งแถวเป็นหนึ่งงาน
         <input
           type="file"
-          accept=".csv,text/csv"
+          accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
           disabled={busy}
           onChange={(e) => void pick(e.target.files)}
         />
@@ -159,7 +159,8 @@ export function ShipmentImport({
             แถวที่มีคำเตือนยังนำเข้าได้ — ช่องที่จับกับ Master Data ไม่ได้จะเว้นว่างไว้
             แล้วแก้รายใบทีหลังได้ที่หน้างานคงค้าง ·
             ใบที่มีเลข BL ตรงกับงานในระบบแล้วจะถูกข้ามเสมอ นำเข้าไฟล์เดิมซ้ำจึงไม่เกิดงานซ้ำ ·
-            ไฟล์ที่ไม่มีหัวคอลัมน์ ระบบอ่านตามลำดับคอลัมน์ของไฟล์ตารางงานที่ระบบ export ออกไป
+            ไฟล์ที่ไม่มีหัวคอลัมน์ ระบบอ่านตามลำดับคอลัมน์ของไฟล์ตารางงานที่ระบบ export ออกไป ·
+            ไฟล์ Excel ระบบอ่านชีตแรกเสมอ ถ้าข้อมูลอยู่แผ่นอื่นให้ย้ายมาไว้แผ่นแรกก่อน
           </p>
         </>
       ) : null}

@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { bls, containers, jobSequences, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { decodeCsv, readSheet, toDrafts, type ShipmentDraft } from '@/lib/shipment-import';
+import { readXlsx } from '@/lib/shipment-xlsx';
 import { logActivity, newId, recordStatus, runAction } from './common';
 
 /**
@@ -109,14 +110,33 @@ function lookup(pool: MasterRow[], type: string, value: string): string | null {
 
 /* ---------------- อ่านไฟล์ + ตรวจ ---------------- */
 
+/**
+ * อ่านไฟล์ที่อัปมา — รับทั้ง Excel และ CSV
+ *
+ * ดูจากนามสกุลว่าจะใช้ตัวอ่านไหน ไฟล์ที่ผู้ใช้ทำงานด้วยจริงเป็น .xlsx
+ * ส่วน .csv มาจากการ export ของระบบเองหรือ Save As ของ Excel
+ *
+ * .xls รุ่นเก่า (ก่อน Excel 2007) อ่านไม่ได้เพราะเป็นคนละรูปแบบไฟล์กันคนละเรื่อง
+ * บอกให้ไปบันทึกใหม่ดีกว่าปล่อยให้เปิดแล้วพังเป็นข้อความที่อ่านไม่ออก
+ */
 async function parseUpload(formData: FormData) {
   const blob = formData.get('file');
-  if (!(blob instanceof File) || blob.size === 0) throw new Error('กรุณาเลือกไฟล์ CSV');
+  if (!(blob instanceof File) || blob.size === 0) throw new Error('กรุณาเลือกไฟล์');
   if (blob.size > MAX_BYTES) throw new Error('ไฟล์ต้องมีขนาดไม่เกิน 4 MB');
-  if (!/\.csv$/i.test(blob.name)) throw new Error('รองรับเฉพาะไฟล์ .csv — ถ้าเป็น Excel ให้บันทึกเป็น CSV ก่อน');
 
-  const content = decodeCsv(new Uint8Array(await blob.arrayBuffer()));
-  const { rows, hasHeader } = readSheet(content);
+  // ตรวจ .xls ก่อน เพราะรูปแบบไฟล์คนละเรื่องกับ .xlsx แม้ชื่อจะคล้ายกัน
+  if (/\.xls$/i.test(blob.name)) {
+    throw new Error('ไฟล์ .xls รุ่นเก่าอ่านไม่ได้ — เปิดใน Excel แล้ว Save As เป็น .xlsx ก่อน');
+  }
+  const isExcel = /\.(xlsx|xlsm)$/i.test(blob.name);
+  if (!isExcel && !/\.csv$/i.test(blob.name)) {
+    throw new Error('รองรับเฉพาะไฟล์ Excel (.xlsx, .xlsm) และ .csv');
+  }
+
+  const bytes = await blob.arrayBuffer();
+  const { rows, hasHeader } = isExcel
+    ? await readXlsx(bytes)
+    : readSheet(decodeCsv(new Uint8Array(bytes)));
   if (!rows.length) throw new Error('ไฟล์ไม่มีข้อมูล');
   if (rows.length > MAX_ROWS) {
     throw new Error(`ไฟล์มี ${rows.length} แถว เกิน ${MAX_ROWS} แถวที่รับได้ — แบ่งไฟล์แล้วนำเข้าทีละส่วน`);
