@@ -9,7 +9,7 @@ import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
 import { requestApprovalMany } from '@/lib/actions/jobs';
 import { deleteJobs } from '@/lib/actions/job-delete';
 import Link from 'next/link';
-import { listJobs, missingArrivalFiles, QUEUE, type JobRow } from '@/lib/queries/jobs';
+import { hasArrivalFiles, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { pendingTabCounts } from '@/lib/queries/dashboard';
 import { intakeOptions } from '@/lib/queries/master';
 
@@ -23,6 +23,18 @@ const TABS = [
 ] as const;
 
 const SEARCH_KEYS = ['person', 'shipper', 'blNo', 'consignee', 'refNo', 'entryNo'];
+
+/*
+ * ตัวกรองตามไฟล์เอกสารต้นเรื่อง (Arrival Notice / BL)
+ *
+ * "ทั้งหมด" อยู่หน้าสุดเพราะเป็นค่าตั้งต้น ปุ่มที่กำลังเลือกอยู่จึงไล่จากซ้ายไปขวา
+ * ตามลำดับที่คนใช้ — ดูทั้งหมดก่อน แล้วค่อยแยกดูว่าใบไหนยังขาดไฟล์
+ */
+const FILE_FILTERS = [
+  { key: 'all', label: 'ทั้งหมด' },
+  { key: 'no', label: 'ไม่มีไฟล์' },
+  { key: 'yes', label: 'มีไฟล์' },
+] as const;
 
 function columnsFor(
   tab: string,
@@ -170,12 +182,13 @@ export default async function PendingPage({
   const sub: 'wait' | 'approve' = one('sub') === 'approve' ? 'approve' : 'wait';
 
   /*
-   * กรองเฉพาะงานที่ยังไม่มีไฟล์ AN และ BL เลยสักใบ
+   * กรองตามว่ามีไฟล์ AN/BL แนบอยู่หรือยัง
    *
-   * งานที่นำเข้าจากไฟล์ตารางมีข้อมูลครบแต่ยังไม่มีไฟล์แนบ ติ๊กช่องนี้แล้วจะเหลือ
-   * เฉพาะชุดนั้น เอาไปไล่อัปไฟล์ที่หน้า "แนบไฟล์ AN/BL เข้างาน" ได้ครบในรอบเดียว
+   * งานที่นำเข้าจากไฟล์ตารางมีข้อมูลครบแต่ยังไม่มีไฟล์แนบ เลือก "ไม่มีไฟล์"
+   * แล้วจะเหลือเฉพาะชุดนั้น เอาไปไล่อัปที่หน้าแนบไฟล์ AN/BL ได้ครบในรอบเดียว
+   * ส่วน "มีไฟล์" ใช้ดูว่าอัปไปแล้วเท่าไหร่ เป็นฝั่งตรงข้ามกันพอดี
    */
-  const noFiles = one('noFiles') === '1';
+  const files = (FILE_FILTERS.find((f) => f.key === one('files')) ?? FILE_FILTERS[0]).key;
 
   /*
    * ไม่ได้สั่งเรียง = เรียงตามวันที่สร้างงาน ใหม่สุดอยู่บนสุด
@@ -195,7 +208,7 @@ export default async function PendingPage({
 
   const where = (ctx: Parameters<typeof queue>[0]) => [
     ...queue(ctx),
-    ...(noFiles ? [missingArrivalFiles()] : []),
+    ...(files === 'all' ? [] : [hasArrivalFiles(files === 'yes')]),
   ];
 
   const [{ rows, total }, counts, options] = await Promise.all([
@@ -212,7 +225,7 @@ export default async function PendingPage({
    * ตัวกรองต้องติดไปกับทุกลิงก์ในหน้า (สลับแท็บ · เรียงลำดับ · ค้นหา)
    * ไม่งั้นกดอะไรก็ตามแล้วตัวกรองหลุด ซึ่งงงกว่าไม่มีตัวกรองเลย
    */
-  const filterCarry = { ...carry, ...(noFiles ? { noFiles: '1' } : {}) };
+  const filterCarry = { ...carry, ...(files === 'all' ? {} : { files }) };
   const fullCarry = { ...filterCarry, tab, sub };
 
   const table = (
@@ -260,17 +273,27 @@ export default async function PendingPage({
         ซึ่งส่งต่อและกดรีเฟรชได้ เหมือนแท็บอื่นในหน้านี้
       */}
       <div className="filter-bar">
-        <a
-          className={`chip-toggle${noFiles ? ' on' : ''}`}
-          href={`/pending?${new URLSearchParams({
-            ...carry, tab, sub, ...(noFiles ? {} : { noFiles: '1' }),
-          }).toString()}`}
-        >
-          {noFiles ? '✓ ' : ''}เฉพาะงานที่ยังไม่ได้แนบไฟล์ AN / BL
-        </a>
-        {noFiles ? (
+        <span className="filter-label">ไฟล์ AN / BL</span>
+        <div className="chip-group">
+          {FILE_FILTERS.map((f) => {
+            const next = new URLSearchParams({ ...carry, tab, sub });
+            // "ทั้งหมด" เป็นค่าตั้งต้น จึงไม่ต้องใส่ลง URL ให้รกและกลายเป็นลิงก์คนละเส้น
+            if (f.key !== 'all') next.set('files', f.key);
+            return (
+              <a
+                key={f.key}
+                className={`chip-toggle${f.key === files ? ' on' : ''}`}
+                href={`/pending?${next.toString()}`}
+                aria-current={f.key === files ? 'true' : undefined}
+              >
+                {f.label}
+              </a>
+            );
+          })}
+        </div>
+        {files === 'no' ? (
           <span className="filter-note">
-            แสดง {total} งานที่ยังไม่มีไฟล์ AN และ BL ·{' '}
+            {total} งานยังไม่มีไฟล์ AN และ BL ·{' '}
             <Link href="/intake/an?tab=attach">ไปหน้าแนบไฟล์ AN/BL เข้างาน</Link>
           </span>
         ) : null}

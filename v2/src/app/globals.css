@@ -96,21 +96,30 @@ a { color: var(--blue); }
 .tabs a small { opacity: .7; font-weight: 400; }
 
 /*
-  แถบตัวกรองใต้แท็บ — ตัวกรองที่เปิดค้างไว้ได้ ไม่ใช่การสลับมุมมองแบบแท็บ
-  จึงทำเป็นชิปกดสลับ ให้ต่างจากแท็บด้านบนอย่างเห็นได้ชัด ไม่งั้นจะนึกว่าเป็นแท็บที่ห้า
+  แถบตัวกรองใต้แท็บ — เลือกได้ทีละอย่างจากสามตัวเลือก ไม่ใช่การสลับมุมมองแบบแท็บ
+  จึงทำเป็นชิปต่อกันเป็นกลุ่มเดียว ให้ต่างจากแท็บด้านบนอย่างเห็นได้ชัด
+  ไม่งั้นจะนึกว่าเป็นแท็บอีกชั้น แล้วหาไม่เจอว่าตัวกรองอยู่ไหน
 */
 .filter-bar {
   display: flex; align-items: center; gap: 10px;
   flex-wrap: wrap; margin-bottom: 12px;
 }
+.filter-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+/* ชิปต่อกันเป็นแถบเดียว ขอบชนกันเพื่อให้เห็นว่าเป็นชุดที่เลือกได้อย่างเดียว */
+.chip-group { display: flex; }
+.chip-group .chip-toggle { border-radius: 0; margin-left: -1px; }
+.chip-group .chip-toggle:first-child { border-radius: 999px 0 0 999px; margin-left: 0; }
+.chip-group .chip-toggle:last-child { border-radius: 0 999px 999px 0; }
 .chip-toggle {
-  border: 1px dashed var(--line); background: var(--surface); color: var(--muted);
-  padding: 6px 13px; border-radius: 999px; text-decoration: none; font-size: 13px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  padding: 6px 15px; border-radius: 999px; text-decoration: none; font-size: 13px;
 }
 .chip-toggle:hover { border-color: var(--navy); color: var(--ink); }
 .chip-toggle.on {
-  background: var(--blue); border-color: var(--blue); border-style: solid;
+  background: var(--blue); border-color: var(--blue);
   color: #fff; font-weight: 600;
+  /* ตัวที่เลือกอยู่ต้องทับขอบของตัวข้าง ๆ ไม่งั้นขอบสีเทาจะพาดผ่านกลางชิปสีน้ำเงิน */
+  position: relative; z-index: 1;
 }
 .filter-note { font-size: 12px; color: var(--muted); }
 
