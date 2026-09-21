@@ -2,25 +2,19 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { jobs } from '@/db/schema';
 import { jobCreatedConditions } from './job-created-date';
+import { TEMPLATE_COLUMNS } from './template-columns';
 
 /**
  * ไฟล์ตารางงานตามแบบฟอร์มที่ทีมใช้กันอยู่เดิม
  *
- * หัวคอลัมน์และลำดับยกมาจากไฟล์จริงของผู้ใช้ทั้งแถว ไม่ได้จัดใหม่
- * เพราะปลายทางเป็นไฟล์ที่เอาไปวางต่อในตารางหลักที่ใช้กันอยู่แล้ว
- * ถ้าสลับคอลัมน์หรือเปลี่ยนคำ คนรับไฟล์ต้องมานั่งจับคู่ใหม่ทุกครั้ง
+ * หัวคอลัมน์อยู่ที่ template-columns.ts เพราะการนำเข้าไฟล์ก็ใช้ชุดเดียวกัน
+ * และต้องใช้ได้ในเบราว์เซอร์ด้วย ต่างจากไฟล์นี้ที่ดึงข้อมูลจากฐานข้อมูล
  *
- * ช่องที่ระบบยังไม่ได้เก็บข้อมูลไว้ (AT-MAESOT · OPEN · K · O · REMARK)
+ * ช่องที่ระบบยังไม่ได้เก็บข้อมูลไว้ (AT-MAESOT · OPEN · K · O)
  * คงหัวคอลัมน์ไว้แต่ปล่อยว่าง ให้คนกรอกเองใน Excel ภายหลัง
- * ตัดออกไม่ได้เพราะตำแหน่งคอลัมน์ต้องตรงกับไฟล์เดิม
  */
 
-export const TEMPLATE_COLUMNS = [
-  'CUSTOMER', 'ETA', 'ประเภท', 'INV.', 'SUR', 'TRANSPORT', 'AT-MAESOT', 'OPEN',
-  'SHIPPER', 'CON', 'BILL OF LADING', 'CONTAINER NO.', 'UNIT', 'WEIGHT',
-  'SHIPLINE', 'VESSEL', 'PORT', 'REF', 'REMARK', 'CONSIGNEE', 'NOTIFY',
-  'K', 'O', 'DEM', 'DEM DATE', 'DET', 'DET DATE',
-] as const;
+export { TEMPLATE_COLUMNS };
 
 /** วันที่ในไฟล์นี้เขียนแบบ d/m/yy ตามที่ทีมใช้ ไม่ใช่ dd/mm/yyyy แบบในระบบ */
 function tplDate(value: string | Date | null | undefined): string {

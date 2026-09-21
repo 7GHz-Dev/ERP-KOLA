@@ -27,7 +27,8 @@
     "test:frame": "tsx --tsconfig tsconfig.json tests/auto-frame.ts",
     "seed:parse-templates": "tsx --tsconfig tsconfig.json scripts/build-parse-templates.ts",
     "try:ocr": "tsx --tsconfig tsconfig.json scripts/try-ocr-ai.ts",
-    "test:layers": "tsx --tsconfig tsconfig.json tests/read-layers.ts && tsx --tsconfig tsconfig.json tests/read-ai-sanitize.ts"
+    "test:layers": "tsx --tsconfig tsconfig.json tests/read-layers.ts && tsx --tsconfig tsconfig.json tests/read-ai-sanitize.ts",
+    "test:import": "tsx --tsconfig tsconfig.json tests/shipment-import.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",

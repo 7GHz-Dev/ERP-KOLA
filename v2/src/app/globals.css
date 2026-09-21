@@ -1539,6 +1539,14 @@ table.data tbody tr.batch-saved { opacity: .62; }
 .batch-foot > span { font-weight: 600; }
 .batch-note { margin: 0; font-size: 12px; color: var(--muted); }
 
+/* สรุปผลหลังนำเข้า Shipment Detail เสร็จ — แทนที่ตารางผลตรวจที่หายไปตอนยืนยัน */
+.import-done {
+  display: grid; gap: 8px; padding: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+.import-done > p { margin: 0; }
+.import-done > p:first-child { font-weight: 600; }
+
 /* คำอธิบายใต้ช่องกรอก เช่นบอกว่าระบบเปลี่ยนประเภทงานให้เพราะอะไร */
 .field-note { display: block; margin-top: 3px; font-size: 11px; color: var(--blue); }
 
