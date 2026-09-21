@@ -222,6 +222,31 @@ export function splitContainers(raw: string): string[] {
 }
 
 /**
+ * ชื่อสายเรือที่สะกดผิดจนติดมาในไฟล์
+ *
+ * "KNOT GOLBAL" เป็นการสลับตัวอักษรของ "KNOT GLOBAL" ที่พิมพ์ผิดไว้ตั้งแต่แรก
+ * แล้วถูกคัดลอกต่อกันมาทั้งคอลัมน์ ในไฟล์ชุดเดียวกันจึงมีทั้งสองแบบปนกัน
+ *
+ * แก้ตอนอ่านไฟล์ ไม่ใช่ไปไล่แก้ในไฟล์ต้นทาง เพราะไฟล์ถูกส่งต่อกันหลายมือ
+ * และจะมีไฟล์รอบถัดไปที่ยังสะกดแบบเดิมเข้ามาอีก
+ *
+ * แก้เฉพาะคำที่รู้แน่ชัดว่าพิมพ์ผิด ไม่ได้เดาคำอื่นหรือจับคู่กับ Master Data
+ * เพราะชื่อที่สะกดต่างกันเล็กน้อยอาจเป็นคนละบริษัทกันจริง ๆ ก็ได้
+ */
+const SHIPLINE_FIXES: Array<[RegExp, string]> = [
+  [/^KNOT\s+GOLBAL$/i, 'KNOT GLOBAL'],
+];
+
+/** ชื่อสายเรือจากไฟล์ แก้คำที่รู้ว่าสะกดผิดให้ ที่เหลือคงไว้ตามเดิม */
+export function fixShipline(raw: string): string {
+  const s = (raw ?? '').replace(/\s+/g, ' ').trim();
+  for (const [pattern, correct] of SHIPLINE_FIXES) {
+    if (pattern.test(s)) return correct;
+  }
+  return s;
+}
+
+/**
  * เลข BL ในไฟล์มีได้สองเลข เช่น "KG1222026-70107(ONEYTYOGF5133300)"
  *
  * เลขหน้าเป็นเลข BL ของตัวแทน ส่วนในวงเล็บเป็นเลข Waybill ของสายเรือ
@@ -284,7 +309,7 @@ export function toDrafts(rows: SheetRow[]): { drafts: ShipmentDraft[]; skipped: 
       voyage,
       eta: sheetDate(cell.ETA),
       transportDate: sheetDate(cell.TRANSPORT),
-      shipline: cell.SHIPLINE ?? '',
+      shipline: fixShipline(cell.SHIPLINE ?? ''),
       containers: splitContainers(cell['CONTAINER NO.']),
       unitAmount: sheetNumber(cell.UNIT),
       grossWeight: sheetNumber(cell.WEIGHT),

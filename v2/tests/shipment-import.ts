@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  blKey, decodeCsv, readSheet, sheetDate, sheetNumber,
+  blKey, decodeCsv, fixShipline, readSheet, sheetDate, sheetNumber,
   splitBlNo, splitContainers, splitCsvLine, splitVessel, toDrafts,
 } from '../src/lib/shipment-import';
 import { candidateNumbers, matchBl, type BlChoice } from '../src/lib/match-bl';
@@ -100,6 +100,18 @@ function valueTests() {
   assert.deepEqual(splitContainers('ONEU 5972378'), ['ONEU5972378']);
   assert.deepEqual(splitContainers(''), []);
 
+  /* ---- ชื่อสายเรือที่สะกดผิดติดมาในไฟล์ ---- */
+  assert.equal(fixShipline('KNOT GOLBAL'), 'KNOT GLOBAL', 'สลับตัวอักษรต้องถูกแก้');
+  assert.equal(fixShipline('knot golbal'), 'KNOT GLOBAL', 'ตัวพิมพ์เล็กก็ต้องแก้');
+  assert.equal(fixShipline('KNOT  GOLBAL '), 'KNOT GLOBAL', 'ช่องว่างเกินไม่ควรทำให้จับไม่ได้');
+  // ที่สะกดถูกอยู่แล้วต้องไม่เปลี่ยน
+  assert.equal(fixShipline('KNOT GLOBAL'), 'KNOT GLOBAL');
+  // สายเรืออื่นต้องไม่ถูกแตะ — แก้เฉพาะคำที่รู้แน่ว่าพิมพ์ผิด ไม่ได้เดาคำอื่น
+  assert.equal(fixShipline('CNC'), 'CNC');
+  assert.equal(fixShipline('MAERSK'), 'MAERSK');
+  assert.equal(fixShipline('KNOT SHIPPING'), 'KNOT SHIPPING', 'ชื่ออื่นที่ขึ้นต้น KNOT ต้องไม่ถูกแก้');
+  assert.equal(fixShipline(''), '');
+
   /* ---- เลข BL ที่มีเลข Waybill อยู่ในวงเล็บ ---- */
   assert.deepEqual(splitBlNo('KG1222026-70107(ONEYTYOGF5133300)'), {
     blNo: 'KG1222026-70107(ONEYTYOGF5133300)',
@@ -132,6 +144,10 @@ function draftTests() {
   assert.equal(first.names.notify, 'KOLA');
   assert.equal(first.names.person, 'AMIN JP');
   assert.equal(first.names.jobType, 'MSFZ - รถยนต์เก่า');
+  // ไฟล์เขียน "KNOT GOLBAL" ซึ่งสะกดผิด ต้องเข้าระบบเป็นชื่อที่ถูก
+  assert.equal(first.shipline, 'KNOT GLOBAL', 'ชื่อสายเรือที่สะกดผิดต้องถูกแก้ตอนนำเข้า');
+  assert.ok(drafts.every((d) => d.shipline === 'KNOT GLOBAL'),
+    'ทุกแถวต้องได้ชื่อเดียวกัน ไม่ว่าไฟล์จะสะกดแบบไหน');
   // แถวนี้ช่อง REF ว่าง ต้องไม่ไปหยิบค่าจากช่องข้างเคียง
   assert.equal(drafts[2].draftRefNo, '');
 
