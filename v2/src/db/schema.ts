@@ -307,6 +307,32 @@ export const jobSequences = pgTable('job_sequences', {
   updatedAt: updatedAt(),
 }, (t) => ({ key: uniqueIndex('job_sequences_key').on(t.year, t.prefix) }));
 
+/**
+ * Plan แลก DO — ชุดงานที่ FAH ส่งให้ Partner ในรอบเดียวกัน
+ *
+ * เดิม FAH กดส่ง Partner ทีละใบ ฝั่ง ANN กับ MAY จึงเห็นแต่กองงานเรียงตามเวลาที่เข้ามา
+ * ไม่มีอะไรบอกว่าใบไหนอยู่ชุดเดียวกันและต้องทำให้ครบพร้อมกัน พอมีใบตกหล่น
+ * ก็ไม่รู้ว่าตกหล่น เพราะไม่มีตัวตั้งต้นให้เทียบว่าชุดนั้นมีกี่ใบ
+ *
+ * ตารางนี้คือตัวตั้งต้นนั้น หนึ่งแถว = หนึ่งรอบที่ตกลงกันว่าจะไปแลกวันไหน
+ * ตัวงานยังผูกอยู่ที่ do_handoffs.do_plan_id เหมือนเดิม จึงไม่กระทบคิวที่มีอยู่
+ */
+export const doPlans = pgTable('do_plans', {
+  id: id(),
+  /** เลขที่ Plan ที่คนใช้เรียกกัน เช่น PLAN-20260922-01 */
+  planNo: text('plan_no').notNull(),
+  /** วันที่ตั้งใจจะไปแลก D/O — เป็นวันที่ล้วน ไม่มีเวลา เพราะเป็นการนัดหมายรายวัน */
+  planDate: date('plan_date').notNull(),
+  note: text('note'),
+  createdBy: text('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  planNoKey: uniqueIndex('do_plans_no_key').on(t.planNo),
+  // หน้า Plan ของ ANN และ MAY เรียงตามวันที่นัดเสมอ
+  planDateIdx: index('do_plans_date_idx').on(t.planDate),
+}));
+
 export const doHandoffs = pgTable('do_handoffs', {
   id: id(),
   jobId: text('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
@@ -317,10 +343,21 @@ export const doHandoffs = pgTable('do_handoffs', {
   partnerName: text('partner_name'),
   invoiceDoFileId: text('invoice_do_file_id'),
   note: text('note'),
+  /*
+   * Plan ที่ใบนี้ถูกจัดเข้าไป — ว่างแปลว่าส่งเดี่ยวแบบเดิม
+   *
+   * ลบ Plan แล้วให้ใบกลับไปเป็นค่าว่าง ไม่ลบตัวงานตาม เพราะงานถูกส่งไปแล้วจริง
+   * และฝั่ง ANN กับ MAY อาจทำไปแล้วบางส่วน
+   */
+  doPlanId: text('do_plan_id').references(() => doPlans.id, { onDelete: 'set null' }),
   sentBy: text('sent_by'),
   sentAt: timestamp('sent_at', { withTimezone: true }),
   updatedAt: updatedAt(),
-}, (t) => ({ jobIdx: index('do_handoffs_job_idx').on(t.jobId) }));
+}, (t) => ({
+  jobIdx: index('do_handoffs_job_idx').on(t.jobId),
+  // หน้า Plan ดึงงานทั้งชุดด้วยค่านี้ค่าเดียว
+  planIdx: index('do_handoffs_plan_idx').on(t.doPlanId),
+}));
 
 export const customsEntries = pgTable('customs_entries', {
   id: id(),

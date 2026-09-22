@@ -81,6 +81,29 @@ export async function navCounts() {
       // ต้องตรงกับ QUEUE.namCustomer('wait') — ยังไม่ได้กดยืนยันข้อมูลลูกค้า
       namCustomerWait: sql<number>`count(*) filter (
         where ${an.status} = 'APPROVED' and ${jobs.customerConfirmedAt} is null)::int`,
+      /*
+       * จำนวน Plan แลก DO ที่ยังทำไม่ครบ — นับเป็นชุด ไม่ใช่เป็นใบ
+       *
+       * นับด้วย subquery แยกเพราะหน่วยเป็นคนละอย่างกับตัวเลขอื่นในนี้ซึ่งนับงาน
+       * ถ้าเอามารวมใน filter เดียวกันจะได้จำนวนใบในชุด ไม่ใช่จำนวนชุด
+       * ต้องตรงกับ listDoPlans({ openOnly: true }) ของแต่ละฝั่ง
+       */
+      annPlanOpen: sql<number>`(
+        select count(*) from do_plans p
+         where exists (select 1 from do_handoffs dh
+                         join jobs j on j.id = dh.job_id and j.is_archived = false
+                        where dh.do_plan_id = p.id and j.do_exchanged_at is null)
+            or not exists (select 1 from do_handoffs dh
+                             join jobs j on j.id = dh.job_id and j.is_archived = false
+                            where dh.do_plan_id = p.id))::int`,
+      mayPlanOpen: sql<number>`(
+        select count(*) from do_plans p
+         where exists (select 1 from do_handoffs dh
+                         join jobs j on j.id = dh.job_id and j.is_archived = false
+                        where dh.do_plan_id = p.id and j.do_claimed_at is null)
+            or not exists (select 1 from do_handoffs dh
+                             join jobs j on j.id = dh.job_id and j.is_archived = false
+                            where dh.do_plan_id = p.id))::int`,
     })
     .from(jobs)
     .leftJoin(an, eq(an.jobId, jobs.id))
