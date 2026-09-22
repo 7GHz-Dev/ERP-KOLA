@@ -5,6 +5,8 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, bls, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
+import { notifyNewJobs } from '@/lib/line-notify';
+import { addDays, formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
@@ -268,6 +270,13 @@ async function saveDoHandoffImpl(formData: FormData) {
   if (sendToPartner) {
     await recordStatus(jobId, job.status, 'DO_SENT',
       `ส่ง DO ให้ ${partnerName || 'Partner'}`, user.id);
+    // แจ้งกลุ่ม LINE เฉพาะตอนกดส่งจริง การกดบันทึกเฉย ๆ ยังไม่เข้าคิวของ ANN/MAY
+    await notifyNewJobs([{
+      blNo: blNo || job.blNo, jobNo: job.jobNo,
+      consigneeName: await consigneeNameOf(job.consigneeId),
+      vessel: job.vessel, voyage: job.voyage,
+      lastDem: formatDate(addDays(eta, job.demDays)),
+    }], 'FAH');
   }
   await logActivity(user.id, sendToPartner ? 'SEND_DO_PARTNER' : 'SAVE_DO_HANDOFF',
     'JOB', jobId, { eta, transportDate, partnerName });
@@ -347,6 +356,19 @@ async function confirmCustomerInfoImpl(formData: FormData) {
 }
 
 /**
+ * ชื่อลูกค้าสำหรับใส่ในข้อความแจ้งเตือน
+ *
+ * แยกออกมาเพราะทั้งสองทางที่ส่งเข้าคิวแลก DO ต้องใช้เหมือนกัน
+ * หาไม่เจอก็คืน null แล้วข้อความจะข้ามบรรทัดนั้นไป ไม่ใช่ล้มทั้งการแจ้งเตือน
+ */
+async function consigneeNameOf(consigneeId: string | null): Promise<string | null> {
+  if (!consigneeId) return null;
+  const [row] = await db.select({ name: masterRecords.name })
+    .from(masterRecords).where(eq(masterRecords.id, consigneeId)).limit(1);
+  return row?.name ?? null;
+}
+
+/**
  * PAINT ส่งชุดปล่อย E-Office ให้ Partner
  *
  * ต้องมีไฟล์ชุดปล่อยที่เซ็นแล้วก่อน ตรวจฝั่งเซิร์ฟเวอร์ด้วยไม่พึ่งแค่ปุ่มบนหน้าจอ
@@ -373,6 +395,19 @@ async function sendEofficeToPartnerImpl(formData: FormData) {
   await recordStatus(jobId, job.status, 'EOFFICE_SENT_PARTNER',
     text(formData.get('note'), 500) || 'ส่งชุดปล่อย E-Office ให้ Partner', user.id);
   await logActivity(user.id, 'SEND_EOFFICE_PARTNER', 'JOB', jobId, {});
+
+  /*
+   * แจ้งกลุ่ม LINE ว่ามีรายการใหม่เข้าคิวแลก DO
+   *
+   * อยู่หลังบันทึกทุกอย่างเสร็จแล้ว และ notifyNewJobs() ไม่ throw ไม่ว่าอะไรเกิดขึ้น
+   * การส่งไม่สำเร็จจึงไม่ทำให้ผู้ใช้กดส่ง Partner ไม่ได้
+   */
+  await notifyNewJobs([{
+    blNo: job.blNo, jobNo: job.jobNo,
+    consigneeName: await consigneeNameOf(job.consigneeId),
+    vessel: job.vessel, voyage: job.voyage,
+    lastDem: formatDate(addDays(job.eta, job.demDays)),
+  }], 'PAINT');
 
   revalidatePath('/paint/eoffice-signed');
   revalidatePath('/pending');
