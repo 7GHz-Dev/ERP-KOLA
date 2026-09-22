@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { updateBlInfo } from '@/lib/actions/jobs';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 import { SearchSelect, SearchText } from '@/components/SearchSelect';
+import { QuickAddShipper } from '@/components/QuickAddShipper';
 import type { Option } from '@/lib/queries/master';
 
 /**
@@ -26,6 +27,7 @@ export type BlEditJob = {
   blType: string | null; shipline: string | null; originPort: string | null;
   unitAmount: string | null; packageType: string | null; grossWeight: string | null;
   goodsValue: string | null; goodsCurrency: string | null;
+  shipperId: string | null;
   consigneeId: string | null; notifyPartyId: string | null; personId: string | null;
   jobTypeId: string | null; portId: string | null; terminalId: string | null;
   customerNote: string | null;
@@ -34,6 +36,7 @@ export type BlEditJob = {
 export type PreviewDoc = { id: string; fileName: string; mimeType: string | null; category: string };
 
 type Opts = {
+  shippers: Option[];
   consignees: Option[]; notify: Option[]; people: Option[]; jobTypes: Option[];
   ports: Option[]; originPorts: Option[]; terminals: Option[]; packageTypes: Option[];
 };
@@ -72,6 +75,7 @@ export function BlEditPanel({
   const [shown, setShown] = useState(source?.id ?? '');
   // SearchSelect เป็นช่องพิมพ์ค้นหา ค่าจึงต้องเก็บเองแล้วส่งผ่าน hidden
   const [personId, setPersonId] = useState(job.personId ?? '');
+  const [shipperId, setShipperId] = useState(job.shipperId ?? '');
   // เมืองต้นทางคุมค่าเอง เพราะเป็นช่องพิมพ์ค้นหาที่เลือกจากรายการได้ด้วย
   const [originPort, setOriginPort] = useState(job.originPort ?? '');
   const docs = [source, other].filter(Boolean) as PreviewDoc[];
@@ -189,6 +193,30 @@ export function BlEditPanel({
           </Field>
           <Field label="วันที่ขนย้าย">
             <input name="transportDate" type="date" defaultValue={job.transportDate ?? ''} />
+          </Field>
+          <Field label="SHIPPER" wide>
+            {/*
+              อยู่เหนือ CONSIGNEE ให้ตรงลำดับบนใบ AN/BL ที่กำลังเทียบอยู่ข้าง ๆ
+              และเป็นช่องกว้างเพราะชื่อบริษัทผู้ส่งยาวกว่าช่องอื่นเกือบทุกช่อง
+
+              เพิ่ม Shipper ใหม่ได้จากตรงนี้เลย เพราะตอนแก้ก็เจอรายชื่อที่ยังไม่มี
+              ในระบบพอ ๆ กับตอนรับงาน ถ้าต้องออกไป Master Data แล้วกลับมา
+              ค่าที่กรอกค้างไว้ในฟอร์มนี้จะหายทั้งหมด
+            */}
+            <input type="hidden" name="shipperId" value={shipperId} />
+            {/*
+              ไม่ใช้ .pair ที่เป็นกริดครึ่ง-ครึ่งเหมือนช่องอื่น เพราะปุ่มเพิ่มไม่ควรกินครึ่งแถว
+              และตอนกางฟอร์มเพิ่ม Shipper มันต้องขึ้นบรรทัดใหม่เต็มความกว้าง
+            */}
+            <div className="bl-edit-shipper">
+              <SearchSelect
+                choices={options.shippers}
+                value={shipperId}
+                placeholder="พิมพ์ค้นหา Shipper"
+                onChange={setShipperId}
+              />
+              <QuickAddShipper onAdded={(id) => setShipperId(id)} />
+            </div>
           </Field>
           <Field label="CONSIGNEE">
             <select name="consigneeId" defaultValue={job.consigneeId ?? ''}>

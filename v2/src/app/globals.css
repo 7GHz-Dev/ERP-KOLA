@@ -1805,3 +1805,14 @@ table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; 
  */
 label.mini:has(.search-select) { overflow: visible; }
 .form-grid:has(.search-select-list) { overflow: visible; }
+
+/*
+ * ช่อง SHIPPER ในแผงแก้ข้อมูล BL — ช่องค้นหายืดเต็ม ปุ่มเพิ่มกว้างเท่าข้อความ
+ *
+ * ไม่ใช้ .pair เหมือนช่องอื่นเพราะนั่นเป็นกริดครึ่ง-ครึ่งสำหรับช่องกรอกสองช่องเท่ากัน
+ * ส่วนตรงนี้เป็นช่องค้นหากับปุ่ม ซึ่งไม่ควรกว้างเท่ากัน
+ * และตอนกางฟอร์มเพิ่ม Shipper ต้องได้ทั้งแถวของตัวเอง ไม่ใช่ถูกบีบอยู่ครึ่งเดียว
+ */
+.bl-edit-shipper { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
+.bl-edit-shipper > .search-select { flex: 1; min-width: 180px; }
+.bl-edit-shipper > .quick-shipper { flex-basis: 100%; }

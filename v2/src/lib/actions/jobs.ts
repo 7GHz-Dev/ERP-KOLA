@@ -550,6 +550,21 @@ async function updateBlInfoImpl(formData: FormData) {
     return raw ? String(number(formData.get(field), 0)) : null;
   };
 
+  /*
+   * Shipper ที่เลือกต้องมีอยู่จริง — ตรวจก่อนเขียน
+   *
+   * ฟอร์มส่งมาเป็น id จากช่องซ่อน ซึ่งยิงตรงได้ ถ้าปล่อยผ่าน jobs.shipper_id
+   * จะชี้ไปของที่ไม่มีอยู่ แล้วคอลัมน์ Shipper ในตารางจะว่างเปล่า
+   * โดยไม่มีอะไรบอกว่าเพราะอะไร (เป็น left join จึงไม่ error)
+   */
+  const shipperId = keep('shipperId', job.shipperId, 80);
+  if (shipperId && shipperId !== job.shipperId) {
+    const [found] = await db.select({ id: masterRecords.id }).from(masterRecords)
+      .where(and(eq(masterRecords.id, shipperId), eq(masterRecords.type, 'shippers')))
+      .limit(1);
+    if (!found) throw new Error('ไม่พบ Shipper ที่เลือก');
+  }
+
   await db.update(jobs).set({
     blNo: text(formData.get('blNo'), 120) || job.blNo,
     vessel: text(formData.get('vessel'), 120),
@@ -570,6 +585,7 @@ async function updateBlInfoImpl(formData: FormData) {
     goodsValue: keepNum('goodsValue', job.goodsValue),
     goodsCurrency: keep('goodsCurrency', job.goodsCurrency, 10),
     // master ที่เลือกจากรายการ — ค่าว่างแปลว่าไม่ได้เลือก จึงเก็บเป็น null
+    shipperId,
     consigneeId: keep('consigneeId', job.consigneeId, 80),
     notifyPartyId: keep('notifyPartyId', job.notifyPartyId, 80),
     personId: keep('personId', job.personId, 80),
@@ -581,6 +597,29 @@ async function updateBlInfoImpl(formData: FormData) {
     updatedBy: user.id,
     updatedAt: new Date(),
   }).where(eq(jobs.id, jobId));
+
+  /*
+   * Shipper เก็บไว้สองที่ ต้องแก้ให้ตรงกันทั้งคู่
+   *
+   * ตารางงานคงค้างอ่านชื่อจาก jobs.shipper_id ส่วนตาราง bls ถือ Shipper ของ BL แต่ละใบ
+   * (หน้ารับงานให้เลือกแยกต่อใบ เพราะงานหนึ่งมีหลาย BL ที่คนละผู้ส่งได้)
+   * ถ้าแก้แค่ฝั่ง jobs ตารางจะขึ้นชื่อใหม่แต่ตัว BL ยังเป็นชื่อเดิม
+   *
+   * แก้ bls เฉพาะตอนมีใบเดียว เหมือนที่เลข BL ทำอยู่แล้วในหน้า Invoice DO
+   * มีหลายใบแล้วไม่รู้ว่าผู้ใช้หมายถึงใบไหน เดาแล้วแก้ผิดใบยังแย่กว่าไม่แก้
+   */
+  if (formData.has('shipperId') && shipperId !== job.shipperId) {
+    const rows = await db.select({ id: bls.id }).from(bls).where(eq(bls.jobId, jobId));
+    if (rows.length === 1) {
+      const [shipper] = shipperId
+        ? await db.select({ name: masterRecords.name }).from(masterRecords)
+            .where(eq(masterRecords.id, shipperId)).limit(1)
+        : [];
+      await db.update(bls)
+        .set({ shipperId, shipperName: shipper?.name ?? '', updatedAt: new Date() })
+        .where(eq(bls.id, rows[0].id));
+    }
+  }
 
   await logActivity(user.id, 'UPDATE_BL_INFO', 'JOB', jobId, { demDays, detDays });
   revalidatePath('/pending');
