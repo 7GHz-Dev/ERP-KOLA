@@ -6,7 +6,8 @@ import { UploadForm } from '@/components/ActionForms';
 import { DoPayCards } from '@/components/DoPayCards';
 import { formatDateTime } from '@/lib/format';
 import { claimAmount } from '@/lib/do-claim';
-import { listJobs, QUEUE } from '@/lib/queries/jobs';
+import { doQueueArrivalDates, listJobs, QUEUE } from '@/lib/queries/jobs';
+import { QueueFilter } from '@/components/VesselFilter';
 import { DoPaySelection, DoPayCheckbox } from '@/components/DoPaySelection';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,7 @@ const TABS = [
   { key: 'wait', label: 'รอตั้งเบิก' },
   { key: 'claimed', label: 'ตั้งเบิกแล้ว' },
 ];
-const SEARCH_KEYS = ['blNo', 'consignee', 'entryNo'];
+const SEARCH_KEYS = ['blNo', 'consignee', 'entryNo', 'arrivedOn'];
 
 /**
  * MAY — รายการรอแลก DO ชุดเดียวกับของ ANN แต่ทำคนละอย่าง
@@ -43,9 +44,16 @@ export default async function MayDoPayPage({
   const sortBy = params.sortBy ?? 'arrivedAt';
   const sortDir = params.sortBy ? params.sortDir : (claimed ? 'desc' : 'asc');
 
-  const { rows, total } = await listJobs({
-    where: QUEUE.mayDoPay(tab as 'wait' | 'claimed'), search, sortBy, sortDir,
-  });
+  const [{ rows, total }, arrivalDates] = await Promise.all([
+    listJobs({
+      where: QUEUE.mayDoPay(tab as 'wait' | 'claimed'), search, sortBy, sortDir,
+    }),
+    /*
+     * ทั้งสองแท็บของ MAY อยู่ใต้คิวรอแลก DO เดียวกัน (ยังไม่ได้ส่งแลก)
+     * ต่างกันแค่กดตั้งเบิกแล้วหรือยัง ตัวเลือกวันจึงเป็นชุดเดียวกันทั้งคู่
+     */
+    doQueueArrivalDates('wait'),
+  ]);
 
   const columns: Column[] = [
     { label: 'เลือก', render: r => <DoPayCheckbox id={r.id} label={r.blNo ?? r.jobNo} /> },
@@ -123,6 +131,22 @@ export default async function MayDoPayPage({
         </p>
       </div>
       <Tabs basePath="/may/do-pay" items={TABS} active={tab} carry={carry} />
+
+      {/*
+        กรองทั้งตารางด้วยวันที่รายการส่งเข้ามา — ชุดตัวเลือกเดียวกับของ ANN
+        เพราะเป็นคิวเดียวกัน ทั้งสองคนจึงคุยกันด้วยวันเดียวกันได้
+      */}
+      <QueueFilter
+        options={arrivalDates}
+        value={one('arrivedOn')}
+        basePath="/may/do-pay"
+        carry={{ ...carry, tab }}
+        paramKey="arrivedOn"
+        label="วันที่ส่งรายการมา"
+        unitLabel="ใบ"
+        groupLabel="วัน"
+        emptyNote="ไม่มีงานค้างรอแลก DO"
+      />
       <DoPaySelection key={`${tab}:${JSON.stringify(search)}`} ids={rows.map(row => row.id)}>
 
       {/* จอมือถือใช้การ์ด จอใหญ่ใช้ตาราง สลับด้วย CSS ข้อมูลเป็นชุดเดียวกัน */}

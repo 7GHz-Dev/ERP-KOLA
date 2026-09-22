@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { db } from '@/db';
+import { formatDate } from '@/lib/format';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
 
 /**
@@ -98,6 +99,18 @@ const SEARCHABLE: Record<string, (value: string) => SQL> = {
                  '[^a-zA-Z0-9]', '', 'g')
                ilike ${`%${key}%`}`;
   },
+  /*
+   * วันที่รายการถูกส่งเข้ามาถึงคิวแลก DO — เทียบเป็น "วัน" ไม่ใช่ช่วงเวลา
+   *
+   * arrivedAt เก็บเป็น timestamp แต่สิ่งที่คนถามคือ "ของที่ส่งมาวันที่ 22 มีอะไรบ้าง"
+   * จึงตัดเวลาทิ้งก่อนเทียบ ไม่งั้นต้องระบุวินาทีให้ตรงเป๊ะถึงจะเจอ
+   *
+   * ใช้เขตเวลาไทยตัดวัน เพราะ timestamp เก็บเป็น UTC ของที่ส่งตอนเย็นวันที่ 22
+   * เวลาไทยจะกลายเป็นวันที่ 23 ใน UTC แล้วไปโผล่ผิดวันในตัวกรอง
+   * ต้องตรงกับที่ formatDateTime() แสดงบนหน้าจอ ซึ่งใช้ Asia/Bangkok เหมือนกัน
+   */
+  arrivedOn: (v) => sql`(least(${jobs.eofficeSentAt}, handoff.sent_at)
+                           at time zone 'Asia/Bangkok')::date = ${v}::date`,
   refNo: (v) => ilike(jobs.draftRefNo, `%${v}%`),
   entryNo: (v) => sql`entry.declaration_no ilike ${`%${v}%`}`,
   shipper: (v) => sql`shipper.name ilike ${`%${v}%`}`,
@@ -478,5 +491,51 @@ export async function fahDoVessels(): Promise<Array<{ value: string; label: stri
       label,
       count: r.count,
     };
+  });
+}
+
+/**
+ * วันที่รายการถูกส่งเข้าคิวแลก DO ที่ยังมีงานค้างอยู่ — ใช้เป็นตัวเลือกในช่องกรอง
+ *
+ * ANN กับ MAY รับงานเป็นรอบ ๆ ตามที่ FAH กับ PAINT ทยอยส่งมา คำถามประจำวันคือ
+ * "ของที่ส่งมาวันนี้ทำครบหรือยัง" ซึ่งเดิมตอบได้แค่เรียงตามวันแล้วกวาดตาดูเอง
+ * พอมีหลายวันปนกันในหน้าเดียวก็นับไม่ถูกว่าของวันไหนเหลือกี่ใบ
+ *
+ * ตัวเลือกตามแท็บที่เปิดอยู่ ต่างจากตัวกรองเรือที่หน้า Upload InvDO ซึ่งดูงานค้างเสมอ
+ * เพราะสองแท็บนี้ตอบคนละคำถาม — ฝั่งที่ยังไม่ได้ทำถามว่า "วันไหนยังเหลือ"
+ * ส่วนฝั่งที่ทำไปแล้วเป็นบันทึกย้อนหลัง ถามว่า "ของวันนั้นทำอะไรไปบ้าง"
+ * ถ้าใช้ชุดเดียวกันทั้งสองแท็บ ฝั่งบันทึกย้อนหลังจะได้ช่องเลือกที่ว่างเปล่า
+ * ทั้งที่ในตารางมีรายการอยู่เต็ม ซึ่งดูเหมือนตัวกรองเสีย
+ *
+ * คืนค่าเป็นข้อความ YYYY-MM-DD สำหรับส่งเข้าช่องค้นหาเดิม ไม่ได้เปลี่ยนวิธีกรอง
+ * ตัวเลือกจึงใช้เส้นทางเดียวกับการพิมพ์ค่าเองบน URL และลิงก์ที่แชร์กันยังเปิดได้
+ */
+export async function doQueueArrivalDates(
+  /** 'wait' = วันที่ยังมีงานค้าง · 'sent' = วันที่เคยส่งแลกไปแล้ว */
+  scope: 'wait' | 'sent' = 'wait',
+): Promise<Array<{ value: string; label: string; count: number }>> {
+  /*
+   * ตัดวันด้วยเขตเวลาไทยให้ตรงกับที่หน้าจอแสดง
+   * ถ้าใช้ UTC ของที่ส่งตอนเย็นจะกลายเป็นวันถัดไป แล้วตัวเลือกกับคอลัมน์ในตารางไม่ตรงกัน
+   */
+  const rows = await db.execute(sql`
+    select (least(j.eoffice_sent_at, dh.sent_at) at time zone 'Asia/Bangkok')::date as day,
+           count(*)::int as count
+      from jobs j
+      left join (select job_id, min(sent_at) as sent_at from do_handoffs
+                  where sent_at is not null group by job_id) dh on dh.job_id = j.id
+     where j.is_archived = false
+       and ${scope === 'sent' ? sql`j.do_exchanged_at is not null` : sql`j.do_exchanged_at is null`}
+       and (j.eoffice_sent_at is not null or dh.sent_at is not null)
+     group by day
+     order by day desc
+  `) as unknown as Array<{ day: string | Date; count: number }>;
+
+  return rows.map((r) => {
+    // ค่าจาก Postgres เป็น date ซึ่ง driver คืนมาเป็น Date หรือข้อความแล้วแต่กรณี
+    const value = r.day instanceof Date
+      ? r.day.toISOString().slice(0, 10)
+      : String(r.day).slice(0, 10);
+    return { value, label: formatDate(value), count: r.count };
   });
 }

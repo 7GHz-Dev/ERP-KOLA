@@ -7,7 +7,8 @@ import {
 import { DoLetterButton } from '@/components/DoLetterButton';
 import { formatDateTime } from '@/lib/format';
 import { matchShippingLine } from '@/lib/do-letter';
-import { listJobs, QUEUE } from '@/lib/queries/jobs';
+import { doQueueArrivalDates, listJobs, QUEUE } from '@/lib/queries/jobs';
+import { QueueFilter } from '@/components/VesselFilter';
 import { DoBundleSelection, DoBundleCheckbox } from '@/components/DoBundleSelection';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ const TABS = [
   { key: 'wait', label: 'รอทำชุดแลก' },
   { key: 'sent', label: 'ส่งแลก DO แล้ว' },
 ];
-const SEARCH_KEYS = ['blNo', 'consignee', 'refNo'];
+const SEARCH_KEYS = ['blNo', 'consignee', 'refNo', 'arrivedOn'];
 
 export default async function DoExchangePage({
   searchParams,
@@ -33,10 +34,17 @@ export default async function DoExchangePage({
   const sortBy = params.sortBy ?? (sent ? 'doExchangedAt' : 'arrivedAt');
   const sortDir = params.sortDir;
 
-  const { rows, total } = await listJobs({
-    where: QUEUE.doExchange(tab as 'wait' | 'sent'),
-    search, sortBy, sortDir,
-  });
+  const [{ rows, total }, arrivalDates] = await Promise.all([
+    listJobs({
+      where: QUEUE.doExchange(tab as 'wait' | 'sent'),
+      search, sortBy, sortDir,
+    }),
+    /*
+     * ตัวเลือกวันตามแท็บที่เปิดอยู่
+     * แท็บรอทำ = วันที่ยังเหลืองาน · แท็บส่งแลกแล้ว = วันที่เคยส่งไปแล้ว
+     */
+    doQueueArrivalDates(sent ? 'sent' : 'wait'),
+  ]);
 
   const columns: Column[] = [
     {
@@ -163,6 +171,22 @@ export default async function DoExchangePage({
         </p>
       </div>
       <Tabs basePath="/do-exchange" items={TABS} active={tab} carry={carry} />
+
+      {/*
+        กรองทั้งตารางด้วยวันที่รายการส่งเข้ามา — เลือกจากวันที่ยังมีงานค้างจริง
+        อยู่เหนือตารางเพราะกรองทั้งหน้า ไม่ใช่ค้นเฉพาะคอลัมน์เดียวแบบช่องในหัวตาราง
+      */}
+      <QueueFilter
+        options={arrivalDates}
+        value={one('arrivedOn')}
+        basePath="/do-exchange"
+        carry={{ ...carry, tab }}
+        paramKey="arrivedOn"
+        label="วันที่ส่งรายการมา"
+        unitLabel="ใบ"
+        groupLabel="วัน"
+        emptyNote={sent ? 'ยังไม่มีงานที่ส่งแลก DO แล้ว' : 'ไม่มีงานค้างรอแลก DO'}
+      />
       <DoBundleSelection key={`${tab}:${JSON.stringify(search)}`} ids={rows.map(row => row.id)} readyIds={rows.filter(row => row.currentFiles?.DO_MERGED).map(row => row.id)} enabled={!sent}>
       <JobTable
         basePath="/do-exchange"
