@@ -84,16 +84,42 @@ export async function POST(request: Request) {
  * ถ้าไม่มี access token กับ channel secret อยู่ในมือด้วย
  */
 export async function GET() {
+  /*
+   * ตรวจ token กับ LINE จริง ไม่ใช่แค่ดูว่ามีค่าอยู่ไหม
+   *
+   * token ที่ copy มาไม่ครบหรือหมดอายุจะดูเหมือนตั้งค่าแล้วทุกอย่าง
+   * แล้วไปพังตอนส่งข้อความจริง ซึ่งตอนนั้นไม่มีใครเห็น เพราะการแจ้งเตือน
+   * ถูกออกแบบให้ล้มเงียบ ๆ เพื่อไม่ให้กระทบการกดส่ง Partner
+   */
+  let bot: { ok: boolean; name?: string; error?: string } | null = null;
+  if (process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    try {
+      const res = await fetch('https://api.line.me/v2/bot/info', {
+        headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const info = await res.json() as { displayName?: string; basicId?: string };
+        bot = { ok: true, name: `${info.displayName ?? '-'} (${info.basicId ?? '-'})` };
+      } else {
+        bot = { ok: false, error: `LINE ตอบ ${res.status} — token อาจไม่ถูกต้องหรือหมดอายุ` };
+      }
+    } catch (error) {
+      bot = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     hint: lastSeen.length
       ? 'คัดลอกค่า id ของแถว type=group ไปใส่ LINE_GROUP_ID'
-      : 'ยังไม่เห็น event — พิมพ์อะไรก็ได้ในกลุ่มที่เชิญ bot ไว้ แล้วรีเฟรชหน้านี้',
+      : 'ยังไม่เห็น event — เชิญ bot เข้ากลุ่ม แล้วพิมพ์อะไรก็ได้ในกลุ่มนั้น แล้วรีเฟรชหน้านี้',
     configured: {
       LINE_CHANNEL_SECRET: Boolean(process.env.LINE_CHANNEL_SECRET),
       LINE_CHANNEL_ACCESS_TOKEN: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
       LINE_GROUP_ID: process.env.LINE_GROUP_ID ?? null,
     },
+    bot,
     lastSeen,
   });
 }
