@@ -5,8 +5,6 @@ import { RequestEditButton, UploadForm } from '@/components/ActionForms';
 import { DoRowForm } from '@/components/DoRowForm';
 import { DoFillBoard } from '@/components/DoFillBoard';
 import { VesselFilter } from '@/components/VesselFilter';
-import { DoPlanSelection, DoPlanCheckbox } from '@/components/DoPlanSelection';
-import type { PlanCandidate } from '@/lib/do-plan';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { fahDoVessels, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
@@ -56,33 +54,7 @@ export default async function FahDoPage({
   const sentMap = await doHandoffSentAt(rows.map((r) => r.id));
   const sent = tab === 'sent';
 
-  /*
-   * ความพร้อมของแต่ละใบสำหรับใส่ Plan — ตัดสินจากค่าที่ตารางแสดงอยู่แล้ว
-   *
-   * Port กับ Partner ใช้ค่าตั้งต้นเดียวกับที่แผงกรอกเติมให้ เพราะเกือบทุกใบเข้าแหลมฉบัง
-   * และใช้ SHIPME อยู่แล้ว ถ้านับว่าขาดทั้งที่หน้าจอโชว์ค่าให้ คนจะงงว่าขาดตรงไหน
-   */
-  const candidates: PlanCandidate[] = rows.map((r) => ({
-    id: r.id,
-    label: r.blNo ?? r.jobNo,
-    hasInvoiceDo: Boolean(r.currentFiles?.INVOICE_DO),
-    eta: r.eta,
-    portId: r.portId ?? defaultPortId,
-    terminalId: r.terminalId,
-    partnerName: r.releasePartner ?? (defaultPartnerId ? partners.find((p) => p.id === defaultPartnerId)?.name ?? null : null),
-    alreadySent: Boolean(sentMap.get(r.id)),
-  }));
-  const candidateOf = new Map(candidates.map((job) => [job.id, job]));
-
   const columns: Column[] = [
-    // ฝั่งที่ส่งแล้วไม่มีอะไรให้เลือก คอลัมน์นี้จึงมีเฉพาะฝั่งรอส่ง
-    ...(sent ? [] : [{
-      label: 'เลือก',
-      render: (r: JobRow) => {
-        const job = candidateOf.get(r.id);
-        return job ? <DoPlanCheckbox job={job} /> : null;
-      },
-    } as Column]),
     col.shipper(), col.blNo(), col.consignee(),
     /*
      * เรือ/เที่ยว — มีไว้ดูว่าแถวไหนเป็นของเที่ยวไหน
@@ -171,7 +143,7 @@ export default async function FahDoPage({
       empty={tab === 'sent' ? 'ยังไม่มีงานที่ส่ง Partner แล้ว' : 'ไม่มีงานรอส่ง Partner'}
       hint={sent
         ? 'ขอแก้ไขได้ที่ปุ่มท้ายแถว'
-        : 'กดปุ่ม "กรอกข้อมูล" เพื่อเปิดแผงกรอกคู่กับ Invoice DO · ติ๊กช่องต้นแถวเพื่อรวมใบเข้า Plan เดียวกัน · ใบที่ยังกรอกไม่ครบจะติ๊กไม่ได้และบอกไว้ว่าขาดอะไร'}
+        : 'กดปุ่ม "กรอกข้อมูล" เพื่อเปิดแผงกรอกคู่กับ Invoice DO · ดับเบิลคลิกที่แถวเพื่อดูสรุปงาน · อัปไฟล์แล้วแผงเปิดให้เอง'}
     />
   );
 
@@ -179,10 +151,7 @@ export default async function FahDoPage({
     <>
       <div className="page-head">
         <h1>Upload InvDO / ETA Official / Terminal / Send Partner</h1>
-        <p>
-          ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port · Terminal · Partner ·
-          แล้วส่ง Partner ทีละใบ หรือติ๊กหลายใบแล้วกดสร้าง Plan แลก DO ทั้งชุดในวันเดียวกัน
-        </p>
+        <p>ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port · Terminal · Partner แล้วจึงส่ง Partner</p>
       </div>
       <Tabs basePath="/fah/do" items={TABS} active={tab} carry={carry} />
 
@@ -197,7 +166,6 @@ export default async function FahDoPage({
         carry={{ ...carry, tab }}
       />
       {sent ? table : (
-        <DoPlanSelection candidates={candidates}>
         <DoFillBoard
           jobs={rows.map((r) => ({
             id: r.id,
@@ -222,7 +190,6 @@ export default async function FahDoPage({
         >
           {table}
         </DoFillBoard>
-        </DoPlanSelection>
       )}
     </>
   );

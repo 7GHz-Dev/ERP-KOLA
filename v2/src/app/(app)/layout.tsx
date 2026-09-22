@@ -65,15 +65,12 @@ const NAV: NavGroup[] = [
   {
     label: 'ANN', color: '#7b3fe4', roles: ['ANN'],
     items: [
-      // Plan อยู่บนสุดเพราะเป็นตัวตั้งต้นว่าวันนี้ต้องทำชุดไหนให้ครบ
-      { href: '/do-exchange/plan', label: 'Plan แลก DO', count: 'annPlanOpen' },
       { href: '/do-exchange', label: 'จัดการแลก DO', count: 'doExchangeWait' },
     ],
   },
   {
     label: 'MAY', color: '#c2185b', roles: ['MAY'],
     items: [
-      { href: '/may/plan', label: 'Plan แลก DO', count: 'mayPlanOpen' },
       { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'doExchangeWait' },
     ],
   },
