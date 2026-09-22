@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { lineConfigured, newJobsMessage, notifyNewJobs, pushToLine } from '../src/lib/line-notify';
 
 /**
@@ -144,12 +145,65 @@ async function payloadTest() {
   console.log('PASS: ยิงเข้า endpoint และกลุ่มที่ถูกต้อง');
 }
 
+/**
+ * ปลายทาง webhook ที่ใช้หา Group ID เปิดสาธารณะ ใครยิงเข้ามาก็ได้
+ *
+ * ถ้าไม่ตรวจลายเซ็น จะมีคนยัด Group ID ปลอมเข้ามาให้เราหยิบไปใส่ config
+ * แล้วการแจ้งเตือนทั้งหมดจะไปออกกลุ่มของคนอื่น ซึ่งเป็นข้อมูลงานของลูกค้า
+ */
+async function webhookSignatureTest() {
+  const secret = 'test-secret';
+  const saved = process.env.LINE_CHANNEL_SECRET;
+  process.env.LINE_CHANNEL_SECRET = secret;
+
+  const { POST } = await import('../src/app/api/line/webhook/route');
+  const body = JSON.stringify({
+    events: [{ source: { type: 'group', groupId: 'Cabc123' } }],
+  });
+  const sign = (text: string, key: string) =>
+    createHmac('sha256', key).update(text).digest('base64');
+
+  const call = (payload: string, signature: string | null) =>
+    POST(new Request('https://example.com/api/line/webhook', {
+      method: 'POST',
+      body: payload,
+      headers: signature ? { 'x-line-signature': signature } : {},
+    }));
+
+  // ลายเซ็นถูกต้อง — ต้องรับ
+  assert.equal((await call(body, sign(body, secret))).status, 200, 'ลายเซ็นถูกต้องต้องรับ');
+
+  // ไม่มีลายเซ็น / ลายเซ็นผิด / เซ็นด้วยคีย์อื่น — ต้องปฏิเสธทั้งหมด
+  assert.equal((await call(body, null)).status, 401, 'ไม่มีลายเซ็นต้องปฏิเสธ');
+  assert.equal((await call(body, 'bm90LWEtc2lnbmF0dXJl')).status, 401, 'ลายเซ็นผิดต้องปฏิเสธ');
+  assert.equal((await call(body, sign(body, 'another-secret'))).status, 401,
+    'เซ็นด้วยคีย์อื่นต้องปฏิเสธ');
+
+  /*
+   * เนื้อหาถูกแก้หลังเซ็น — ต้องปฏิเสธ
+   * เป็นกรณีที่ลายเซ็นถูกต้องกับ body เดิม แต่ body ที่ส่งมาจริงไม่ใช่ตัวนั้น
+   */
+  const other = JSON.stringify({ events: [{ source: { type: 'group', groupId: 'Cfake999' } }] });
+  assert.equal((await call(other, sign(body, secret))).status, 401,
+    'แก้เนื้อหาหลังเซ็นต้องปฏิเสธ');
+
+  // ไม่ได้ตั้ง secret — ตรวจไม่ได้ ต้องปฏิเสธทุกอย่าง ไม่ใช่ปล่อยผ่าน
+  delete process.env.LINE_CHANNEL_SECRET;
+  assert.equal((await call(body, sign(body, secret))).status, 401,
+    'ไม่ได้ตั้ง secret ต้องปฏิเสธ ไม่ใช่ปล่อยผ่าน');
+
+  if (saved === undefined) delete process.env.LINE_CHANNEL_SECRET;
+  else process.env.LINE_CHANNEL_SECRET = saved;
+  console.log('PASS: webhook รับเฉพาะคำขอที่ LINE เซ็นมาจริง');
+}
+
 async function main() {
   messageTest();
   longListTest();
   await notConfiguredTest();
   await failureTest();
   await payloadTest();
+  await webhookSignatureTest();
   console.log('\nทั้งหมดผ่าน');
 }
 
