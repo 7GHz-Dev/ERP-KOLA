@@ -197,6 +197,66 @@ async function webhookSignatureTest() {
   console.log('PASS: webhook รับเฉพาะคำขอที่ LINE เซ็นมาจริง');
 }
 
+/**
+ * คำเตือนโควต้าต้องแนบท้ายข้อความปกติ ไม่ใช่ส่งเป็นข้อความใหม่
+ *
+ * ถ้าส่งแยก ตัวเตือนเองก็กินโควต้า ซึ่งยิ่งเร่งให้เต็มเร็วขึ้น
+ * และต้องเตือนก่อนเต็มจริง เพราะพอเต็มแล้ว LINE ปฏิเสธเงียบ ๆ ไม่มีใครรู้
+ */
+async function quotaWarningTest() {
+  const original = globalThis.fetch;
+
+  const run = async (used: number, limit: number, type = 'limited') => {
+    const sent: string[] = [];
+    await withEnv({ LINE_CHANNEL_ACCESS_TOKEN: 'tok', LINE_GROUP_ID: 'C1' }, async () => {
+      globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes('/quota/consumption')) return new Response(JSON.stringify({ totalUsage: used }));
+        if (u.includes('/message/quota')) return new Response(JSON.stringify({ type, value: limit }));
+        sent.push(JSON.parse(String(init?.body)).messages[0].text);
+        return new Response('{}', { status: 200 });
+      }) as typeof fetch;
+      await notifyNewJobs([{ blNo: 'BL-1', jobNo: 'J-1' }], 'FAH');
+    });
+    return sent;
+  };
+
+  // ใช้ไป 50% — ยังไม่ต้องเตือน
+  let sent = await run(150, 300);
+  assert.equal(sent.length, 1, 'ต้องส่งข้อความเดียว');
+  assert.doesNotMatch(sent[0], /โควต้า/, 'ยังไม่ถึงเกณฑ์ต้องไม่เตือน');
+
+  // ใช้ไป 85% — ต้องเตือน และต้องอยู่ในข้อความเดียวกัน ไม่ใช่ข้อความใหม่
+  sent = await run(255, 300);
+  assert.equal(sent.length, 1, 'คำเตือนต้องแนบท้าย ไม่ใช่ส่งเพิ่มอีกข้อความ');
+  assert.match(sent[0], /BL-1/, 'ต้องยังมีเนื้อหาเดิมครบ');
+  assert.match(sent[0], /เหลือ 45 จาก 300/, 'ต้องบอกว่าเหลือเท่าไหร่');
+  assert.match(sent[0], /85%/);
+
+  // แผนไม่จำกัดต้องไม่เตือน แม้ตัวเลขจะสูง
+  sent = await run(99999, 0, 'none');
+  assert.doesNotMatch(sent[0], /โควต้า/, 'แผนไม่จำกัดต้องไม่เตือน');
+
+  /*
+   * เช็คโควต้าไม่ได้ (LINE ล่ม) ต้องยังส่งข้อความปกติ
+   * การเช็คโควต้าเป็นของเสริม ไม่ควรขวางการแจ้งเตือนซึ่งเป็นงานหลัก
+   */
+  const sent2: string[] = [];
+  await withEnv({ LINE_CHANNEL_ACCESS_TOKEN: 'tok', LINE_GROUP_ID: 'C1' }, async () => {
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).includes('quota')) throw new Error('ล่ม');
+      sent2.push(JSON.parse(String(init?.body)).messages[0].text);
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+    await notifyNewJobs([{ blNo: 'BL-9', jobNo: 'J-9' }], 'FAH');
+  });
+  assert.equal(sent2.length, 1, 'เช็คโควต้าไม่ได้ก็ต้องยังส่งข้อความ');
+  assert.match(sent2[0], /BL-9/);
+
+  globalThis.fetch = original;
+  console.log('PASS: เตือนเมื่อโควต้าใกล้เต็ม โดยแนบท้ายไม่ใช่ส่งเพิ่ม');
+}
+
 async function main() {
   messageTest();
   longListTest();
@@ -204,6 +264,7 @@ async function main() {
   await failureTest();
   await payloadTest();
   await webhookSignatureTest();
+  await quotaWarningTest();
   console.log('\nทั้งหมดผ่าน');
 }
 

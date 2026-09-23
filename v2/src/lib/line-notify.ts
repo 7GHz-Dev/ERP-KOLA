@@ -95,6 +95,40 @@ export function newJobsMessage(jobs: NewJobLine[], from: string): string {
 }
 
 /**
+ * เตือนเมื่อโควต้าใกล้เต็ม — แนบท้ายข้อความปกติ ไม่ได้ส่งเป็นข้อความใหม่
+ *
+ * ถ้าส่งแยกอีกข้อความ ตัวเตือนเองก็กินโควต้าด้วย ซึ่งยิ่งเร่งให้เต็มเร็วขึ้น
+ * แนบท้ายจึงได้ผลเดียวกันโดยไม่เสียอะไรเพิ่ม
+ *
+ * เตือนที่ 80% เพราะยังเหลือที่ให้ตัดสินใจทัน ถ้ารอถึง 100%
+ * ข้อความจะเริ่มหายไปแล้วโดยไม่มีใครรู้ เนื่องจาก LINE ปฏิเสธเงียบ ๆ
+ */
+async function quotaWarning(): Promise<string> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) return '';
+  try {
+    const headers = { Authorization: `Bearer ${token}` };
+    const [q, c] = await Promise.all([
+      fetch('https://api.line.me/v2/bot/message/quota', { headers, cache: 'no-store' }),
+      fetch('https://api.line.me/v2/bot/message/quota/consumption', { headers, cache: 'no-store' }),
+    ]);
+    if (!q.ok || !c.ok) return '';
+    const quota = await q.json() as { type?: string; value?: number };
+    const used = await c.json() as { totalUsage?: number };
+    // แผนที่ไม่จำกัดไม่ต้องเตือน
+    if (quota.type !== 'limited' || !quota.value || used.totalUsage === undefined) return '';
+    const percent = (used.totalUsage / quota.value) * 100;
+    if (percent < 80) return '';
+    const left = quota.value - used.totalUsage;
+    return `\n\n⚠️ โควต้าข้อความ LINE เหลือ ${left} จาก ${quota.value} (ใช้ไป ${Math.round(percent)}%)`
+      + '\nถ้าเต็มแล้วข้อความแจ้งเตือนจะไม่ถูกส่งโดยไม่มีการแจ้งใด ๆ';
+  } catch {
+    // เช็คโควต้าไม่ได้ก็ส่งข้อความปกติไป ไม่ใช่เรื่องที่ควรขวางการแจ้งเตือน
+    return '';
+  }
+}
+
+/**
  * แจ้งรายการใหม่ — เรียกหลังบันทึกข้อมูลเสร็จแล้วเท่านั้น
  *
  * ไม่ await ผลที่ฝั่งผู้เรียกก็ได้ แต่บน Vercel ต้อง await
@@ -103,5 +137,7 @@ export function newJobsMessage(jobs: NewJobLine[], from: string): string {
  */
 export async function notifyNewJobs(jobs: NewJobLine[], from: string): Promise<LineResult> {
   if (!jobs.length) return { ok: false, skipped: true };
-  return pushToLine(newJobsMessage(jobs, from));
+  if (!lineConfigured()) return { ok: false, skipped: true };
+  const warning = await quotaWarning();
+  return pushToLine(newJobsMessage(jobs, from) + warning);
 }
