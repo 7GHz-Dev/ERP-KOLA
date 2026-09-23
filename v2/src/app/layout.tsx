@@ -4,6 +4,17 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'KOLA Import ERP',
   description: 'ระบบจัดการงานนำเข้า',
+  /*
+   * ไอคอนบนแท็บเบราว์เซอร์ — เดิมไม่มีเลย จึงขึ้นเป็นไอคอนเปล่าของเบราว์เซอร์
+   * ใช้เฉพาะสัญลักษณ์ K ไม่ใช่โลโก้เต็ม เพราะขนาด 32px อ่านตัวอักษรไม่ออกอยู่แล้ว
+   */
+  icons: {
+    icon: [
+      { url: '/icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: '/icon-192.png',
+  },
 };
 
 /*

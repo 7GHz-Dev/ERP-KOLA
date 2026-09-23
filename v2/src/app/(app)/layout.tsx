@@ -165,7 +165,12 @@ export default async function AppLayout({
 
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark small">K</div>
+          {/*
+            โลโก้จริงแทนตัวอักษร K ที่วาดด้วย CSS
+            ใช้ <img> ธรรมดาไม่ใช่ next/image เพราะเป็นไฟล์ขนาดคงที่ในเมนู
+            ไม่ได้ต้องการการย่อขยายตามจอ และ next/image จะเพิ่มงานให้เซิร์ฟเวอร์เปล่า ๆ
+          */}
+          <img className="brand-mark small" src="/icon-96.png" alt="" width={34} height={34} />
           <div>
             <strong>KOLA ERP</strong>
             <span>Import Operations</span>

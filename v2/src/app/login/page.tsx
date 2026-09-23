@@ -30,7 +30,12 @@ export default async function LoginPage({
   return (
     <main className="login-wrap">
       <form className="login-card" action={signIn}>
-        <h1>KOLA Import ERP</h1>
+        {/*
+          โลโก้เต็ม (มีชื่อแบรนด์ในตัว) จึงไม่ต้องมี <h1> ซ้ำอีก
+          เหลือไว้เป็น sr-only ให้โปรแกรมอ่านหน้าจอและ SEO ยังเห็นชื่อระบบ
+        */}
+        <img className="login-logo" src="/logo.png" alt="" width={160} height={160} />
+        <h1 className="visually-hidden">KOLA Import ERP</h1>
         <p className="sub">เข้าสู่ระบบเพื่อใช้งาน</p>
 
         {error ? <div className="error">{error}</div> : null}
