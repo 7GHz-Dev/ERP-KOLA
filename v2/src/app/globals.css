@@ -1841,3 +1841,44 @@ label.mini:has(.search-select) { overflow: visible; }
 .bl-edit-shipper { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
 .bl-edit-shipper > .search-select { flex: 1; min-width: 180px; }
 .bl-edit-shipper > .quick-shipper { flex-basis: 100%; }
+
+/*
+ * หน้าติดตามการใช้งานและค่าใช้จ่าย (ADMIN)
+ *
+ * แบ่งเป็นการ์ดต่อหนึ่งเรื่อง เพราะโควต้า LINE กับค่า AI เป็นคนละหน่วยกัน
+ * (ข้อความ กับ บาท) วางรวมตารางเดียวจะอ่านสับสนว่าตัวเลขไหนเป็นของอะไร
+ */
+.monitor-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.monitor-card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 16px;
+}
+.monitor-card h2 { margin: 0 0 12px; font-size: 15px; }
+
+/* ตัวเลขเรียงแนวนอน ตัดบรรทัดเองเมื่อจอแคบ */
+.monitor-figures { display: flex; flex-wrap: wrap; gap: 22px; margin-bottom: 12px; }
+.monitor-figures > div { display: flex; flex-direction: column; gap: 2px; }
+.monitor-figures span { font-size: 12px; color: var(--muted); }
+.monitor-figures b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.monitor-figures small { font-size: 11px; color: var(--muted); }
+
+/* แถบความคืบหน้าของโควต้า — เห็นก่อนตัวเลขว่าใกล้เต็มหรือยัง */
+.monitor-bar {
+  display: block; height: 8px; border-radius: 4px;
+  background: var(--line); overflow: hidden; margin-bottom: 8px;
+}
+.monitor-bar > span { display: block; height: 100%; background: var(--green); }
+.monitor-bar > span.warn { background: var(--amber); }
+.monitor-bar > span.bad { background: var(--red); }
+
+.monitor-note { margin: 0; font-size: 12px; color: var(--muted); }
+.monitor-note.ok { color: var(--green); }
+.monitor-note.bad { color: var(--red); }
+.monitor-figures b.ok { color: var(--green); }
+.monitor-figures b.warn { color: var(--amber); }
+.monitor-figures b.bad { color: var(--red); }
+
+/* ตัวเลขชิดขวาและความกว้างตัวเลขเท่ากัน จะได้เทียบกันตามแนวตั้งได้ */
+.monitor-table { margin-top: 12px; }
+.monitor-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.monitor-table .bad { color: var(--red); }

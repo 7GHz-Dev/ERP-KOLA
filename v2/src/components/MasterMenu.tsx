@@ -7,6 +7,7 @@ export const DO_LETTER_MENU_KEY = 'doLetterForm';
 export const USERS_MENU_KEY = 'users';
 export const JOBS_MENU_KEY = 'jobs';
 export const PARSE_TEMPLATE_MENU_KEY = 'parseTemplate';
+export const MONITOR_MENU_KEY = 'monitor';
 
 /*
  * เมนูซ้ายของหมวด Master Data ใช้ร่วมกันทุกหน้าในหมวดนี้
@@ -25,6 +26,14 @@ export function MasterMenu({
 }: { current: string; counts: Map<string, number> }) {
   return (
     <nav className="master-menu">
+      {/* อยู่บนสุดเพราะเป็นตัวเลขที่ต้องเหลือบดูเป็นประจำ ไม่ใช่ของที่เข้ามาแก้นาน ๆ ครั้ง */}
+      <Link
+        href="/master/monitor"
+        prefetch={false}
+        aria-current={current === MONITOR_MENU_KEY ? 'page' : undefined}
+      >
+        การใช้งานและค่าใช้จ่าย
+      </Link>
       <Link href="/master/jobs" prefetch={false} aria-current={current === JOBS_MENU_KEY ? 'page' : undefined}>
         ปิดการใช้งาน JOB
       </Link>

@@ -1,4 +1,8 @@
+import { randomBytes } from 'node:crypto';
+import { db } from '@/db';
+import { activityLog } from '@/db/schema';
 import { currentUser, roleAllows } from '@/lib/auth';
+import { AI_READ_ACTION } from '@/lib/usage-log';
 import { driveOcrConfigured, driveOcrText } from '@/lib/drive-ocr';
 import { parseArrivalText } from '@/lib/parse-arrival';
 import { aiConfigured, readWithAi } from '@/lib/read-ai';
@@ -20,11 +24,13 @@ export const maxDuration = 120;
  * สองชั้นนี้ต้องอยู่ฝั่งเซิร์ฟเวอร์เพราะใช้กุญแจ (Google OAuth / API key)
  * ซึ่งส่งไปให้เบราว์เซอร์ไม่ได้
  *
- * ไม่บันทึกอะไรลงฐาน — เป็นตัวช่วยกรอกให้คนตรวจต่อ เหมือนชั้นอื่น
+ * ไม่บันทึกค่าที่อ่านได้ลงฐาน — เป็นตัวช่วยกรอกให้คนตรวจต่อ เหมือนชั้นอื่น
+ * แต่บันทึก "ค่าใช้จ่าย" ของชั้น AI ไว้ เพราะเป็นเงินจริงที่ต้องตามดูได้ว่าเดือนนี้ใช้ไปเท่าไหร่
  */
 
 /** ขนาดไฟล์สูงสุดที่ยอมรับ — กันไฟล์ใหญ่ผิดปกติที่จะทำให้ AI แพงเกินเหตุ */
 const MAX_BYTES = 20 * 1024 * 1024;
+
 
 export async function POST(request: Request) {
   const user = await currentUser();
@@ -91,6 +97,31 @@ export async function POST(request: Request) {
     }
     layer.ms = Date.now() - started;
     result = mergeLayer(result, layer);
+
+    /*
+     * บันทึกค่าใช้จ่ายของชั้น AI — เป็นเงินจริงที่ต้องรวมยอดย้อนหลังได้
+     *
+     * เดิมคำนวณแล้วโชว์บนหน้าจอครั้งเดียว พอรีเฟรชก็หาย จึงไม่มีทางรู้ว่า
+     * เดือนนี้ใช้ไปเท่าไหร่แล้ว นอกจากไปเปิดดูในหน้าเรียกเก็บเงินของ Anthropic
+     *
+     * เก็บใน activity_log ที่มีอยู่แล้ว ไม่ต้องเพิ่มตารางใหม่
+     * บันทึกแม้ตอนอ่านไม่สำเร็จด้วย เพราะเรียกไปแล้วก็เสียเงินแล้ว
+     */
+    try {
+      await db.insert(activityLog).values({
+        id: `LOG-${randomBytes(10).toString('hex').toUpperCase()}`,
+        userId: user.id,
+        action: AI_READ_ACTION,
+        entityType: 'AI',
+        entityId: null,
+        detail: JSON.stringify({
+          baht: Number((layer.baht ?? 0).toFixed(4)),
+          ms: layer.ms,
+          ok: !layer.error,
+          error: layer.error ?? null,
+        }),
+      });
+    } catch { /* บันทึกไม่ได้ก็ไม่ควรทำให้การอ่านล้มตาม */ }
   }
 
   /* ---------------- ชั้น OCR ---------------- */

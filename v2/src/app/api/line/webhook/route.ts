@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { activityLog } from '@/db/schema';
+import { LINE_SOURCE_ACTION } from '@/lib/usage-log';
 
 /**
  * รับ webhook จาก LINE — มีไว้หา Group ID เป็นหลัก
@@ -31,7 +32,7 @@ export const dynamic = 'force-dynamic';
  *
  * ใช้ activity_log ที่มีอยู่แล้ว ไม่ต้องเพิ่มตารางใหม่ให้ของที่ใช้ครั้งเดียว
  */
-const LINE_SOURCE_ACTION = 'LINE_WEBHOOK_SOURCE';
+
 
 /**
  * ตรวจลายเซ็นว่ามาจาก LINE จริง
