@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 /**
@@ -48,8 +49,28 @@ export async function GET() {
     }
   }
 
+  /*
+   * ตรวจว่า secret ที่เราถืออยู่เป็นของ channel เดียวกับ token หรือไม่
+   *
+   * อาการ 401 ตอน LINE กด Verify เกิดจากสองค่านี้มาจากคนละ channel
+   * หรือ secret ถูกออกใหม่หลังใส่ค่าใน Vercel ซึ่งดูจากหน้าจอแยกไม่ออกเลย
+   *
+   * เทียบด้วยลายนิ้วมือ (8 ตัวแรกของ sha256) ไม่ใช่ค่าจริง
+   * จะได้เอาไปเทียบกับหน้า LINE ด้วยตาได้โดยไม่เปิดเผยความลับ
+   */
+  const secret = process.env.LINE_CHANNEL_SECRET ?? '';
+  const fingerprint = secret
+    ? createHash('sha256').update(secret).digest('hex').slice(0, 8)
+    : null;
+
   return NextResponse.json({
     ok: true,
+    secretInfo: {
+      length: secret.length,
+      looksValid: secret.length === 32,
+      fingerprint,
+      note: 'Channel secret ของ LINE ยาว 32 ตัวอักษรเสมอ',
+    },
     webhookEndpoint: endpoint,
     webhookTest: test,
     hint: 'ดู webhookEndpoint.body.endpoint ว่าตรงกับ /api/line/webhook ไหม '
