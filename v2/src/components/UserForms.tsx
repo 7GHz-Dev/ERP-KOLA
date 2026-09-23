@@ -91,9 +91,10 @@ export function CreateUserForm() {
         <OrgFields />
         <label className="field">
           <span>รหัสผ่านตั้งต้น</span>
-          <input name="password" type="text" required minLength={10} maxLength={200} autoComplete="off" />
+          {/* ไม่มี minLength — กติการหัสผ่านปลดออกแล้ว ตั้งได้อิสระขอแค่ไม่เว้นว่าง */}
+          <input name="password" type="text" required maxLength={200} autoComplete="off" />
           <small className="do-letter-hint">
-            อย่างน้อย 10 ตัว มีตัวอักษรและตัวเลข · ผู้ใช้ต้องเปลี่ยนเองตอนล็อกอินครั้งแรก
+            ตั้งได้ตามต้องการ · ผู้ใช้ต้องเปลี่ยนเองตอนล็อกอินครั้งแรก
           </small>
         </label>
         <div className="do-letter-actions">
@@ -131,7 +132,7 @@ export function ResetPasswordForm({ user }: { user: UserRow }) {
         <input type="hidden" name="id" value={user.id} />
         <label className="field">
           <span>รหัสผ่านใหม่ของ {user.username}</span>
-          <input name="password" type="text" required minLength={10} maxLength={200} autoComplete="off" />
+          <input name="password" type="text" required maxLength={200} autoComplete="off" />
           <small className="do-letter-hint">
             ตั้งเสร็จแล้วระบบจะตัดผู้ใช้ออกจากระบบ และให้เปลี่ยนรหัสเองตอนล็อกอินครั้งถัดไป
           </small>

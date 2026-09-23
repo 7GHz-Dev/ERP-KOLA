@@ -31,12 +31,13 @@ export default async function ChangePasswordPage() {
         </label>
         <label className="field">
           <span>รหัสผ่านใหม่</span>
-          <input name="next" type="password" required minLength={10} autoComplete="new-password" />
-          <small className="do-letter-hint">อย่างน้อย 10 ตัว มีทั้งตัวอักษรและตัวเลข</small>
+          {/* ไม่มี minLength — กติการหัสผ่านปลดออกแล้ว ตั้งได้อิสระขอแค่ไม่เว้นว่าง */}
+          <input name="next" type="password" required autoComplete="new-password" />
+          <small className="do-letter-hint">ตั้งได้ตามต้องการ · ต้องไม่ซ้ำกับรหัสเดิม</small>
         </label>
         <label className="field">
           <span>ยืนยันรหัสผ่านใหม่</span>
-          <input name="confirm" type="password" required minLength={10} autoComplete="new-password" />
+          <input name="confirm" type="password" required autoComplete="new-password" />
         </label>
         <div className="do-letter-actions">
           <button className="button primary" type="submit">บันทึกรหัสผ่านใหม่</button>

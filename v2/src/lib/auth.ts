@@ -4,14 +4,23 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { and, eq, gt } from 'drizzle-orm';
 import { db } from '@/db';
-import { sessions, users } from '@/db/schema';
+import { activityLog, sessions, users } from '@/db/schema';
 import { scryptHash, verifyPassword } from './password';
 import { decodeSession, encodeSession } from './session-token';
 
 const COOKIE = 'kola_session';
 const SESSION_HOURS = 8;
-const MAX_FAILED = 5;
-const LOCK_MINUTES = 15;
+
+/*
+ * ไม่มีการล็อกบัญชีเมื่อกรอกรหัสผิด — เจ้าของระบบเลือกให้ปลดออก
+ *
+ * เดิมผิดครบ 5 ครั้งแล้วล็อก 15 นาที ซึ่งในทางปฏิบัติคนที่โดนคือพนักงานที่
+ * จำรหัสไม่ได้ ไม่ใช่คนที่พยายามบุกรุก แล้วต้องรอเฉย ๆ ทั้งที่งานรออยู่
+ *
+ * ยังนับ failed_attempts ไว้เหมือนเดิมและบันทึกทุกครั้งที่ล็อกอินไม่ผ่านลง
+ * activity_log เพื่อให้ย้อนดูได้ว่ามีใครพยายามเดารหัสหรือไม่ แค่ไม่ปิดกั้นการเข้า
+ * คอลัมน์ locked_until ยังอยู่ในตารางแต่ไม่มีอะไรเขียนค่าลงไปอีก
+ */
 
 const hashToken = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
 const newId = (prefix: string) =>
@@ -55,9 +64,6 @@ export async function login(username: string, password: string): Promise<Session
   // ตอบข้อความเดียวกันทุกกรณี ไม่บอกว่ามีผู้ใช้นี้จริงหรือไม่
   if (!user) throw new AppError('INVALID_LOGIN', generic);
   if (!user.isActive) throw new AppError('ACCOUNT_DISABLED', 'บัญชีนี้ถูกระงับการใช้งาน');
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    throw new AppError('ACCOUNT_LOCKED', 'บัญชีถูกล็อกชั่วคราว กรุณารอสักครู่');
-  }
 
   const result = await verifyPassword(password, {
     passwordHash: user.passwordHash,
@@ -69,9 +75,21 @@ export async function login(username: string, password: string): Promise<Session
     const failed = user.failedAttempts + 1;
     await db.update(users).set({
       failedAttempts: failed,
-      lockedUntil: failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
       updatedAt: new Date(),
     }).where(eq(users.id, user.id));
+    /*
+     * บันทึกไว้ว่าล็อกอินไม่ผ่าน — เป็นร่องรอยเดียวที่เหลือหลังปลดการล็อกออก
+     *
+     * ไม่ throw ถ้าบันทึกไม่สำเร็จ เพราะการเขียน log ล้มเหลวไม่ควรเปลี่ยน
+     * ข้อความที่ผู้ใช้เห็น ซึ่งต้องเหมือนกันทุกกรณีเพื่อไม่ให้เดาได้ว่ามีบัญชีนี้จริงไหม
+     */
+    try {
+      await db.insert(activityLog).values({
+        id: newId('LOG'), userId: user.id, action: 'LOGIN_FAILED',
+        entityType: 'USER', entityId: user.id,
+        detail: JSON.stringify({ failedAttempts: failed }),
+      });
+    } catch { /* บันทึกไม่ได้ก็ปล่อยผ่าน */ }
     throw new AppError('INVALID_LOGIN', generic);
   }
 

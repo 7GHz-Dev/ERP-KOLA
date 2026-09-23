@@ -34,7 +34,8 @@
     "test:vessel": "tsx --tsconfig tsconfig.json tests/vessel-search.ts && tsx --tsconfig tsconfig.json tests/vessel-options.ts",
     "test:dates": "tsx --tsconfig tsconfig.json tests/arrival-dates.ts",
     "line:check": "tsx scripts/line-check.ts",
-    "test:line": "tsx --tsconfig tsconfig.json tests/line-notify.ts"
+    "test:line": "tsx --tsconfig tsconfig.json tests/line-notify.ts",
+    "test:auth": "tsx --tsconfig tsconfig.json tests/auth-policy.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",
