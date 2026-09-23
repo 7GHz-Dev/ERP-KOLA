@@ -30,6 +30,14 @@ export async function GET() {
   };
 
   const endpoint = await read('/v2/bot/channel/webhook/endpoint');
+  /*
+   * ถามว่า token นี้เป็นของ channel ไหน
+   *
+   * บัญชีที่มีหลาย channel หยิบ secret ผิดตัวได้ง่ายมาก และอาการที่ได้คือ 401
+   * เหมือนกันเป๊ะกับกรณี secret ถูกออกใหม่ ต้องรู้เลข channel ถึงจะแยกออก
+   */
+  const verify = await read('/v2/oauth/verify?access_token='
+    + encodeURIComponent(token));
 
   /*
    * ให้ LINE ลองยิงมาหาเราจริง ๆ
@@ -65,6 +73,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true,
+    tokenChannelId: verify.body,
     secretInfo: {
       length: secret.length,
       looksValid: secret.length === 32,
