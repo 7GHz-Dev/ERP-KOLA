@@ -1,5 +1,8 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { desc, eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { activityLog } from '@/db/schema';
 
 /**
  * รับ webhook จาก LINE — มีไว้หา Group ID เป็นหลัก
@@ -20,15 +23,15 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 /*
- * Group ID ที่เพิ่งเห็นล่าสุด — เก็บในหน่วยความจำของ instance เท่านั้น
+ * บันทึก Group ID ที่เห็นลง activity_log ไม่ใช่หน่วยความจำ
  *
- * ไม่เก็บลงฐานข้อมูลเพราะใช้ครั้งเดียวตอนติดตั้ง แล้วค่าจริงไปอยู่ใน
- * environment variable ถาวร การเพิ่มตารางให้ของที่ใช้ครั้งเดียวไม่คุ้ม
+ * เดิมเก็บไว้ในตัวแปรของ instance ซึ่งใช้ไม่ได้จริงบน Vercel เพราะแต่ละ request
+ * ไปคนละ instance ได้ — event เข้าที่ instance หนึ่ง แต่ตอนเปิดดูไปโดนอีกตัว
+ * ที่ไม่มีข้อมูล แล้วดูเหมือน webhook ไม่ทำงานทั้งที่ทำงานปกติ
  *
- * ผลข้างเคียงคือถ้า serverless instance ถูกรีไซเคิล ค่าจะหาย
- * ให้พิมพ์ในกลุ่มใหม่อีกทีแล้วรีบเปิดดู หรืออ่านจาก Vercel Logs ซึ่งอยู่ถาวรกว่า
+ * ใช้ activity_log ที่มีอยู่แล้ว ไม่ต้องเพิ่มตารางใหม่ให้ของที่ใช้ครั้งเดียว
  */
-let lastSeen: Array<{ type: string; id: string; at: string }> = [];
+const LINE_SOURCE_ACTION = 'LINE_WEBHOOK_SOURCE';
 
 /**
  * ตรวจลายเซ็นว่ามาจาก LINE จริง
@@ -67,10 +70,20 @@ export async function POST(request: Request) {
     const source = event.source ?? {};
     const id = source.groupId ?? source.roomId ?? source.userId;
     if (!id) continue;
-    const entry = { type: source.type ?? 'unknown', id, at: new Date().toISOString() };
-    // เก็บ 5 รายการล่าสุดพอ เผื่อมีหลายกลุ่มส่งเข้ามาปนกันตอนตั้งค่า
-    lastSeen = [entry, ...lastSeen.filter((x) => x.id !== id)].slice(0, 5);
-    console.log(`[LINE webhook] ${entry.type} · ${id}`);
+    const type = source.type ?? 'unknown';
+    console.log(`[LINE webhook] ${type} · ${id}`);
+    /*
+     * บันทึกไม่ได้ก็ไม่เป็นไร ยังมี console.log ให้ดูใน Vercel Logs
+     * และต้องตอบ 200 ให้ LINE เสมอ ไม่ว่าการบันทึกจะสำเร็จหรือไม่
+     */
+    try {
+      await db.insert(activityLog).values({
+        id: `LOG-${randomBytes(10).toString('hex').toUpperCase()}`,
+        userId: null, action: LINE_SOURCE_ACTION,
+        entityType: 'LINE', entityId: id,
+        detail: JSON.stringify({ type, id }),
+      });
+    } catch { /* ข้ามไป */ }
   }
 
   // ต้องตอบ 200 เสมอ ไม่งั้น LINE จะปิด webhook ให้เองเมื่อพลาดหลายครั้งติดกัน
@@ -107,6 +120,29 @@ export async function GET() {
     } catch (error) {
       bot = { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
+  }
+
+  // อ่านจากฐานข้อมูล จึงเห็นค่าไม่ว่า request จะไปลงที่ instance ไหน
+  let lastSeen: Array<{ type: string; id: string; at: string }> = [];
+  try {
+    const rows = await db.select({
+      entityId: activityLog.entityId, detail: activityLog.detail,
+      createdAt: activityLog.createdAt,
+    }).from(activityLog)
+      .where(eq(activityLog.action, LINE_SOURCE_ACTION))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(10);
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const id = row.entityId ?? '';
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      let type = 'unknown';
+      try { type = (JSON.parse(row.detail ?? '{}') as { type?: string }).type ?? 'unknown'; } catch { /* ใช้ค่าตั้งต้น */ }
+      lastSeen.push({ type, id, at: String(row.createdAt) });
+    }
+  } catch {
+    lastSeen = [];
   }
 
   return NextResponse.json({
