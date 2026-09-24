@@ -251,6 +251,18 @@ async function saveDoHandoffImpl(formData: FormData) {
   // ปุ่ม "บันทึกอย่างเดียว" กับ "บันทึกและส่ง Partner" ยิง action เดียวกัน ต่างที่ค่านี้
   const sendToPartner = text(formData.get('sendToPartner'), 4) === '1';
 
+  /*
+   * ส่ง Partner ต้องมีท่าต้นทางก่อน — Partner ใช้ตัวนี้ตั้งเรื่องแลก DO
+   *
+   * บังคับเฉพาะตอนส่ง ไม่บังคับตอนกดบันทึก เพราะ FAH มักได้ ETA มาก่อน
+   * แล้วค่อยรู้ท่าต้นทางจาก Invoice DO ทีหลัง ถ้าบังคับตอนบันทึกจะคีย์อะไรไว้ไม่ได้เลย
+   *
+   * ตรวจฝั่งเซิร์ฟเวอร์ด้วย ไม่พึ่งแค่การซ่อนปุ่มบนหน้าจอ เพราะฟอร์มถูกยิงตรงได้
+   */
+  if (sendToPartner && !originPort) {
+    throw new Error('กรุณาระบุ Port of Loading ก่อนส่งให้ Partner');
+  }
+
   const [existing] = await db.select().from(doHandoffs).where(eq(doHandoffs.jobId, jobId)).limit(1);
   const values = {
     jobId, etaOfficial: eta, transportDate, partnerName, note,

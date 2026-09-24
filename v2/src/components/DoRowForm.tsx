@@ -39,8 +39,11 @@ export function DoRowForm({
 }) {
   const partnerId =
     partners.find((p) => p.name === partnerName)?.id ?? defaultPartnerId ?? '';
-  // ยังกดส่งไม่ได้จนกว่าจะบันทึก เพราะค่าเริ่มต้นเป็นแค่ค่าที่เห็นบนจอ ยังไม่ได้ลงฐานข้อมูล
-  const ready = Boolean(eta && partnerName);
+  /*
+   * ยังกดส่งไม่ได้จนกว่าจะบันทึก เพราะค่าเริ่มต้นเป็นแค่ค่าที่เห็นบนจอ ยังไม่ได้ลงฐานข้อมูล
+   * ท่าต้นทางก็ต้องมีก่อนส่ง เพราะ Partner ใช้ตั้งเรื่องแลก DO — ฝั่งเซิร์ฟเวอร์ตรวจอีกชั้น
+   */
+  const ready = Boolean(eta && partnerName && originPort);
 
   const options = (list: Choice[], placeholder: string) => (
     <>
@@ -106,9 +109,13 @@ export function DoRowForm({
       {/*
         ท่าต้นทาง — เลือกจากรายการหรือพิมพ์เองก็ได้ เพราะท่าต่างประเทศ
         หลายแห่งยังไม่มีใน Master Data จึงเก็บเป็นข้อความ ไม่ใช่ id
+
+        ต้องมีก่อนกดส่ง Partner แต่ไม่ได้ใส่ required ไว้ที่ช่อง
+        เพราะปุ่ม "บันทึก" ในฟอร์มเดียวกันต้องกดได้แม้ยังไม่รู้ท่าต้นทาง
+        กันไว้ด้วยการซ่อนปุ่มส่ง (ตัวแปร ready) กับการตรวจฝั่งเซิร์ฟเวอร์แทน
       */}
       <label className="do-cell">
-        <span>Port of Loading</span>
+        <span>Port of Loading *</span>
         <OriginPortField key={`pol-${originPort ?? ''}`} choices={originPorts} initial={originPort ?? ''} />
       </label>
       <label className="do-cell">
@@ -146,7 +153,7 @@ export function DoRowForm({
             detail="ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน"
           />
         ) : (
-          <span className="badge pending">บันทึก ETA และ Partner ก่อน</span>
+          <span className="badge pending">บันทึก ETA · Port of Loading · Partner ก่อน</span>
         )}
       </div>
     </form>
