@@ -28,9 +28,11 @@ export default async function FahDoPage({
   const sortBy = params.sortBy ?? 'eta';
   const sortDir = params.sortBy ? params.sortDir : 'asc';
 
-  const [{ rows, total }, portRows, terminalRows, partnerRows, vessels] = await Promise.all([
+  const [{ rows, total }, portRows, originPortRows, terminalRows, partnerRows, vessels] = await Promise.all([
     listJobs({ where: QUEUE.fahDo(tab as 'wait' | 'sent'), search, sortBy, sortDir }),
     listMaster('ports'),
+    // ท่าต้นทางเป็นรายการให้เลือก แต่พิมพ์ค่าที่ไม่มีในรายการได้ด้วย
+    listMaster('originPorts'),
     listMaster('terminals'),
     listMaster('partners'),
     // รายการเรือใช้ชุดเดียวกันทั้งสองแท็บ — เที่ยวที่ยังมีงานค้างรอส่ง Partner
@@ -39,6 +41,7 @@ export default async function FahDoPage({
   const active = (list: typeof portRows) =>
     list.filter((p) => p.isActive).map((p) => ({ id: p.id, code: p.code, name: p.name }));
   const ports = active(portRows);
+  const originPorts = active(originPortRows);
   const terminals = active(terminalRows);
   const partners = active(partnerRows);
   /*
@@ -95,17 +98,19 @@ export default async function FahDoPage({
        *
        * ฝั่งที่ส่งแล้วยังเป็นแผงอ่านค่าแบบเดิม เพราะแก้อะไรไม่ได้อยู่แล้ว
        */
-      label: 'ETA official · Port · Terminal · Partner', kind: 'wrap',
+      label: 'ETA official · POL · Port · Terminal · Partner', kind: 'wrap',
       render: (r) => (
         <DoRowForm
           readOnly
           jobId={r.id}
           eta={r.eta}
+          originPort={r.originPort}
           portId={r.portId ?? defaultPortId}
           terminalId={r.terminalId}
           partnerName={r.releasePartner}
           defaultPartnerId={defaultPartnerId}
           ports={ports}
+          originPorts={originPorts}
           terminals={terminals}
           partners={partners}
           sentAt={sentMap.get(r.id) ?? null}
@@ -151,7 +156,7 @@ export default async function FahDoPage({
     <>
       <div className="page-head">
         <h1>Upload InvDO / ETA Official / Terminal / Send Partner</h1>
-        <p>ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port · Terminal · Partner แล้วจึงส่ง Partner</p>
+        <p>ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port of Loading · Port · Terminal · Partner แล้วจึงส่ง Partner</p>
       </div>
       <Tabs basePath="/fah/do" items={TABS} active={tab} carry={carry} />
 
@@ -173,6 +178,7 @@ export default async function FahDoPage({
             blNo: r.blNo,
             consigneeName: r.consigneeName,
             eta: r.eta,
+            originPort: r.originPort,
             portId: r.portId,
             terminalId: r.terminalId,
             releasePartner: r.releasePartner,
@@ -181,6 +187,7 @@ export default async function FahDoPage({
             canEditBl: canEditBlAtDo(r.shipline),
           }))}
           ports={ports}
+          originPorts={originPorts}
           terminals={terminals}
           partners={partners}
           defaultPortId={defaultPortId}

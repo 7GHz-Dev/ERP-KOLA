@@ -1568,6 +1568,15 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
 .do-cell-bl { grid-column: 1 / -1; }
 .do-cell-bl input { font-weight: 600; }
 
+/*
+ * รายการท่าต้นทางในแผงกรอก DO — กางขึ้น ไม่กางลง
+ *
+ * ฟอร์มปักอยู่ก้นแผงและ .drawer-content ตัดส่วนที่ล้น ถ้ากางลงตามปกติ
+ * รายการจะถูกตัดหายเกือบทั้งกล่อง กางขึ้นมาทับตัวไฟล์ข้างบนจึงเห็นครบ
+ */
+.do-pane-form .search-select-list { top: auto; bottom: calc(100% + 2px); }
+.do-pane-form .search-select-count { top: auto; bottom: calc(100% + 8px); }
+
 /* แถวที่ติ๊กเลือกไว้ — เห็นได้ชัดว่ากำลังจะพิมพ์ใบไหนบ้าง */
 table.data tbody tr.row-picked { background: var(--blue-soft); }
 table.data tbody tr.row-picked td:first-child { box-shadow: inset 3px 0 0 var(--blue); }

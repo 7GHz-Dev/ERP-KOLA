@@ -225,6 +225,16 @@ async function saveDoHandoffImpl(formData: FormData) {
   const portId = text(formData.get('portId'), 80) || job.portId;
 
   /*
+   * ท่าต้นทาง — เก็บเป็นข้อความตัวพิมพ์ใหญ่เหมือนหน้ารับงานและหน้าแก้ BL
+   * เพราะท่าต่างประเทศหลายแห่งไม่มีใน Master Data จึงเลือกจากรายการหรือพิมพ์เองก็ได้
+   *
+   * ล้างค่าได้ถ้าช่องถูกส่งมาว่าง แต่ถ้าฟอร์มไม่มีช่องนี้เลยต้องคงค่าเดิมไว้
+   */
+  const originPort = formData.has('originPort')
+    ? text(formData.get('originPort'), 200).toUpperCase() || null
+    : job.originPort;
+
+  /*
    * เลข BL แก้ได้เฉพาะสายเรือที่ออกเลขตัวจริงหลังเรือเข้า
    *
    * ตรวจฝั่งเซิร์ฟเวอร์ด้วย ไม่พึ่งแค่การซ่อนช่องบนหน้าจอ เพราะฟอร์มถูกยิงตรงได้
@@ -253,7 +263,7 @@ async function saveDoHandoffImpl(formData: FormData) {
   else await db.insert(doHandoffs).values({ id: newId('DO'), ...values });
 
   await db.update(jobs).set({
-    eta, etaIsOfficial: true, transportDate, portId, terminalId,
+    eta, etaIsOfficial: true, transportDate, originPort, portId, terminalId,
     ...(allowBlEdit && blNo ? { blNo } : {}),
     releasePartner: partnerName || job.releasePartner,
     status: sendToPartner ? 'DO_SENT' : job.status,
@@ -279,7 +289,7 @@ async function saveDoHandoffImpl(formData: FormData) {
     }], 'FAH');
   }
   await logActivity(user.id, sendToPartner ? 'SEND_DO_PARTNER' : 'SAVE_DO_HANDOFF',
-    'JOB', jobId, { eta, transportDate, partnerName });
+    'JOB', jobId, { eta, transportDate, originPort, partnerName });
 
   revalidatePath('/fah/do');
   revalidatePath('/pending');

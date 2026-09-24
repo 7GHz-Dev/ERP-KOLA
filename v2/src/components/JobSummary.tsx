@@ -108,6 +108,7 @@ export function JobSummary({
           <Kv label="Ship line">{job.shipline ?? '-'}</Kv>
           <Kv label="Vessel">{job.vessel ?? '-'}</Kv>
           <Kv label="Voyage name">{job.voyage ?? '-'}</Kv>
+          <Kv label="Port of Loading">{job.originPort ?? '-'}</Kv>
           <Kv label="Port of Discharge">{job.portName ?? '-'}</Kv>
           <Kv label="Port Terminal">{job.terminalName ?? '-'}</Kv>
           <Kv label="DEM / DET">{job.demDays} / {job.detDays} วัน</Kv>

@@ -18,6 +18,7 @@ export type DoPaneJob = {
   blNo: string | null;
   consigneeName: string | null;
   eta: string | null;
+  originPort: string | null;
   portId: string | null;
   terminalId: string | null;
   releasePartner: string | null;
@@ -28,10 +29,11 @@ export type DoPaneJob = {
 };
 
 export function DoFillPane({
-  job, ports, terminals, partners, defaultPortId, defaultPartnerId, sentAt, onClose,
+  job, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, onClose,
 }: {
   job: DoPaneJob;
   ports: Choice[];
+  originPorts: Choice[];
   terminals: Choice[];
   partners: Choice[];
   defaultPortId: string | null;
@@ -94,11 +96,13 @@ export function DoFillPane({
             <DoRowForm
               jobId={job.id}
               eta={job.eta}
+              originPort={job.originPort}
               portId={job.portId ?? defaultPortId}
               terminalId={job.terminalId}
               partnerName={job.releasePartner}
               defaultPartnerId={defaultPartnerId}
               ports={ports}
+              originPorts={originPorts}
               terminals={terminals}
               partners={partners}
               sentAt={sentAt}

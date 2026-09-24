@@ -21,7 +21,7 @@ export type JobDetailJob = {
   hasInvoiceAlert: boolean; sourceType: string | null; product: string | null;
   unitAmount: string | number | null; packageType: string | null;
   grossWeight: string | number | null; goodsValue: string | number | null;
-  goodsCurrency: string | null; shipline: string | null;
+  goodsCurrency: string | null; shipline: string | null; originPort: string | null;
   demDays: number; detDays: number;
   releasePartner: string | null; customerNote: string | null;
   draftRefNo: string | null; draftStatus: string | null; draftRejectReason: string | null;
@@ -86,6 +86,7 @@ export async function loadJobDetail(jobId: string): Promise<JobDetail | null> {
                j.product, j.unit_amount as "unitAmount", j.package_type as "packageType",
                j.gross_weight as "grossWeight", j.goods_value as "goodsValue",
                j.goods_currency as "goodsCurrency", j.shipline,
+               j.origin_port as "originPort",
                j.dem_days as "demDays", j.det_days as "detDays",
                j.release_partner as "releasePartner", j.customer_note as "customerNote",
                j.draft_ref_no as "draftRefNo", j.draft_status as "draftStatus",

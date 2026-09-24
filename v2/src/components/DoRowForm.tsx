@@ -1,5 +1,6 @@
 import { saveDoHandoff } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
+import { OriginPortField } from '@/components/SearchSelect';
 
 /**
  * แถวจัดการ Invoice DO — แก้ได้ในตารางเลย ไม่ต้องเปิดแผง
@@ -12,16 +13,19 @@ import { ConfirmSubmit } from '@/components/Interactions';
 export type Choice = { id: string; code: string | null; name: string };
 
 export function DoRowForm({
-  jobId, eta, portId, terminalId, partnerName,
-  ports, terminals, partners, sentAt, defaultPartnerId, readOnly,
+  jobId, eta, originPort, portId, terminalId, partnerName,
+  ports, originPorts, terminals, partners, sentAt, defaultPartnerId, readOnly,
   blNo, canEditBl,
 }: {
   jobId: string;
   eta: string | null;
+  /** ท่าต้นทาง เก็บเป็นข้อความ เพราะท่าต่างประเทศหลายแห่งไม่มีใน Master */
+  originPort: string | null;
   portId: string | null;
   terminalId: string | null;
   partnerName: string | null;
   ports: Choice[];
+  originPorts: Choice[];
   terminals: Choice[];
   partners: Choice[];
   sentAt: string | null;
@@ -66,6 +70,7 @@ export function DoRowForm({
           <div className="do-cell"><span>BL No.</span><b>{blNo ?? '-'}</b></div>
         ) : null}
         <div className="do-cell"><span>ETA official</span><b>{eta ?? '-'}</b></div>
+        <div className="do-cell"><span>Port of Loading</span><b>{originPort || '-'}</b></div>
         <div className="do-cell"><span>Port of Discharge</span><b>{nameOf(ports, portId)}</b></div>
         <div className="do-cell"><span>Terminal</span><b>{nameOf(terminals, terminalId)}</b></div>
         <div className="do-cell"><span>Port Release Partner</span><b>{partnerName ?? '-'}</b></div>
@@ -97,6 +102,14 @@ export function DoRowForm({
       <label className="do-cell">
         <span>ETA official</span>
         <input key={`eta-${eta ?? ''}`} type="date" name="eta" defaultValue={eta ?? ''} required />
+      </label>
+      {/*
+        ท่าต้นทาง — เลือกจากรายการหรือพิมพ์เองก็ได้ เพราะท่าต่างประเทศ
+        หลายแห่งยังไม่มีใน Master Data จึงเก็บเป็นข้อความ ไม่ใช่ id
+      */}
+      <label className="do-cell">
+        <span>Port of Loading</span>
+        <OriginPortField key={`pol-${originPort ?? ''}`} choices={originPorts} initial={originPort ?? ''} />
       </label>
       <label className="do-cell">
         <span>Port of Discharge</span>

@@ -11,10 +11,11 @@ import type { Choice } from '@/components/DoRowForm';
  * เก็บไว้ตรงนี้ที่เดียว ตารางกับแผงจึงอ้างค่าเดียวกันเสมอ
  */
 export function DoFillBoard({
-  jobs, ports, terminals, partners, defaultPortId, defaultPartnerId, sentAt, openFor, children,
+  jobs, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, openFor, children,
 }: {
   jobs: DoPaneJob[];
   ports: Choice[];
+  originPorts: Choice[];
   terminals: Choice[];
   partners: Choice[];
   defaultPortId: string | null;
@@ -85,6 +86,7 @@ export function DoFillBoard({
           key={job.id}
           job={job}
           ports={ports}
+          originPorts={originPorts}
           terminals={terminals}
           partners={partners}
           defaultPortId={defaultPortId}
