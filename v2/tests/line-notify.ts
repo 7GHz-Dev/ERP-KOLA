@@ -25,24 +25,35 @@ function withEnv(values: Partial<Record<typeof ENV[number], string>>, run: () =>
 function messageTest() {
   const text = newJobsMessage([
     { blNo: 'ONEYTYO123', jobNo: 'KOLA-2026-0001', consigneeName: 'บริษัท ก',
-      vessel: 'BANGKOK BRIDGE', voyage: '0518W', lastDem: '30/09/2026' },
+      eta: '28/09/2026' },
   ], 'FAH');
 
   assert.match(text, /รายการใหม่รอแลก DO 1 รายการ/);
   assert.match(text, /จาก FAH/, 'ต้องบอกว่ามาจากฝั่งไหน');
-  assert.match(text, /ONEYTYO123/);
-  assert.match(text, /บริษัท ก/);
-  assert.match(text, /BANGKOK BRIDGE \/ 0518W/);
-  assert.match(text, /DEM ถึง 30\/09\/2026/, 'ต้องมีวันสุดท้ายของ DEM ไว้ดูว่าต้องรีบไหม');
+  // รูปแบบที่ตกลงไว้ — BL : [เลข BL] · [Consignee] · [ETA] อยู่บรรทัดเดียวกัน
+  assert.match(text, /BL : ONEYTYO123 · บริษัท ก · 28\/09\/2026/,
+    'ต้องเป็น BL : [เลข BL] · [Consignee] · [ETA]');
+
+  /*
+   * เรือ/เที่ยว กับวันสุดท้ายของ DEM เอาออกแล้ว
+   * ถ้าเผลอใส่กลับมาข้อความจะยาวขึ้นโดยที่ฝั่งรับไม่ได้ใช้
+   */
+  assert.doesNotMatch(text, /DEM/, 'ไม่ต้องมี DEM');
+
+  const withVessel = newJobsMessage([
+    { blNo: 'BL-V', jobNo: 'J-V', consigneeName: 'บริษัท ข', eta: '01/10/2026' },
+  ], 'FAH');
+  assert.doesNotMatch(withVessel, /BANGKOK|0518W/, 'ไม่ต้องมีเรือ/เที่ยว');
 
   // ไม่มีเลข BL ต้องใช้ Job No. แทน ไม่ใช่ปล่อยว่างจนไม่รู้ว่าใบไหน
   const noBl = newJobsMessage([{ blNo: null, jobNo: 'KOLA-2026-0002' }], 'PAINT');
-  assert.match(noBl, /KOLA-2026-0002/, 'ไม่มีเลข BL ต้องใช้ Job No. แทน');
+  assert.match(noBl, /BL : KOLA-2026-0002/, 'ไม่มีเลข BL ต้องใช้ Job No. แทน');
 
   // ช่องที่ไม่มีค่าต้องหายไปเฉย ๆ ไม่ใช่โผล่เป็น null หรือขีดกลางลอย ๆ
   assert.doesNotMatch(noBl, /null|undefined/, 'ค่าว่างต้องไม่โผล่ในข้อความ');
+  assert.doesNotMatch(noBl, /·/, 'ไม่มี Consignee กับ ETA ต้องไม่เหลือจุดคั่นลอย ๆ');
 
-  console.log('PASS: ข้อความมีข้อมูลที่ใช้ตัดสินใจได้จากในแชท');
+  console.log('PASS: ข้อความเป็น BL · Consignee · ETA ตามที่ตกลง');
 }
 
 function longListTest() {

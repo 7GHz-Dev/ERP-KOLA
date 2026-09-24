@@ -65,28 +65,26 @@ export type NewJobLine = {
   blNo: string | null;
   jobNo: string;
   consigneeName?: string | null;
-  vessel?: string | null;
-  voyage?: string | null;
-  /** วันสุดท้ายของ DEM — ตัวที่บอกว่าใบไหนต้องรีบ */
-  lastDem?: string | null;
+  /** ETA — วันที่เรือเข้า ใช้ดูว่าใบไหนต้องแลกก่อน */
+  eta?: string | null;
 };
 
 /**
  * ข้อความแจ้งรายการใหม่
  *
- * ใส่เฉพาะสิ่งที่ใช้ตัดสินใจว่า "ต้องรีบไหม" ได้จากในแชทโดยไม่ต้องเปิดเว็บ
- * คือเลข BL ลูกค้า และวันสุดท้ายของ DEM ส่วนรายละเอียดที่เหลืออยู่ในระบบอยู่แล้ว
+ * หนึ่งบรรทัดต่อหนึ่งใบ — BL · Consignee · ETA
+ * เอาเรือ/เที่ยวกับวันสุดท้ายของ DEM ออก เพราะฝั่งที่รับแจ้งใช้แค่สามตัวนี้
+ * ในการหยิบงาน ส่วนรายละเอียดที่เหลือเปิดดูในระบบได้อยู่แล้ว
  *
  * แยกออกมาเป็นฟังก์ชันของตัวเองเพื่อให้ทดสอบข้อความได้โดยไม่ต้องยิงเข้า LINE จริง
  */
 export function newJobsMessage(jobs: NewJobLine[], from: string): string {
   const head = `📦 มีรายการใหม่รอแลก DO ${jobs.length} รายการ (จาก ${from})`;
   const lines = jobs.slice(0, 20).map((job, i) => {
-    const parts = [`${i + 1}. ${job.blNo || job.jobNo}`];
+    // ไม่มีเลข BL ใช้ Job No. แทน ไม่ปล่อยว่างจนไม่รู้ว่าใบไหน
+    const parts = [`${i + 1}. BL : ${job.blNo || job.jobNo}`];
     if (job.consigneeName) parts.push(job.consigneeName);
-    const vessel = [job.vessel, job.voyage].filter(Boolean).join(' / ');
-    if (vessel) parts.push(vessel);
-    if (job.lastDem) parts.push(`DEM ถึง ${job.lastDem}`);
+    if (job.eta) parts.push(job.eta);
     return parts.join(' · ');
   });
   // เกิน 20 ใบไม่ไล่ทั้งหมด เพราะข้อความยาวเกินจะอ่านยากกว่าไม่มีรายละเอียดเลย

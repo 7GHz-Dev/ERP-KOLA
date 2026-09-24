@@ -6,7 +6,7 @@ import { db } from '@/db';
 import { approvals, bls, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { notifyNewJobs } from '@/lib/line-notify';
-import { addDays, formatDate } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
@@ -284,8 +284,7 @@ async function saveDoHandoffImpl(formData: FormData) {
     await notifyNewJobs([{
       blNo: blNo || job.blNo, jobNo: job.jobNo,
       consigneeName: await consigneeNameOf(job.consigneeId),
-      vessel: job.vessel, voyage: job.voyage,
-      lastDem: formatDate(addDays(eta, job.demDays)),
+      eta: formatDate(eta),
     }], 'FAH');
   }
   await logActivity(user.id, sendToPartner ? 'SEND_DO_PARTNER' : 'SAVE_DO_HANDOFF',
@@ -415,8 +414,7 @@ async function sendEofficeToPartnerImpl(formData: FormData) {
   await notifyNewJobs([{
     blNo: job.blNo, jobNo: job.jobNo,
     consigneeName: await consigneeNameOf(job.consigneeId),
-    vessel: job.vessel, voyage: job.voyage,
-    lastDem: formatDate(addDays(job.eta, job.demDays)),
+    eta: formatDate(job.eta),
   }], 'PAINT');
 
   revalidatePath('/paint/eoffice-signed');
