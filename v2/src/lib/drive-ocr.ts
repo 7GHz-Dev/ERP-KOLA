@@ -24,6 +24,32 @@ const folderId = (value: string | undefined) => {
   return (/\/folders\/([^/?#]+)/.exec(raw)?.[1] ?? raw.split(/[?#]/)[0]).trim();
 };
 
+/**
+ * private key ของ service account — รับได้ทุกรูปแบบที่คนมักวางลง Vercel
+ *
+ * ช่องค่าของ Vercel ไม่ได้บอกว่าต้องวางแบบไหน ของที่ได้มาจริงจึงมีหลายหน้าตา
+ *   - วางทั้งไฟล์ JSON · ติดเครื่องหมายคำพูดหรือลูกน้ำท้ายบรรทัดมาจาก JSON
+ *   - \n เป็นอักษรสองตัว · ขึ้นบรรทัดจริง · หรือขึ้นบรรทัดหายกลายเป็นช่องว่าง
+ * ถ้าไปรับแค่แบบเดียว OpenSSL จะตอบแค่ "DECODER routines::unsupported" ซึ่งไม่บอกอะไร
+ *
+ * จึงดึงเฉพาะเนื้อกุญแจ (base64) ระหว่างหัวกับท้ายออกมา แล้วประกอบ PEM ใหม่ให้ถูกรูป
+ * ไม่ว่าจะวางมาแบบไหนก็ได้ผลเดียวกัน
+ */
+export function normalizePrivateKey(value: string | undefined): string {
+  let raw = String(value ?? '').trim();
+  if (raw.startsWith('{')) {
+    try { raw = String(JSON.parse(raw).private_key ?? ''); } catch { /* ไม่ใช่ JSON ที่อ่านได้ ลองแบบข้อความต่อ */ }
+  }
+  raw = raw.replace(/\\r/g, '').replace(/\\n/g, '\n');
+  const match = /-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/.exec(raw);
+  const label = match?.[1] ?? 'PRIVATE KEY';
+  // ไม่มีหัวท้ายเลย — ถือว่าวางมาแต่เนื้อกุญแจ
+  const body = (match ? match[2] : raw).replace(/["',\s]/g, '');
+  if (!body) return '';
+  const lines = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${label}-----\n${lines.join('\n')}\n-----END ${label}-----\n`;
+}
+
 /*
  * โปรเจกต์นี้ไม่มีอ็อบเจ็กต์ env กลาง อ่านจาก process.env ตรง ๆ แบบเดียวกับที่อื่น
  * ชื่อตัวแปรตรงกับ ERP-SHIPME ใช้ service account กับ Shared Drive ชุดเดียวกันได้เลย
@@ -32,9 +58,7 @@ function readEnv() {
   loadEnv();
   return {
     googleServiceEmail: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim(),
-    // private key ใน JSON ของ Google เก็บการขึ้นบรรทัดใหม่เป็นอักษรสองตัว (\n)
-    // วางลงช่องค่าของ Vercel จึงได้อักษรสองตัวนั้นมา ไม่ใช่การขึ้นบรรทัดจริง — แปลงกลับให้ตรงนี้
-    googleServiceKey: (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n').trim(),
+    googleServiceKey: normalizePrivateKey(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
     googleDriveFolderId: folderId(process.env.GOOGLE_DRIVE_FOLDER_ID),
     googleClientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
@@ -86,10 +110,15 @@ async function serviceAccountToken(): Promise<string> {
   try {
     signature = base64url(createSign('RSA-SHA256').update(unsigned).sign(env.googleServiceKey));
   } catch (error) {
-    // key ผิดรูปแบบเป็นสาเหตุที่เจอบ่อยสุด บอกให้ชัดว่าต้องวางอะไร ไม่งั้นได้แค่ error ของ OpenSSL
+    /*
+     * รูปแบบถูกแล้วแต่ยังเซ็นไม่ได้ แปลว่าเนื้อกุญแจเองไม่ครบหรือไม่ใช่ private key
+     * บอกความยาวไว้ให้เทียบ — กุญแจ RSA 2048 ของ Google ยาวราว 1,600 ตัว สั้นกว่านั้นคือคัดลอกขาด
+     * ไม่แสดงตัวกุญแจเด็ดขาด เพราะข้อความนี้ขึ้นบนหน้าจอผู้ใช้
+     */
+    const length = env.googleServiceKey.replace(/-----[^-]+-----|\s/g, '').length;
     throw new Error(
-      'เซ็น JWT ด้วย GOOGLE_SERVICE_ACCOUNT_KEY ไม่สำเร็จ — ต้องวางค่า private_key จากไฟล์ JSON ' +
-      `ทั้งก้อนตั้งแต่ -----BEGIN PRIVATE KEY----- ถึง -----END PRIVATE KEY----- (${(error as Error).message})`
+      'เซ็น JWT ด้วย GOOGLE_SERVICE_ACCOUNT_KEY ไม่สำเร็จ — วางค่า private_key จากไฟล์ JSON ใหม่ ' +
+      `หรือวางทั้งไฟล์ JSON ก็ได้ (อ่านได้ ${length} ตัว ปกติราว 1,600) (${(error as Error).message})`
     );
   }
 
