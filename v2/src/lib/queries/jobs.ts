@@ -188,6 +188,7 @@ export async function listJobs(filter: JobFilter = {}) {
       doLetterAt: jobs.doLetterAt,
       doExchangedAt: jobs.doExchangedAt,
       doPayAmount: jobs.doPayAmount,
+      doDepositAmount: jobs.doDepositAmount,
       doClaimedAt: jobs.doClaimedAt,
       /*
        * เวลาที่รายการถูกส่งเข้ามาถึงคิวแลก DO
@@ -288,7 +289,7 @@ export async function currentFilesFor(jobIds: string[]) {
  * ส่วน FAH บันทึกที่ do_handoffs.sent_at ต้องนับทั้งสองทาง
  * แยกออกมาเพราะทั้งคิวของ ANN และของ MAY ใช้เงื่อนไขนี้เหมือนกัน
  */
-function sentToPartner() {
+export function sentToPartner() {
   return or(
     isNotNull(jobs.eofficeSentAt),
     sql`exists (select 1 from do_handoffs dh

@@ -1891,3 +1891,52 @@ label.mini:has(.search-select) { overflow: visible; }
 .monitor-table { margin-top: 12px; }
 .monitor-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .monitor-table .bad { color: var(--red); }
+
+/* ค่ามัดจำตู้ในแผงยอดชำระของ MAY — ปุ่มลบอยู่ท้ายป้ายชื่อช่อง */
+.do-pay-deposit > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.link-button {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 600;
+  color: var(--red); cursor: pointer; text-decoration: underline;
+}
+.do-pay-add-deposit { align-self: flex-start; }
+
+/*
+ * อัป Slip หลายรูปของ MAY — ใช้บนมือถือเป็นหลัก
+ * การ์ดหนึ่งใบต่อหนึ่งรูป รูปย่อซ้ายรายละเอียดขวา ปุ่มแนบติดล่างจอกดด้วยนิ้วโป้งได้
+ */
+.slip-batch { display: flex; flex-direction: column; gap: 12px; padding-bottom: 72px; }
+.slip-batch-pick { display: flex; flex-direction: column; gap: 4px; }
+.slip-batch-pick span { font-size: 12px; color: var(--muted); }
+.slip-batch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.slip-card {
+  display: flex; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface);
+}
+.slip-card.saved { opacity: .62; }
+.slip-card-thumb { flex: none; width: 84px; }
+.slip-card-thumb img {
+  display: block; width: 84px; max-height: 150px; object-fit: cover; object-position: top;
+  border: 1px solid var(--line); border-radius: 6px;
+}
+.slip-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.slip-card-body > small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slip-card-memo { margin: 0; font-size: 12px; word-break: break-all; }
+.slip-card-job {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px;
+  background: var(--blue-soft);
+}
+.slip-card-job.dup { background: var(--red-soft); }
+.slip-card-job > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.slip-card-job small { font-size: 11px; color: var(--muted); }
+.slip-card-job .slip-card-warn { color: var(--amber); }
+.slip-card-body .badge { align-self: flex-start; white-space: normal; }
+.slip-batch-foot {
+  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, .06);
+}
+.slip-batch-foot > span { font-weight: 600; font-size: 13px; }
+@media (max-width: 640px) {
+  .slip-batch-list { grid-template-columns: 1fr; }
+  .slip-batch-foot .button { flex: 1; }
+}

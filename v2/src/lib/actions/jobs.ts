@@ -8,6 +8,7 @@ import { requireActiveSession } from '@/lib/auth';
 import { notifyNewJobs } from '@/lib/line-notify';
 import { formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
+import { depositInput } from '@/lib/do-claim-batch';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
 /**
@@ -472,6 +473,19 @@ async function markDoExchangedImpl(formData: FormData) {
  * ก็ยังได้ข้อความเบิกชุดเดิม ไม่ต้องเปิดไฟล์อ่านซ้ำทุกรอบ
  * ล้างช่องให้ว่างได้ เผื่อกรอกผิดแล้วอยากลบทิ้งก่อนกรอกใหม่
  */
+/**
+ * ค่ามัดจำตู้จากฟอร์ม — ไม่มีช่องนี้ส่งมาเลยคืน undefined แปลว่าไม่แตะค่าเดิม
+ *
+ * ฟอร์มที่ไม่รู้จักมัดจำ (เช่นแท็บที่เปิดค้างไว้ก่อนอัปเดต) จะได้ไม่ลบค่าที่เคยกรอกทิ้ง
+ * ส่วนช่องที่ส่งมาแต่ว่าง แปลว่าผู้ใช้ลบมัดจำออกเอง จึงเก็บเป็น null
+ */
+function readDeposit(formData: FormData): string | null | undefined {
+  if (!formData.has('deposit')) return undefined;
+  const value = depositInput(text(formData.get('deposit'), 30));
+  if (value === undefined) throw new Error('ค่ามัดจำตู้ต้องเป็นตัวเลขไม่ติดลบ หรือเว้นว่างถ้าไม่มี');
+  return value;
+}
+
 async function saveDoPayAmountImpl(formData: FormData) {
   const user = await requireActiveSession(['MAY']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
@@ -486,14 +500,16 @@ async function saveDoPayAmountImpl(formData: FormData) {
     if (!Number.isFinite(n) || n < 0) throw new Error('ยอดชำระต้องเป็นตัวเลขไม่ติดลบ');
     amount = n.toFixed(2);
   }
+  const deposit = readDeposit(formData);
 
   await db.update(jobs).set({
     doPayAmount: amount,
     doPayAmountBy: amount ? user.id : null,
     doPayAmountAt: amount ? new Date() : null,
+    ...(deposit === undefined ? {} : { doDepositAmount: deposit }),
     updatedBy: user.id, updatedAt: new Date(),
   }).where(eq(jobs.id, jobId));
-  await logActivity(user.id, 'SAVE_DO_PAY_AMOUNT', 'JOB', jobId, { amount });
+  await logActivity(user.id, 'SAVE_DO_PAY_AMOUNT', 'JOB', jobId, { amount, deposit });
 
   revalidatePath('/may/do-pay');
 }
@@ -523,16 +539,18 @@ async function markDoClaimedImpl(formData: FormData) {
     amount = n.toFixed(2);
   }
   if (!amount) throw new Error('กรุณากรอกยอดชำระก่อนกดตั้งเบิก');
+  const deposit = readDeposit(formData);
 
   const now = new Date();
   await db.update(jobs).set({
     doPayAmount: amount,
     doPayAmountBy: job.doPayAmountBy ?? user.id,
     doPayAmountAt: job.doPayAmountAt ?? now,
+    ...(deposit === undefined ? {} : { doDepositAmount: deposit }),
     doClaimedAt: now, doClaimedBy: user.id,
     updatedBy: user.id, updatedAt: now,
   }).where(eq(jobs.id, jobId));
-  await logActivity(user.id, 'MARK_DO_CLAIMED', 'JOB', jobId, { amount });
+  await logActivity(user.id, 'MARK_DO_CLAIMED', 'JOB', jobId, { amount, deposit: deposit ?? job.doDepositAmount });
 
   revalidatePath('/may/do-pay');
 }

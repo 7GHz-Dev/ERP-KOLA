@@ -5,7 +5,7 @@ import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { UploadForm } from '@/components/ActionForms';
 import { DoPayCards } from '@/components/DoPayCards';
 import { formatDateTime } from '@/lib/format';
-import { claimAmount } from '@/lib/do-claim';
+import { claimAmounts } from '@/lib/do-claim';
 import { doQueueArrivalDates, listJobs, QUEUE } from '@/lib/queries/jobs';
 import { QueueFilter } from '@/components/VesselFilter';
 import { DoPaySelection, DoPayCheckbox } from '@/components/DoPaySelection';
@@ -69,7 +69,7 @@ export default async function MayDoPayPage({
       render: (r) => (
         <div className="do-pay-cell">
           <Link className="button tiny primary" href={`/may/do-pay/${r.id}`}>ดู</Link>
-          {r.doPayAmount ? <b>{claimAmount(r.doPayAmount)}</b> : null}
+          {r.doPayAmount ? <b>{claimAmounts(r.doPayAmount, r.doDepositAmount)}</b> : null}
         </div>
       ),
     },
@@ -123,12 +123,16 @@ export default async function MayDoPayPage({
 
   return (
     <>
-      <div className="page-head">
-        <h1>รอแลก DO — ยอดชำระ</h1>
-        <p>
-          เปิดดู Invoice DO · กรอกยอดที่ต้องชำระ · คัดลอกข้อความเบิก ·
-          แล้วกดตั้งเบิกเพื่อไปใบถัดไป
-        </p>
+      <div className="page-head with-action">
+        <div>
+          <h1>รอแลก DO — ยอดชำระ</h1>
+          <p>
+            เปิดดู Invoice DO · กรอกยอดที่ต้องชำระ · คัดลอกข้อความเบิก ·
+            แล้วกดตั้งเบิกเพื่อไปใบถัดไป
+          </p>
+        </div>
+        {/* โอนเสร็จได้สลิปมาเป็นชุด อัปทีเดียวทั้งหมด ระบบจับคู่จากบันทึกช่วยจำให้ */}
+        <Link className="button primary" href="/may/do-slips">อัป Slip หลายรูป</Link>
       </div>
       <Tabs basePath="/may/do-pay" items={TABS} active={tab} carry={carry} />
 

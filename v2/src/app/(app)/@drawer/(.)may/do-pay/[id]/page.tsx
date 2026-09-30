@@ -33,6 +33,7 @@ export default async function DoPayDrawer({ params }: { params: Promise<{ id: st
         eta={data.job.eta}
         shipline={data.job.shipline}
         amount={data.job.doPayAmount}
+        deposit={data.job.doDepositAmount}
         claimedAt={data.job.doClaimedAt}
         nextId={data.nextId}
       />

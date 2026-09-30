@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { markDoClaimed, saveDoPayAmount } from '@/lib/actions/jobs';
 import { claimText } from '@/lib/do-claim';
-import { claimAmountInput } from '@/lib/do-claim-batch';
+import { claimAmountInput, depositInput } from '@/lib/do-claim-batch';
 import { ConfirmSubmit } from '@/components/Interactions';
 import type { PreviewFile } from '@/components/SlipCheckPanel';
 
@@ -18,7 +18,8 @@ import type { PreviewFile } from '@/components/SlipCheckPanel';
  * formOnly ใช้ช่องกรอกเดียวกันในแผงหลายรายการ โดยมี preview รวมอยู่ด้านข้าง
  */
 export function DoPayPanel({
-  jobId, invoiceDo, blNo, eta, shipline, amount, claimedAt, nextId, formOnly = false, amountValue, onAmountChange, disabled = false,
+  jobId, invoiceDo, blNo, eta, shipline, amount, deposit = null, claimedAt, nextId, formOnly = false,
+  amountValue, onAmountChange, depositValue, onDepositChange, disabled = false,
 }: {
   jobId: string;
   invoiceDo?: PreviewFile;
@@ -26,22 +27,36 @@ export function DoPayPanel({
   eta: string | null;
   shipline: string | null;
   amount: string | null;
+  /** ค่ามัดจำตู้ที่เคยบันทึกไว้ — ไม่มีมัดจำเป็น null */
+  deposit?: string | null;
   claimedAt: Date | string | null;
   /** งานถัดไปที่ยังรอตั้งเบิก — ไม่มีแล้วแปลว่าทำครบทุกใบ */
   nextId: string | null;
   formOnly?: boolean;
   amountValue?: string;
   onAmountChange?: (value: string) => void;
+  depositValue?: string;
+  onDepositChange?: (value: string) => void;
   disabled?: boolean;
 }) {
   const router = useRouter();
   const textArea = useRef<HTMLTextAreaElement>(null);
   const [localValue, setValue] = useState(amount ?? '');
   const value = amountValue ?? localValue;
+  const [localDeposit, setLocalDeposit] = useState(deposit ?? '');
+  const depositText = depositValue ?? localDeposit;
+  /*
+   * ช่องมัดจำซ่อนไว้จนกว่าจะกดเพิ่ม เพราะงานส่วนใหญ่ไม่มีมัดจำ
+   * งานที่เคยบันทึกมัดจำไว้แล้วต้องเห็นช่องทันที ไม่งั้นจะไม่รู้ว่าข้อความมียอดมัดจำติดไปด้วย
+   */
+  const [showDeposit, setShowDeposit] = useState(Boolean(depositText));
+  const changeDeposit = (next: string) => { setLocalDeposit(next); onDepositChange?.(next); };
+  const depositAmount = depositInput(depositText);
   const [copied, setCopied] = useState(false);
-  const text = claimText({ blNo, eta, shipline, amount: claimAmountInput(value) });
+  const text = claimText({ blNo, eta, shipline, amount: claimAmountInput(value), deposit: depositAmount ?? null });
   const claimed = Boolean(claimedAt);
-  const ready = claimAmountInput(value) !== null;
+  // มัดจำไม่บังคับ แต่ถ้าพิมพ์ไว้แล้วผิดรูปต้องกันไว้ ไม่งั้นข้อความเบิกจะหล่นยอดมัดจำไปเงียบ ๆ
+  const ready = claimAmountInput(value) !== null && depositAmount !== undefined;
 
   const [saveNote, setSaveNote] = useState('');
 
@@ -60,6 +75,7 @@ export function DoPayPanel({
     const fd = new FormData();
     fd.set('jobId', jobId);
     fd.set('amount', value);
+    fd.set('deposit', depositText);
     try {
       await saveDoPayAmount(fd);
       setSaveNote('บันทึกยอดแล้ว');
@@ -127,6 +143,43 @@ export function DoPayPanel({
               disabled={claimed}
             />
           </label>
+
+          {/*
+            ค่ามัดจำตู้ — มีเฉพาะบางงาน จึงเป็นปุ่มกดเพิ่ม ไม่ใช่ช่องที่โผล่ทุกใบ
+            มีมัดจำแล้วข้อความเบิกจะกลายเป็น ค่าDO+ค่ามัดจำ
+          */}
+          {showDeposit ? (
+            <label className="mini do-pay-deposit">
+              <span>
+                ค่ามัดจำตู้ (บาท)
+                {claimed ? null : (
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => { changeDeposit(''); setShowDeposit(false); }}
+                  >
+                    ลบ
+                  </button>
+                )}
+              </span>
+              <input
+                name="deposit"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="เช่น 20000"
+                value={depositText}
+                onChange={(e) => changeDeposit(e.target.value)}
+                disabled={claimed}
+              />
+            </label>
+          ) : claimed ? null : (
+            <button type="button" className="button tiny do-pay-add-deposit" onClick={() => setShowDeposit(true)}>
+              + เพิ่มค่ามัดจำตู้
+            </button>
+          )}
+          {depositAmount === undefined ? (
+            <p className="do-pay-note">ค่ามัดจำต้องเป็นตัวเลข เช่น 20000 หรือ 20,000</p>
+          ) : null}
         </div>
 
         {/*
@@ -148,7 +201,7 @@ export function DoPayPanel({
           >
             {copied ? 'คัดลอกแล้ว' : 'คัดลอกข้อความ · บันทึกยอด'}
           </button>
-          {ready ? null : <p className="do-pay-note">กรอกยอดก่อนจึงจะคัดลอกได้</p>}
+          {ready ? null : <p className="do-pay-note">กรอกยอดให้ถูกต้องก่อนจึงจะคัดลอกได้</p>}
           {saveNote ? <p className="do-pay-note" role="status">{saveNote}</p> : null}
         </div>}
 
@@ -161,6 +214,7 @@ export function DoPayPanel({
               <input type="hidden" name="jobId" value={jobId} />
               {/* ส่งยอดที่กำลังพิมพ์ไปด้วย จะได้ไม่ต้องกดบันทึกยอดก่อนอีกที */}
               <input type="hidden" name="amount" value={value} />
+              <input type="hidden" name="deposit" value={depositText} />
               {ready ? (
                 <ConfirmSubmit
                   label="ตั้งเบิกแล้ว"

@@ -42,16 +42,29 @@ export function claimEta(value: string | Date | null | undefined): string {
   return `${Number(day)}/${Number(month)}/${year}`;
 }
 
+/** ยอดค่า DO ตามด้วย +มัดจำ เมื่อมี — ใช้ทั้งในข้อความเบิกและที่แสดงยอดในตาราง */
+export function claimAmounts(amount: ClaimInput['amount'], deposit?: ClaimInput['deposit']): string {
+  const extra = Number(deposit) > 0 ? claimAmount(deposit) : '';
+  return `${claimAmount(amount)}${extra ? `+${extra}` : ''}`;
+}
+
 export type ClaimInput = {
   blNo: string | null;
   eta: string | Date | null;
   shipline: string | null;
   amount: string | number | null;
+  /** ค่ามัดจำตู้ — ไม่มีก็ไม่ต้องส่ง ข้อความจะเหลือแค่ยอดค่า DO */
+  deposit?: string | number | null;
 };
 
-/** ข้อความเบิกเต็มสองบรรทัด — ช่องไหนไม่มีค่าก็ปล่อยว่างไว้ให้เห็นว่ายังขาด */
-export function claimText({ blNo, eta, shipline, amount }: ClaimInput): string {
-  const first = `${blNo ?? ''}=${claimAmount(amount)}`;
+/**
+ * ข้อความเบิกเต็มสองบรรทัด — ช่องไหนไม่มีค่าก็ปล่อยว่างไว้ให้เห็นว่ายังขาด
+ *
+ * งานที่มีค่ามัดจำตู้เขียนต่อท้ายด้วย + แยกสองยอด ไม่บวกรวมให้
+ * เช่น CULVYOK2600762=18,400+20,000 คนเบิกจะได้เห็นว่าก้อนไหนเป็นมัดจำที่ได้คืน
+ */
+export function claimText({ blNo, eta, shipline, amount, deposit }: ClaimInput): string {
+  const first = `${blNo ?? ''}=${claimAmounts(amount, deposit)}`;
   const second = `ETA ${claimEta(eta)} ของ ${shipline ?? ''}`;
   return `${first}\n${second}`;
 }

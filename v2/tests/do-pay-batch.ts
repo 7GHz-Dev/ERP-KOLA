@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
 import { doPaySelectionIds } from '../src/lib/do-pay-selection';
-import { allClaimText, claimAmountInput, readBatchClaims } from '../src/lib/do-claim-batch';
+import { allClaimText, claimAmountInput, depositInput, readBatchClaims } from '../src/lib/do-claim-batch';
+import { claimAmounts, claimText } from '../src/lib/do-claim';
 
 function compile(path: string, dependencies: Record<string, unknown>) {
   const output = ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -30,6 +31,7 @@ async function main() {
     'drizzle-orm': { and: (...v: unknown[]) => v, eq: (...v: unknown[]) => v, inArray: (...v: unknown[]) => v },
     '@/db/schema': { jobs: {}, files: {} },
     '@/lib/do-letter': {},
+    '@/lib/queries/jobs': { sentToPartner: () => null },
     '@/db': { db: { select: () => ({ from: () => ({ where: async () => {
       calls++;
       return calls % 2 ? jobs : [{ id: 'FILE-A', jobId: 'A', fileName: 'a.pdf', mimeType: 'application/pdf' }];
@@ -62,7 +64,7 @@ async function main() {
     },
     './DoPayPanel': { DoPayPanel: 'AmountForm' },
     './Interactions': { ConfirmSubmit: 'ConfirmSubmit' },
-    '@/lib/do-claim-batch': { allClaimText, claimAmountInput },
+    '@/lib/do-claim-batch': { allClaimText, claimAmountInput, depositInput },
     '@/lib/actions/do-claim-batch': { markDoClaimedBatch: () => {} },
   });
   visit(DoPayBatchForms({ entries: nodes.find(node => node.type === 'BatchForms').props.entries }));
@@ -79,13 +81,31 @@ async function main() {
     { blNo: 'BL-B', eta: '2026-09-13', shipline: 'WANHAI', amount: '18,400' },
     { blNo: 'BL-A', eta: '2026-09-14', shipline: 'ONE', amount: '2200.50' },
   ]), 'BL-B=18,400\nETA 13/9/2026 ของ WANHAI\n\nBL-A=2,200.50\nETA 14/9/2026 ของ ONE');
+  // ค่ามัดจำตู้ต่อท้ายด้วย + แยกยอด ไม่บวกรวม · ไม่มีหรือเป็นศูนย์ก็ไม่ต้องมี +
+  assert.equal(allClaimText([
+    { blNo: 'BL-B', eta: '2026-09-13', shipline: 'WANHAI', amount: '18,400', deposit: '20000' },
+    { blNo: 'BL-A', eta: '2026-09-14', shipline: 'ONE', amount: '2200.50', deposit: '' },
+  ]), 'BL-B=18,400+20,000\nETA 13/9/2026 ของ WANHAI\n\nBL-A=2,200.50\nETA 14/9/2026 ของ ONE');
+  assert.equal(claimText({ blNo: 'X', eta: null, shipline: 'ONE', amount: '100.00', deposit: '0.00' }), 'X=100\nETA  ของ ONE');
+  assert.equal(claimAmounts('18400.00', '5000.50'), '18,400+5,000.50');
+  assert.equal(claimAmounts('18400.00', null), '18,400');
+  assert.equal(depositInput(''), null);
+  assert.equal(depositInput(' 20,000 '), '20000.00');
+  assert.equal(depositInput('abc'), undefined);
   for (const bad of ['', '-1', 'abc', '1,2', '1.234', 'Infinity', '10000000000000000']) assert.equal(claimAmountInput(bad), null);
   assert.equal(claimAmountInput('0'), '0.00');
   const form = new FormData();
   form.append('jobId', 'B'); form.set('amount:B', '18,400');
   form.append('jobId', 'A'); form.set('amount:A', '2200.50');
   form.set('amount:UNSELECTED', '999');
-  assert.deepEqual(readBatchClaims(form), [{ id: 'B', amount: '18400.00' }, { id: 'A', amount: '2200.50' }]);
+  assert.deepEqual(readBatchClaims(form), [
+    { id: 'B', amount: '18400.00', deposit: null }, { id: 'A', amount: '2200.50', deposit: null },
+  ]);
+  form.set('deposit:A', 'bad');
+  assert.throws(() => readBatchClaims(form), /มัดจำ/);
+  form.delete('deposit:A');
+  form.set('deposit:B', '20,000');
+  assert.deepEqual(readBatchClaims(form)[0], { id: 'B', amount: '18400.00', deposit: '20000.00' });
   let authorized = true;
   let mutations: any[] = [];
   let records: any[] = [{ id: 'A', jobNo: 'JOB-A' }, { id: 'B', jobNo: 'JOB-B' }];
@@ -119,7 +139,8 @@ async function main() {
   const result = await markDoClaimedBatch(initial, form);
   assert.equal(result.error, '');
   assert.deepEqual(result.completed, ['B', 'A']);
-  assert.deepEqual(mutations.map(item => [item.id, item.value.doPayAmount]), [['B', '18400.00'], ['A', '2200.50']]);
+  assert.deepEqual(mutations.map(item => [item.id, item.value.doPayAmount, item.value.doDepositAmount]),
+    [['B', '18400.00', '20000.00'], ['A', '2200.50', null]]);
   assert.ok(mutations.every(item => item.value.doClaimedBy === 'MAY-1'));
   mutations = [];
   form.set('amount:A', 'bad');

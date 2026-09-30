@@ -1,13 +1,16 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { files, jobs, masterRecords } from '@/db/schema';
 import { letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
+import { sentToPartner } from '@/lib/queries/jobs';
+import type { SlipChoice } from '@/lib/do-slip-match';
 
 export async function loadDoPayBatch(ids: string[]) {
   if (!ids.length || ids.length > 100) return null;
   const selected = await db.select({
     id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo, eta: jobs.eta,
-    shipline: jobs.shipline, doPayAmount: jobs.doPayAmount, doClaimedAt: jobs.doClaimedAt,
+    shipline: jobs.shipline, doPayAmount: jobs.doPayAmount, doDepositAmount: jobs.doDepositAmount,
+    doClaimedAt: jobs.doClaimedAt,
   }).from(jobs).where(and(inArray(jobs.id, ids), eq(jobs.isArchived, false)));
   if (selected.length !== ids.length) return null;
   const invoices = await db.select({
@@ -58,6 +61,7 @@ export async function loadDoPay(jobId: string) {
     .select({
       id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo,
       eta: jobs.eta, shipline: jobs.shipline, doPayAmount: jobs.doPayAmount,
+      doDepositAmount: jobs.doDepositAmount,
       doClaimedAt: jobs.doClaimedAt,
       consigneeName: sql<string | null>`consignee.name`,
     })
@@ -185,4 +189,32 @@ export async function loadDoLetterText(jobId: string) {
       eta: job.doLetterEta,
     },
   };
+}
+
+/**
+ * งานที่ MAY แนบ Slip ค่าแลก D/O ได้ — ชุดเดียวกับสองแท็บในหน้ายอดชำระ
+ *
+ * คือส่งเข้าคิวแลก DO แล้ว และยังไม่ถูกส่งแลก หรือ MAY ตั้งเบิกไปแล้ว
+ * สลิปมักตามมาหลังตั้งเบิก (โอนเงินหลังได้อนุมัติ) จึงต้องมีงานที่ตั้งเบิกแล้วด้วย
+ * ใช้ทั้งตอนจับคู่ฝั่งเซิร์ฟเวอร์และเป็นตัวเลือกให้คนเลือกเอง สองฝั่งจึงเห็นชุดเดียวกัน
+ */
+export async function loadSlipChoices(): Promise<SlipChoice[]> {
+  const rows = await db
+    .select({
+      jobId: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo,
+      consigneeName: sql<string | null>`consignee.name`,
+      hasSlip: sql<boolean>`exists (select 1 from files f
+        where f.job_id = ${jobs.id} and f.category = 'DO_SLIP' and f.is_current)`,
+    })
+    .from(jobs)
+    .leftJoin(sql`${masterRecords} as consignee`, sql`consignee.id = ${jobs.consigneeId}`)
+    .where(and(
+      eq(jobs.isArchived, false),
+      sentToPartner(),
+      or(isNull(jobs.doExchangedAt), isNotNull(jobs.doClaimedAt)),
+    ))
+    .orderBy(desc(jobs.createdAt));
+  return rows
+    .filter((r) => r.blNo)
+    .map((r) => ({ ...r, blNo: r.blNo ?? '', hasSlip: Boolean(r.hasSlip) }));
 }

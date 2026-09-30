@@ -162,6 +162,13 @@ export const jobs = pgTable('jobs', {
   doPayAmountBy: text('do_pay_amount_by'),
   doPayAmountAt: timestamp('do_pay_amount_at', { withTimezone: true }),
   /*
+   * ค่ามัดจำตู้ที่จ่ายไปพร้อมค่าแลก D/O — มีเฉพาะบางงาน ว่างแปลว่าไม่มี
+   *
+   * แยกช่องจาก doPayAmount ไม่รวมเป็นยอดเดียว เพราะข้อความเบิกต้องเขียนแยกสองยอด
+   * (ค่า DO+ค่ามัดจำ) และมัดจำเป็นเงินที่ได้คืนภายหลัง ต้องตามยอดของมันเองได้
+   */
+  doDepositAmount: numeric('do_deposit_amount', { precision: 18, scale: 2 }),
+  /*
    * MAY คัดลอกข้อความแล้วส่งตั้งเบิกไปแล้ว — ใช้แยกแท็บรอตั้งเบิก/ตั้งเบิกแล้ว
    *
    * แยกจาก doPayAmountAt เพราะคนละขั้น กรอกยอดไว้แล้วยังไม่ได้ส่งตั้งเบิกก็มี

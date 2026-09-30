@@ -43,7 +43,7 @@ export type BlMatch = {
  *   - เลขหน้าวงเล็บ       KG122202670107
  *   - เลขในวงเล็บ         ONEYTYOGF5133300
  */
-function keysOf(blNo: string): Array<{ key: string; by: BlMatch['by'] }> {
+export function keysOf(blNo: string): Array<{ key: string; by: BlMatch['by'] }> {
   const out: Array<{ key: string; by: BlMatch['by'] }> = [];
   const whole = blKey(blNo);
   if (whole) out.push({ key: whole, by: 'blNo' });

@@ -72,6 +72,7 @@ const NAV: NavGroup[] = [
     label: 'MAY', color: '#c2185b', roles: ['MAY'],
     items: [
       { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'doExchangeWait' },
+      { href: '/may/do-slips', label: 'อัป Slip ค่าแลก DO หลายรูป' },
     ],
   },
   {

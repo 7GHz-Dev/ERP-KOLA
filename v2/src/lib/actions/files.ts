@@ -170,6 +170,24 @@ export async function uploadJobFile(formData: FormData) {
   return runAction(() => uploadJobFileImpl(formData));
 }
 
+/**
+ * แนบ Slip ค่าแลก D/O ทีละใบจากหน้าอัป Slip หลายใบของ MAY
+ *
+ * ใช้กติกาเดียวกับการอัปไฟล์ปกติทุกอย่าง (สิทธิ์ ขนาด เวอร์ชันไฟล์)
+ * ต่างแค่คืนผลเป็นค่าแทนการพากลับหน้าเดิมพร้อมข้อความ เพราะหน้านั้นแนบไล่ทีละใบ
+ * ใบไหนพลาดต้องขึ้นข้อความที่ใบนั้น แล้วใบที่เหลือยังแนบต่อได้
+ */
+export async function attachDoSlip(formData: FormData): Promise<{ ok: boolean; detail?: string }> {
+  try {
+    formData.set('category', 'DO_SLIP');
+    await uploadJobFileImpl(formData);
+    revalidatePath('/may/do-pay', 'layout');
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : 'แนบ Slip ไม่สำเร็จ' };
+  }
+}
+
 export async function acknowledgeInvoice(formData: FormData) {
   return runAction(() => acknowledgeInvoiceImpl(formData));
 }

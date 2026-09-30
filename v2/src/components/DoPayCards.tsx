@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { FileChip } from '@/components/JobTable';
 import { UploadForm } from '@/components/ActionForms';
-import { claimAmount } from '@/lib/do-claim';
+import { claimAmounts } from '@/lib/do-claim';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
 import type { JobRow } from '@/lib/queries/jobs';
 import { DoPayCheckbox } from '@/components/DoPaySelection';
@@ -25,7 +25,7 @@ export function DoPayCards({ rows, claimed }: { rows: JobRow[]; claimed: boolean
               <b>{r.blNo ?? '-'}</b>
               <small>{r.consigneeName ?? '-'}</small>
             </div>
-            {r.doPayAmount ? <span className="do-card-amount">{claimAmount(r.doPayAmount)}</span> : null}
+            {r.doPayAmount ? <span className="do-card-amount">{claimAmounts(r.doPayAmount, r.doDepositAmount)}</span> : null}
           </div>
 
           <dl className="do-card-kv">
