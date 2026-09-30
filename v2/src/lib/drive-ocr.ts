@@ -236,10 +236,15 @@ export async function driveOcrText(dataUrl: string): Promise<string> {
     const reason = created?.error?.message || `HTTP ${upload.status}`;
     // service account ไม่มีพื้นที่เก็บของตัวเอง ต้องยืมโฟลเดอร์ของบัญชีคนจริง
     // อาการนี้รอไปก็ไม่หาย แยกออกจากโควตาเต็มชั่วคราวเพื่อไม่ให้เข้าใจผิด
-    if (/storage quota has been exceeded/i.test(reason) && !env.googleDriveFolderId) {
+    /*
+     * ตั้งโฟลเดอร์ไว้แล้วก็ยังเจอได้ ถ้าเป็นโฟลเดอร์ธรรมดาใน "ไดรฟ์ของฉัน" ที่แชร์ให้
+     * เพราะไฟล์ในนั้นนับเป็นของคนอัป (service account) ไม่ใช่ของเจ้าของโฟลเดอร์
+     * ต้องเช็กก่อนกรณีโควตาชั่วคราวข้างล่าง ไม่งั้นข้อความจะบอกให้รอ ซึ่งรอเท่าไหร่ก็ไม่หาย
+     */
+    if (/storage quota has been exceeded/i.test(reason)) {
       throw new Error(
-        'service account ไม่มีพื้นที่ Drive ของตัวเอง — ต้องสร้างโฟลเดอร์ในไดรฟ์ของบัญชีคนจริง ' +
-        'แชร์ให้ service account เป็น Editor แล้วตั้ง GOOGLE_DRIVE_FOLDER_ID (ดู v2/.env.example)'
+        'service account ไม่มีพื้นที่ Drive ของตัวเอง — GOOGLE_DRIVE_FOLDER_ID ต้องเป็น Shared Drive (ไดรฟ์ที่แชร์) ' +
+        'ที่ให้ service account เป็น Content manager ไม่ใช่โฟลเดอร์ใน "ไดรฟ์ของฉัน" (ดู v2/.env.example)'
       );
     }
     // โควตา OCR ของ Drive เต็มได้ถ้ายิงถี่ ๆ บอกให้ชัดจะได้รู้ว่ารอแล้วลองใหม่
