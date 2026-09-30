@@ -1,3 +1,4 @@
+import { createSign } from 'node:crypto';
 import { loadEnv } from './env';
 
 /**
@@ -9,44 +10,116 @@ import { loadEnv } from './env';
  *
  * Drive API เป็น Workspace API จึง **ฟรีและไม่ต้องเปิด billing** ต่างจาก Cloud Vision
  * ที่ Apps Script ทำได้เลยเพราะมี ScriptApp.getOAuthToken() ให้ ส่วนที่นี่ต้องขอโทเคนเอง
- * จาก refresh token ของบัญชี Google ที่เป็นเจ้าของ Drive
+ *
+ * ขอโทเคนได้ 2 ทาง เลือก service account ก่อนถ้าตั้งไว้:
+ *
+ *   1. service account — เซ็น JWT ด้วย private key ที่เราถือเอง ไม่มีอะไรหมดอายุ
+ *   2. refresh token ของบัญชีผู้ใช้ — ใช้ได้ แต่หมดอายุใน 7 วันถ้า consent screen
+ *      ยังเป็น Testing (Google บังคับ) ต้องมาขอใหม่เรื่อย ๆ
  */
 
-/* โปรเจกต์นี้ไม่มีอ็อบเจ็กต์ env กลาง อ่านจาก process.env ตรง ๆ แบบเดียวกับที่อื่น */
-function google() {
+/** ไอดีโฟลเดอร์ — วางทั้งลิงก์ของโฟลเดอร์มาก็ได้ ตัดเอาเฉพาะไอดีให้ */
+const folderId = (value: string | undefined) => {
+  const raw = String(value ?? '').trim().replace(/^['"]|['"]$/g, '');
+  return (/\/folders\/([^/?#]+)/.exec(raw)?.[1] ?? raw.split(/[?#]/)[0]).trim();
+};
+
+/*
+ * โปรเจกต์นี้ไม่มีอ็อบเจ็กต์ env กลาง อ่านจาก process.env ตรง ๆ แบบเดียวกับที่อื่น
+ * ชื่อตัวแปรตรงกับ ERP-SHIPME ใช้ service account กับ Shared Drive ชุดเดียวกันได้เลย
+ */
+function readEnv() {
   loadEnv();
   return {
-    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
-    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
-    refreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN || '',
+    googleServiceEmail: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim(),
+    // private key ใน JSON ของ Google เก็บการขึ้นบรรทัดใหม่เป็นอักษรสองตัว (\n)
+    // วางลงช่องค่าของ Vercel จึงได้อักษรสองตัวนั้นมา ไม่ใช่การขึ้นบรรทัดจริง — แปลงกลับให้ตรงนี้
+    googleServiceKey: (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n').trim(),
+    googleDriveFolderId: folderId(process.env.GOOGLE_DRIVE_FOLDER_ID),
+    googleClientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
+    googleClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+    googleRefreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN || '',
   };
 }
 
+/** ใช้ service account ได้ = ตั้งครบทั้งอีเมลและ private key */
+export const driveServiceAccount = () => {
+  const env = readEnv();
+  return Boolean(env.googleServiceEmail && env.googleServiceKey);
+};
+
 export const driveOcrConfigured = () => {
-  const g = google();
-  return Boolean(g.clientId && g.clientSecret && g.refreshToken);
+  const env = readEnv();
+  return driveServiceAccount()
+    || Boolean(env.googleClientId && env.googleClientSecret && env.googleRefreshToken);
 };
 
 const DOC_MIME = 'application/vnd.google-apps.document';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 // access token อายุราว 1 ชั่วโมง — เก็บไว้ใช้ซ้ำ ไม่ต้องขอใหม่ทุกใบ
 let cached: { token: string; expiresAt: number } | null = null;
 
-async function accessToken(): Promise<string> {
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
+const base64url = (input: Buffer | string) =>
+  Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-  const g = google();
-  if (!g.clientId || !g.clientSecret || !g.refreshToken) {
-    throw new Error('ยังไม่ได้ตั้งค่า Google OAuth สำหรับอ่าน Slip — ดู .env.example');
+/**
+ * เซ็น JWT ด้วย private key ของ service account แล้วเอาไปแลก access token
+ *
+ * ต่างจาก refresh token ตรงที่ไม่มี "ใบอนุญาต" ที่ Google ออกให้แล้วหมดอายุได้
+ * เราถือกุญแจเซ็นเองทุกครั้ง จึงไม่มีอะไรให้หมดอายุหรือถูกเพิกถอนตามรอบ
+ */
+async function serviceAccountToken(): Promise<string> {
+  const env = readEnv();
+  const now = Math.floor(Date.now() / 1000);
+  const claim = {
+    iss: env.googleServiceEmail,
+    scope: SCOPE,
+    aud: TOKEN_URL,
+    iat: now,
+    exp: now + 3600
+  };
+  const unsigned = `${base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${base64url(JSON.stringify(claim))}`;
+
+  let signature: string;
+  try {
+    signature = base64url(createSign('RSA-SHA256').update(unsigned).sign(env.googleServiceKey));
+  } catch (error) {
+    // key ผิดรูปแบบเป็นสาเหตุที่เจอบ่อยสุด บอกให้ชัดว่าต้องวางอะไร ไม่งั้นได้แค่ error ของ OpenSSL
+    throw new Error(
+      'เซ็น JWT ด้วย GOOGLE_SERVICE_ACCOUNT_KEY ไม่สำเร็จ — ต้องวางค่า private_key จากไฟล์ JSON ' +
+      `ทั้งก้อนตั้งแต่ -----BEGIN PRIVATE KEY----- ถึง -----END PRIVATE KEY----- (${(error as Error).message})`
+    );
   }
 
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: g.clientId,
-      client_secret: g.clientSecret,
-      refresh_token: g.refreshToken,
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: `${unsigned}.${signature}`
+    }),
+    signal: AbortSignal.timeout(15000)
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.access_token) {
+    const reason = body?.error_description || body?.error || `HTTP ${response.status}`;
+    throw new Error(`ขอ access token ด้วย service account ไม่สำเร็จ: ${reason}`);
+  }
+  return body.access_token;
+}
+
+/** OAuth ของบัญชีผู้ใช้ — refresh token หมดอายุได้ (ดูหมายเหตุใน env.ts) */
+async function refreshTokenGrant(): Promise<string> {
+  const env = readEnv();
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: env.googleClientId,
+      client_secret: env.googleClientSecret,
+      refresh_token: env.googleRefreshToken,
       grant_type: 'refresh_token'
     }),
     signal: AbortSignal.timeout(15000)
@@ -54,10 +127,22 @@ async function accessToken(): Promise<string> {
   const body = await response.json().catch(() => null);
   if (!response.ok || !body?.access_token) {
     const reason = body?.error_description || body?.error || `HTTP ${response.status}`;
-    throw new Error(`ขอ access token จาก Google ไม่สำเร็จ: ${reason}`);
+    // สาเหตุนี้แก้ด้วยการขอ token ใหม่อย่างเดียว บอกทางออกไปเลยจะได้ไม่ต้องมานั่งไล่หา
+    const hint = /expired or revoked|invalid_grant/i.test(String(reason))
+      ? ' — refresh token หมดอายุแล้ว ย้ายไปใช้ service account เพื่อไม่ให้เกิดซ้ำ (ดู v2/.env.example)'
+      : '';
+    throw new Error(`ขอ access token จาก Google ไม่สำเร็จ: ${reason}${hint}`);
   }
-  cached = { token: body.access_token, expiresAt: Date.now() + (Number(body.expires_in) || 3600) * 1000 };
-  return cached.token;
+  return body.access_token;
+}
+
+async function accessToken(): Promise<string> {
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
+
+  // service account มาก่อนเสมอ เพราะไม่มีวันหมดอายุ
+  const token = driveServiceAccount() ? await serviceAccountToken() : await refreshTokenGrant();
+  cached = { token, expiresAt: Date.now() + 3600 * 1000 };
+  return token;
 }
 
 function decode(dataUrl: string) {
@@ -92,18 +177,24 @@ async function removeFile(fileId: string, token: string) {
 }
 
 export async function driveOcrText(dataUrl: string): Promise<string> {
+  const env = readEnv();
   const token = await accessToken();
   const { bytes, contentType } = decode(dataUrl);
   if (!bytes.length) throw new Error('ไม่มีข้อมูลรูปภาพ');
 
   const { boundary, body } = multipart(
-    { name: `slip_ocr_${Date.now()}`, mimeType: DOC_MIME },   // mimeType ปลายทาง = สั่งให้แปลงเป็น Doc
+    {
+      name: `slip_ocr_${Date.now()}`,
+      mimeType: DOC_MIME,                                     // mimeType ปลายทาง = สั่งให้แปลงเป็น Doc
+      // ไม่ระบุโฟลเดอร์ = ไฟล์ไปกองที่ไดรฟ์ของเจ้าของโทเคน ซึ่ง service account ไม่มี
+      ...(env.googleDriveFolderId ? { parents: [env.googleDriveFolderId] } : {})
+    },
     bytes,
     contentType
   );
 
   const upload = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=th&fields=id',
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=th&fields=id&supportsAllDrives=true',
     {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/related; boundary=${boundary}` },
@@ -114,6 +205,14 @@ export async function driveOcrText(dataUrl: string): Promise<string> {
   const created = await upload.json().catch(() => null);
   if (!upload.ok || !created?.id) {
     const reason = created?.error?.message || `HTTP ${upload.status}`;
+    // service account ไม่มีพื้นที่เก็บของตัวเอง ต้องยืมโฟลเดอร์ของบัญชีคนจริง
+    // อาการนี้รอไปก็ไม่หาย แยกออกจากโควตาเต็มชั่วคราวเพื่อไม่ให้เข้าใจผิด
+    if (/storage quota has been exceeded/i.test(reason) && !env.googleDriveFolderId) {
+      throw new Error(
+        'service account ไม่มีพื้นที่ Drive ของตัวเอง — ต้องสร้างโฟลเดอร์ในไดรฟ์ของบัญชีคนจริง ' +
+        'แชร์ให้ service account เป็น Editor แล้วตั้ง GOOGLE_DRIVE_FOLDER_ID (ดู v2/.env.example)'
+      );
+    }
     // โควตา OCR ของ Drive เต็มได้ถ้ายิงถี่ ๆ บอกให้ชัดจะได้รู้ว่ารอแล้วลองใหม่
     if (/rate limit|quota|limit exceeded/i.test(reason)) {
       throw new Error(`Drive OCR ใช้โควตาเกินชั่วคราว — รอสักครู่แล้วกดอ่านใหม่ (${reason})`);
