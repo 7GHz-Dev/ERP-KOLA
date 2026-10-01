@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { files, jobs, masterRecords } from '@/db/schema';
 import { letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
@@ -133,7 +133,6 @@ export async function loadDoPay(jobId: string) {
     .where(and(
       eq(jobs.isArchived, false),
       sql`(${jobs.eofficeSentAt} is not null or handoff.sent_at is not null)`,
-      isNull(jobs.doExchangedAt),
       isNull(jobs.doClaimedAt),
       sql`(${arrived}, ${jobs.id}) > (
             select least(j2.eoffice_sent_at, h2.sent_at), j2.id
@@ -217,8 +216,8 @@ export async function loadDoLetterText(jobId: string) {
 /**
  * งานที่ MAY แนบ Slip ค่าแลก D/O ได้ — ชุดเดียวกับสองแท็บในหน้ายอดชำระ
  *
- * คือส่งเข้าคิวแลก DO แล้ว และยังไม่ถูกส่งแลก หรือ MAY ตั้งเบิกไปแล้ว
- * สลิปมักตามมาหลังตั้งเบิก (โอนเงินหลังได้อนุมัติ) จึงต้องมีงานที่ตั้งเบิกแล้วด้วย
+ * คือทุกงานที่ส่งเข้าคิวแลก DO แล้ว ทั้งที่ยังรอตั้งเบิกและตั้งเบิกแล้ว ไม่ว่า ANN ส่งแลกหรือยัง
+ * สลิปมักตามมาหลังตั้งเบิก (โอนเงินหลังได้อนุมัติ) และหลัง ANN ส่งแลกไปแล้วด้วย
  * ใช้ทั้งตอนจับคู่ฝั่งเซิร์ฟเวอร์และเป็นตัวเลือกให้คนเลือกเอง สองฝั่งจึงเห็นชุดเดียวกัน
  */
 export async function loadSlipChoices(): Promise<SlipChoice[]> {
@@ -234,7 +233,6 @@ export async function loadSlipChoices(): Promise<SlipChoice[]> {
     .where(and(
       eq(jobs.isArchived, false),
       sentToPartner(),
-      or(isNull(jobs.doExchangedAt), isNotNull(jobs.doClaimedAt)),
     ))
     .orderBy(desc(jobs.createdAt));
   return rows

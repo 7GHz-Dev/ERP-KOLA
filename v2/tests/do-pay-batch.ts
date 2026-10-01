@@ -144,6 +144,17 @@ async function main() {
   assert.deepEqual(mutations.map(item => [item.id, item.value.doPayAmount, item.value.doDepositAmount]),
     [['B', '18400.00', '20000.00'], ['A', '2200.50', null]]);
   assert.ok(mutations.every(item => item.value.doClaimedBy === 'MAY-1'));
+  /*
+   * ANN ส่งแลกไปก่อนแล้ว MAY ยังต้องตั้งเบิกได้
+   * ของจริงเกิดบ่อย — ANN ส่งแลกไม่กี่นาทีหลัง MAY กรอกยอด
+   * เดิมปฏิเสธทั้งชุด งานเลยหลุดจากแท็บรอตั้งเบิกและไม่เคยไปถึงแท็บตั้งเบิกแล้ว
+   */
+  mutations = [];
+  records = [{ id: 'A', jobNo: 'JOB-A', doExchangedAt: new Date() }, { id: 'B', jobNo: 'JOB-B', doExchangedAt: new Date() }];
+  const afterExchange = await markDoClaimedBatch(initial, form);
+  assert.equal(afterExchange.error, '', 'Jobs ANN already exchanged must still be claimable');
+  assert.equal(mutations.length, 2);
+  assert.ok(mutations.every(item => item.value.doClaimedAt instanceof Date));
   mutations = [];
   form.set('amount:A', 'bad');
   assert.ok((await markDoClaimedBatch(initial, form)).error);

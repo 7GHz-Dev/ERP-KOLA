@@ -71,6 +71,12 @@ export async function navCounts() {
           and (${jobs.eofficeSentAt} is not null
                or exists (select 1 from do_handoffs dh
                            where dh.job_id = ${jobs.id} and dh.sent_at is not null)))::int`,
+      // ต้องตรงกับ QUEUE.mayDoPay('wait') — ส่ง Partner แล้ว แต่ MAY ยังไม่ได้ตั้งเบิก
+      mayClaimWait: sql<number>`count(*) filter (
+        where ${jobs.doClaimedAt} is null
+          and (${jobs.eofficeSentAt} is not null
+               or exists (select 1 from do_handoffs dh
+                           where dh.job_id = ${jobs.id} and dh.sent_at is not null)))::int`,
       queue: sql<number>`(select count(*) from automation_tasks
                           where status in ('QUEUED', 'PROCESSING'))::int`,
       // ต้องตรงกับ QUEUE.fahDo('wait') — งานที่ผ่าน AN แล้วแต่ยังไม่ได้กดส่ง Partner

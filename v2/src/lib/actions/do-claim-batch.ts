@@ -24,7 +24,7 @@ export async function markDoClaimedBatch(previous: BatchClaimState, data: FormDa
         const job = byId.get(item.id);
         if (!job || job.isArchived) throw new Error('มี JOB ที่ไม่พบหรือถูกปิดการใช้งาน กรุณารีเฟรชรายการ');
         if (job.doClaimedAt) throw new Error(`${job.jobNo} ตั้งเบิกไปแล้ว กรุณายกเลิกการเลือกรายการนี้`);
-        if (job.doExchangedAt) throw new Error(`${job.jobNo} ส่งแลก DO แล้ว กรุณารีเฟรชรายการ`);
+        // ANN ส่งแลกไปก่อนแล้วก็ยังตั้งเบิกได้ — ตั้งเบิกเป็นขั้นของ MAY ไม่ขึ้นกับการส่งแลก
       }
       const now = new Date();
       for (const { id, amount, deposit } of claims) {

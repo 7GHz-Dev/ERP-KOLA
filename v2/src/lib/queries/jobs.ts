@@ -423,13 +423,14 @@ export const QUEUE = {
   mayDoPay: (sub: 'wait' | 'claimed') => () => [
     sentToPartner(),
     /*
-     * ตัดงานที่ ANN ส่งแลกแล้วออกเฉพาะฝั่ง "รอตั้งเบิก" เท่านั้น
+     * แบ่งสองแท็บด้วยการตั้งเบิกของ MAY อย่างเดียว ไม่ดูว่า ANN ส่งแลกแล้วหรือยัง
      *
-     * ฝั่ง "ตั้งเบิกแล้ว" เป็นบันทึกงานที่ MAY ทำไปแล้ว ไม่ใช่คิวที่ต้องทำต่อ
-     * เดิมตัดออกทั้งสองฝั่ง พองานเดินต่อไปถึงขั้นที่ ANN ส่งแลก (ซึ่งเกิดทีหลังเสมอ)
-     * รายการที่ตั้งเบิกแล้วก็หายไปจากทั้งสองแท็บ MAY จึงไม่มีทางย้อนดูงานตัวเองได้เลย
+     * เดิมตัดงานที่ ANN ส่งแลกแล้วออกจากแท็บ "รอตั้งเบิก" โดยเชื่อว่า ANN ส่งแลก
+     * หลัง MAY ตั้งเบิกเสมอ แต่ใช้งานจริงกลับกัน — ANN มักส่งแลกภายในไม่กี่นาที
+     * หลัง MAY กรอกยอด พอส่งแลกแล้วงานหลุดจากแท็บรอตั้งเบิก กดตั้งเบิกไม่ได้
+     * และไม่เคยไปถึงแท็บตั้งเบิกแล้ว งานจึงหายจากทั้งสองแท็บ
+     * การตั้งเบิกเป็นเรื่องเงินของ MAY คนละขั้นกับการส่งเอกสารของ ANN
      */
-    ...(sub === 'claimed' ? [] : [isNull(jobs.doExchangedAt)]),
     sub === 'claimed' ? isNotNull(jobs.doClaimedAt) : isNull(jobs.doClaimedAt),
   ],
 
@@ -512,8 +513,11 @@ export async function fahDoVessels(): Promise<Array<{ value: string; label: stri
  * ตัวเลือกจึงใช้เส้นทางเดียวกับการพิมพ์ค่าเองบน URL และลิงก์ที่แชร์กันยังเปิดได้
  */
 export async function doQueueArrivalDates(
-  /** 'wait' = วันที่ยังมีงานค้าง · 'sent' = วันที่เคยส่งแลกไปแล้ว */
-  scope: 'wait' | 'sent' = 'wait',
+  /**
+   * 'wait' = วันที่ยังมีงานค้าง · 'sent' = วันที่เคยส่งแลกไปแล้ว
+   * 'mayWait' / 'mayClaimed' = สองแท็บของ MAY ซึ่งแบ่งด้วยการตั้งเบิก ไม่ใช่การส่งแลก
+   */
+  scope: 'wait' | 'sent' | 'mayWait' | 'mayClaimed' = 'wait',
 ): Promise<Array<{ value: string; label: string; count: number }>> {
   /*
    * ตัดวันด้วยเขตเวลาไทยให้ตรงกับที่หน้าจอแสดง
@@ -526,7 +530,10 @@ export async function doQueueArrivalDates(
       left join (select job_id, min(sent_at) as sent_at from do_handoffs
                   where sent_at is not null group by job_id) dh on dh.job_id = j.id
      where j.is_archived = false
-       and ${scope === 'sent' ? sql`j.do_exchanged_at is not null` : sql`j.do_exchanged_at is null`}
+       and ${scope === 'sent' ? sql`j.do_exchanged_at is not null`
+         : scope === 'mayWait' ? sql`j.do_claimed_at is null`
+         : scope === 'mayClaimed' ? sql`j.do_claimed_at is not null`
+         : sql`j.do_exchanged_at is null`}
        and (j.eoffice_sent_at is not null or dh.sent_at is not null)
      group by day
      order by day desc

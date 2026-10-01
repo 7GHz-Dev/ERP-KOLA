@@ -25,8 +25,8 @@ const SEARCH_KEYS = ['blNo', 'consignee', 'entryNo', 'arrivedOn'];
  * MAY ไม่ได้ทำจดหมายหรือรวมชุด หน้าที่คือดู Invoice DO แล้วกรอกยอดที่ต้องจ่าย
  * และคัดลอกข้อความไปเบิกเงิน คอลัมน์จึงเหลือเฉพาะที่ใช้ระบุงานกับที่ต้องใช้ทำงานนั้น
  *
- * แยกสองแท็บด้วยเวลาที่กดตั้งเบิก แต่ทั้งสองแท็บยังอยู่ใต้คิวรอแลก DO เดียวกับ ANN
- * งานที่ ANN กดส่งแลกแล้วจึงหายไปจากหน้านี้เองโดยไม่ต้องทำอะไรเพิ่ม
+ * แยกสองแท็บด้วยเวลาที่กดตั้งเบิกอย่างเดียว — ANN ส่งแลกไปก่อนแล้วก็ยังต้องตั้งเบิก
+ * งานจึงค้างในแท็บรอตั้งเบิกจนกว่า MAY จะกด ไม่หายไปเพราะขั้นของคนอื่น
  *
  * ใช้งานบนมือถือเป็นหลัก จอแคบแสดงเป็นการ์ด จอกว้างแสดงเป็นตาราง
  */
@@ -49,11 +49,8 @@ export default async function MayDoPayPage({
     listJobs({
       where: QUEUE.mayDoPay(tab as 'wait' | 'claimed'), search, sortBy, sortDir,
     }),
-    /*
-     * ทั้งสองแท็บของ MAY อยู่ใต้คิวรอแลก DO เดียวกัน (ยังไม่ได้ส่งแลก)
-     * ต่างกันแค่กดตั้งเบิกแล้วหรือยัง ตัวเลือกวันจึงเป็นชุดเดียวกันทั้งคู่
-     */
-    doQueueArrivalDates('wait'),
+    // ตัวเลือกวันตามแท็บที่เปิดอยู่ — แบ่งด้วยการตั้งเบิกเหมือนตัวแท็บ
+    doQueueArrivalDates(claimed ? 'mayClaimed' : 'mayWait'),
   ]);
   // สลิปมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
   const attachments = await doAttachmentsFor(rows.map((r) => r.id));
@@ -141,7 +138,7 @@ export default async function MayDoPayPage({
         label="วันที่ส่งรายการมา"
         unitLabel="ใบ"
         groupLabel="วัน"
-        emptyNote="ไม่มีงานค้างรอแลก DO"
+        emptyNote={claimed ? 'ยังไม่มีงานที่ตั้งเบิกแล้ว' : 'ไม่มีงานค้างรอตั้งเบิก'}
       />
       <DoPaySelection key={`${tab}:${JSON.stringify(search)}`} ids={rows.map(row => row.id)}>
 
@@ -162,7 +159,7 @@ export default async function MayDoPayPage({
           rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
           empty={claimed ? 'ยังไม่มีงานที่ตั้งเบิกแล้ว' : 'ยังไม่มีงานที่รอตั้งเบิก'}
           hint={claimed
-            ? 'รายการที่คัดลอกข้อความไปตั้งเบิกแล้ว · งานที่ ANN กดส่งแลกแล้วจะหายไปจากหน้านี้'
+            ? 'รายการที่คัดลอกข้อความไปตั้งเบิกแล้ว'
             : 'กดปุ่ม ดู ที่ต้นแถวเพื่อเปิด Invoice DO คู่กับช่องกรอกยอด · อัป Slip ได้จากในแถว · ในแผงมีปุ่มไปใบถัดไปให้ไล่ทำจนครบ'}
         />
       </div>

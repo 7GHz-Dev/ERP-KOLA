@@ -71,7 +71,8 @@ const NAV: NavGroup[] = [
   {
     label: 'MAY', color: '#c2185b', roles: ['MAY'],
     items: [
-      { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'doExchangeWait' },
+      // นับงานที่ MAY ยังไม่ได้ตั้งเบิก ไม่ใช่คิวของ ANN — สองคิวนี้ไม่เท่ากันเมื่อ ANN ส่งแลกไปก่อน
+      { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'mayClaimWait' },
       { href: '/may/do-slips', label: 'อัป Slip ค่าแลก DO หลายรูป' },
     ],
   },
