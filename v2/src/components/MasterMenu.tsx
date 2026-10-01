@@ -35,7 +35,7 @@ export function MasterMenu({
         การใช้งานและค่าใช้จ่าย
       </Link>
       <Link href="/master/jobs" prefetch={false} aria-current={current === JOBS_MENU_KEY ? 'page' : undefined}>
-        ปิดการใช้งาน JOB
+        แก้ไขและปิดใช้งาน JOB
       </Link>
       {MASTER_TYPES.map((t) => (
         <Link

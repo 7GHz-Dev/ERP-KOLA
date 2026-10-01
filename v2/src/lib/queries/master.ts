@@ -71,6 +71,9 @@ export async function intakeOptions() {
     containerTypes: group('containerTypes'),
     packageTypes: group('packageTypes'),
     settings: group('settings'),
+    // ใช้ในหน้าแก้ไข JOB ของ ADMIN ซึ่งแก้ได้ทุกหัวข้อ
+    loadingTypes: group('loadingTypes'),
+    partners: group('partners'),
   };
 }
 

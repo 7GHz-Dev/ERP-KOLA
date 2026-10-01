@@ -1981,3 +1981,28 @@ label.mini:has(.search-select) { overflow: visible; }
 .do-attach-row .file-link { min-width: 0; }
 .do-attach-remove { flex: none; width: 22px; height: 22px; font-size: 14px; }
 .do-attach-error { white-space: pre-line; }
+
+/*
+ * หน้าแก้ไข JOB ของ ADMIN — แบ่งกลุ่มตามหน้าสรุปงาน
+ * ช่องกรอกใช้ extract-grid ชุดเดียวกับหน้ารับงาน ตรึงสองคอลัมน์ให้ช่องอยู่ที่เดิมทุกจอ
+ */
+.admin-job-form { display: flex; flex-direction: column; gap: 14px; padding-bottom: 8px; }
+.admin-job-section {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+}
+.admin-job-section h2 { margin: 0; font-size: 14px; }
+.admin-job-section .extract-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.admin-job-section .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; align-items: center; }
+.admin-job-section > .button { align-self: flex-start; }
+.admin-check { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
+.admin-rows { width: 100%; }
+.admin-rows td input:not([type='checkbox']), .admin-rows td select { width: 100%; min-width: 90px; }
+.admin-job-actions {
+  position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 0; background: var(--canvas); border-top: 1px solid var(--line);
+}
+@media (max-width: 900px) {
+  .admin-job-section .extract-grid { grid-template-columns: minmax(0, 1fr); }
+  .admin-rows { display: block; overflow-x: auto; }
+}

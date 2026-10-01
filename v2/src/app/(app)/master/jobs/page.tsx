@@ -31,6 +31,8 @@ export default async function MasterJobsPage({ searchParams }: {
     { label: 'สถานะการใช้งาน', render: r => <span className={`badge ${r.isArchived ? 'rejected' : 'approved'}`}>{r.isArchived ? 'ปิดการใช้งาน' : 'เปิดใช้งาน'}</span> },
     {
       label: 'จัดการ', kind: 'actions', render: r => (
+        <div className="row-actions">
+        <Link className="button tiny primary" href={`${BASE}/${r.id}`}>แก้ไข</Link>
         <form action={setJobActive} className="inline-form">
           <input type="hidden" name="jobId" value={r.id} />
           <input type="hidden" name="active" value={r.isArchived ? '1' : '0'} />
@@ -41,13 +43,14 @@ export default async function MasterJobsPage({ searchParams }: {
             detail={r.isArchived ? 'งานจะกลับไปแสดงในทะเบียนงานและคิวตามสถานะเดิม' : 'งานจะถูกนำออกจากทะเบียนงาน คิวงาน และ Export โดยเก็บข้อมูลและไฟล์แนบไว้ เปิดใช้งานกลับได้จากหน้านี้'}
           />
         </form>
+        </div>
       ),
     },
   ];
   const pageHref = (next: number) => `${BASE}?${new URLSearchParams({ ...carry, tab, page: String(next) })}`;
   return (
     <>
-      <div className="page-head"><h1>ปิดการใช้งาน JOB</h1><p>จัดการการใช้งาน JOB สำหรับ ADMIN · เก็บข้อมูลและไฟล์แนบเดิมไว้</p></div>
+      <div className="page-head"><h1>แก้ไขและปิดใช้งาน JOB</h1><p>แก้ข้อมูลงานได้ทุกหัวข้อ หรือปิด/เปิดการใช้งาน JOB สำหรับ ADMIN · ปิดใช้งานแล้วข้อมูลและไฟล์แนบยังอยู่ครบ</p></div>
       <div className="master-layout">
         <MasterMenu current={JOBS_MENU_KEY} counts={counts} />
         <div style={{ minWidth: 0 }}>
