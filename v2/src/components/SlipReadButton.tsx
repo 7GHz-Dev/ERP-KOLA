@@ -22,7 +22,7 @@ type Result = {
 
 const baht = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2 });
 
-export function SlipReadButton({ jobId }: { jobId: string }) {
+export function SlipReadButton({ jobId, fileId }: { jobId: string; fileId?: string }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
 
@@ -33,7 +33,8 @@ export function SlipReadButton({ jobId }: { jobId: string }) {
       const res = await fetch('/api/do-slip-ocr', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jobId }),
+        // งานหนึ่งมีหลายสลิป ระบุใบที่กำลังดูอยู่ ไม่งั้นจะได้ผลอ่านของใบอื่น
+        body: JSON.stringify({ jobId, fileId }),
       });
       setResult((await res.json()) as Result);
     } catch {

@@ -7,6 +7,7 @@ import { renderEofficeRequestPdf } from '@/lib/eoffice-pdf';
 import { xlsxToPdf } from '@/lib/xlsx-pdf';
 import { storeDoLetterPdf } from '@/lib/do-letter-store';
 import { doBundleFileName } from '@/lib/do-bundle-options';
+import { DO_DOC_TYPES, DO_SLIP_TYPES } from '@/lib/do-attachments';
 
 /**
  * ชุดเอกสาร E-Office
@@ -18,7 +19,15 @@ import { doBundleFileName } from '@/lib/do-bundle-options';
  * ตรงนี้รวมที่เซิร์ฟเวอร์ ไฟล์ไม่ต้องวิ่งผ่านเครื่องผู้ใช้
  */
 
-export const BUNDLE_PARTS: Array<{ label: string; categories: string[] }> = [
+/**
+ * ชิ้นหนึ่งของชุดเอกสาร
+ *
+ * multi — หมวดที่งานหนึ่งมีได้หลายไฟล์ (Slip · เอกสารแลก D/O) รวมทุกใบตามเวลาที่อัป
+ * optional — ไม่มีก็ไม่ต้องเตือนว่าขาด เพราะหลายงานไม่มีค่าพวกนี้อยู่แล้ว
+ */
+type BundlePart = { label: string; categories: string[]; multi?: boolean; optional?: boolean };
+
+export const BUNDLE_PARTS: BundlePart[] = [
   { label: 'คำร้อง', categories: ['EOFFICE_REQUEST'] },
   { label: 'ใบขนสินค้า', categories: ['CUSTOMS_ENTRY_DOC'] },
   { label: 'Final Invoice', categories: ['FINAL_INVOICE_PDF', 'FINAL_INVOICE'] },
@@ -30,17 +39,24 @@ export const MERGED_CATEGORY = 'EOFFICE_MERGED';
 /**
  * ชุดแลก D/O — ลำดับเดียวกับที่ยื่นจริง
  * ใบขนส่งใช้ Arrival Notice ก่อน ถ้างานนั้นไม่มีค่อยถอยไปใช้ BL
- * เอกสารอื่น ๆ ต่อท้ายได้ เพราะมีหลายใบไม่แน่นอน
+ *
+ * Slip กับเอกสารอื่น ๆ มีหลายใบ เรียงตามหัวข้อ (ค่า DO → มัดจำตู้ → DEM → DET → ล่าช้า)
+ * แล้วตามเวลาที่อัปในหัวข้อเดียวกัน ลำดับยังไม่ถูกใจก็เรียงหน้าใหม่ได้หลังรวมชุด
+ * ขาดสลิปค่า DO ยังเตือนเหมือนเดิม หัวข้อที่เหลือไม่มีก็ไม่ต้องเตือน
  *
  * จดหมายเป็นชิ้นแรกและเลือกได้สองแบบ จึงต่อหัวเข้ามาตอนประกอบชุด
  * สายเรือบางเจ้ารับเฉพาะใบที่ประทับตรา บางเจ้าขอใบเปล่าไว้เซ็นสด
  * ถ้าปล่อยให้ระบบเดาเอง คนใช้จะไม่รู้ตัวว่าได้ชุดที่ผิดแบบไปแล้ว
  */
-const DO_BUNDLE_REST: Array<{ label: string; categories: string[] }> = [
+const DO_BUNDLE_REST: BundlePart[] = [
   { label: 'Arrival Notice / BL', categories: ['ARRIVAL_NOTICE', 'BL'] },
   { label: 'Invoice DO', categories: ['INVOICE_DO'] },
-  { label: 'Slip โอนเงิน', categories: ['DO_SLIP'] },
-  { label: 'เอกสารอื่น ๆ', categories: ['DO_OTHER'] },
+  ...DO_SLIP_TYPES.map((t) => ({
+    label: `Slip ${t.label}`, categories: [t.category], multi: true, optional: t.category !== 'DO_SLIP',
+  })),
+  ...DO_DOC_TYPES.map((t) => ({
+    label: t.label, categories: [t.category], multi: true, optional: true,
+  })),
 ];
 
 /** จดหมายแบบประทับตรา — ใช้เฉพาะใบที่ประทับแล้ว ไม่ถอยไปใช้ใบเปล่า */
@@ -61,7 +77,7 @@ export const DO_MERGED_CATEGORY = 'DO_MERGED';
 export type BundleKind = 'eoffice' | 'do' | 'doPlain' | 'doUploaded';
 
 const BUNDLE_KINDS: Record<BundleKind, {
-  parts: Array<{ label: string; categories: string[] }>;
+  parts: BundlePart[];
   mergedCategory: string;
   title: string;
   action: string;
@@ -171,6 +187,12 @@ export async function buildBundle(
     .from(files)
     .where(and(eq(files.jobId, jobId), eq(files.isCurrent, true)));
   const byCategory = new Map(current.map((f) => [f.category, f]));
+  // หมวดที่มีหลายไฟล์ต่องาน — เก็บครบทุกใบ เรียงตามเวลาที่อัป ใบแรกอยู่ก่อน
+  const allByCategory = new Map<string, typeof current>();
+  for (const f of [...current].sort((a, b) =>
+    new Date(a.uploadedAt ?? 0).getTime() - new Date(b.uploadedAt ?? 0).getTime())) {
+    allByCategory.set(f.category, [...(allByCategory.get(f.category) ?? []), f]);
+  }
   // Older manually uploaded letters used DO_LETTER. Generated letters have an explicit system note.
   if (kind === 'doUploaded' && !byCategory.has('DO_LETTER_UPLOADED')) {
     const legacy = byCategory.get('DO_LETTER');
@@ -221,8 +243,53 @@ export async function buildBundle(
     }
   }
 
+  /*
+   * ต่อทุกไฟล์ของหัวข้อที่มีหลายใบ ใบไหนอ่านไม่ได้ข้ามเฉพาะใบนั้น ใบอื่นยังเข้าชุด
+   * ไม่ใช่ชิ้นแรกของชุด จึงไม่มีกรณีที่ต้องล้มทั้งชุดเหมือนจดหมาย
+   */
+  const appendMulti = async (i: number, part: BundlePart) => {
+    const records = part.categories.flatMap((c) => allByCategory.get(c) ?? []);
+    await onStep?.({ index: i, total, label: part.label, status: 'reading' });
+    if (!records.length) {
+      if (part.optional) return;
+      skipped.push(`${part.label} (ยังไม่มีไฟล์)`);
+      await onStep?.({ index: i, total, label: part.label, status: 'skipped', detail: 'ยังไม่มีไฟล์' });
+      return;
+    }
+    let pages = 0;
+    let added = 0;
+    for (const [n, record] of records.entries()) {
+      const name = records.length > 1 ? `${part.label} ใบที่ ${n + 1}` : part.label;
+      if (record.storageKey.startsWith('drive:')) {
+        skipped.push(`${name} (ยังอยู่ที่ Drive เดิม)`);
+        continue;
+      }
+      try {
+        const { body } = await downloadFile(record.storageKey);
+        pages += await appendPart(merged, body, record.fileName);
+        added += 1;
+      } catch (error) {
+        const why = error instanceof Error ? error.message : 'อ่านไฟล์ไม่ได้';
+        skipped.push(`${name} (${/password|encrypt/i.test(why)
+          ? 'ไฟล์ถูกล็อกด้วยรหัสผ่าน ต้องบันทึกใหม่เป็น PDF ที่เปิดได้ก่อน'
+          : /ไม่ใช่ PDF/.test(why) ? `${why} — พิมพ์เป็น PDF แล้วอัปโหลดใหม่` : why})`);
+      }
+    }
+    if (!added) {
+      await onStep?.({ index: i, total, label: part.label, status: 'skipped', detail: 'อ่านไฟล์ไม่ได้' });
+      return;
+    }
+    const detail = `${added > 1 ? `${added} ใบ · ` : ''}${pages} หน้า`;
+    used.push(`${part.label} (${detail})`);
+    await onStep?.({ index: i, total, label: part.label, status: 'added', detail });
+  };
+
   for (let i = 0; i < cfg.parts.length; i += 1) {
     const part = cfg.parts[i];
+    if (part.multi) {
+      await appendMulti(i, part);
+      continue;
+    }
     const record = part.categories.map((c) => byCategory.get(c)).find(Boolean);
     await onStep?.({ index: i, total, label: part.label, status: 'reading' });
 

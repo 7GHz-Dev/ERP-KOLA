@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import { FileChip } from '@/components/JobTable';
-import { UploadForm } from '@/components/ActionForms';
+import { DoAttachments } from '@/components/DoAttachments';
+import type { DoAttachment } from '@/lib/do-attachments';
 import { claimAmounts } from '@/lib/do-claim';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
 import type { JobRow } from '@/lib/queries/jobs';
@@ -13,7 +13,14 @@ import { DoPayCheckbox } from '@/components/DoPaySelection';
  * การ์ดใบหนึ่งคืองานหนึ่ง วางเฉพาะข้อมูลที่ MAY ใช้ระบุใบกับปุ่มที่ต้องกด
  * ตัวตารางยังอยู่ครบสำหรับจอใหญ่ สองแบบใช้ข้อมูลชุดเดียวกัน สลับด้วย CSS อย่างเดียว
  */
-export function DoPayCards({ rows, claimed }: { rows: JobRow[]; claimed: boolean }) {
+export function DoPayCards({
+  rows, claimed, slips,
+}: {
+  rows: JobRow[];
+  claimed: boolean;
+  /** Slip ทุกใบของแต่ละงาน — มีได้หลายใบ ใบละหัวข้อ */
+  slips: Record<string, DoAttachment[]>;
+}) {
   if (!rows.length) return null;
   return (
     <div className="do-cards">
@@ -54,15 +61,7 @@ export function DoPayCards({ rows, claimed }: { rows: JobRow[]; claimed: boolean
             </span>
             <span className="do-card-file">
               <small>Slip</small>
-              <FileChip file={r.currentFiles?.DO_SLIP} />
-              {claimed ? null : (
-                <UploadForm
-                  jobId={r.id}
-                  category="DO_SLIP"
-                  label={r.currentFiles?.DO_SLIP ? 'เปลี่ยน' : 'อัป Slip'}
-                  stayHere
-                />
-              )}
+              <DoAttachments jobId={r.id} kind="slip" files={slips[r.id] ?? []} canEdit={!claimed} />
             </span>
           </div>
 

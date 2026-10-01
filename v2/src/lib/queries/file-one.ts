@@ -13,7 +13,9 @@ export async function loadFileOne(fileId: string) {
       mimeType: files.mimeType,
       category: files.category,
       note: files.note,
+      isCurrent: files.isCurrent,
       jobNo: jobs.jobNo,
+      doExchangedAt: jobs.doExchangedAt,
     })
     .from(files)
     .innerJoin(jobs, eq(jobs.id, files.jobId))

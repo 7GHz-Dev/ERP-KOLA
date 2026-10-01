@@ -1265,6 +1265,34 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 }
 .job-drawer .drawer-content:has(> .file-preview-view) > .drawer-note { flex: none; max-height: 20vh; overflow: auto; white-space: pre-line; }
 
+/*
+ * ปุ่มเรียงหน้าใหม่เหนือตัวดูชุดแลก DO
+ * แถบนี้กินที่ด้านบน ตัวดูข้างล่างจึงต้องยืดเท่าที่เหลือ ไม่ใช่สูง 100% จนล้นแผง
+ */
+.file-order-bar {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 8px; font-size: 12px; color: var(--muted);
+}
+.job-drawer .drawer-content > .file-order-bar ~ .file-preview-view { flex: 1; height: auto; }
+
+/* ตัวเรียงหน้า — ใช้คลาสของตัวดูไฟล์เพื่อให้ยืดเต็มแผงเหมือนกัน แต่เลื่อนดูรูปย่อได้ */
+.page-order {
+  display: flex; flex-direction: column; overflow: hidden; padding: 0;
+  background: var(--canvas); border-radius: 8px;
+}
+.job-drawer .drawer-content > .page-order { flex: 1; height: auto; }
+.main > .page-order { height: calc(100vh - 170px); min-height: 420px; }
+.page-order-body { flex: 1; min-height: 0; overflow: auto; padding: 10px; }
+.page-order .trimmer-foot { flex-wrap: wrap; }
+.order-card { position: relative; cursor: grab; }
+.order-card:active { cursor: grabbing; }
+.order-card.drag-over { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue); }
+/* หน้าที่ถูกย้ายจากตำแหน่งเดิม — เห็นได้ทันทีว่าแตะอะไรไปแล้วบ้าง */
+.order-card.moved { border-color: var(--amber); }
+.order-card.moved .page-card-bar em { color: var(--amber); }
+.order-card-wait { display: grid; place-items: center; min-height: 160px; font-size: 12px; color: var(--muted); }
+.order-card-move { display: flex; justify-content: center; gap: 6px; padding: 0 8px 8px; }
+
 /* ผลการอ่าน Slip ด้วย OCR */
 .slip-read { display: flex; flex-direction: column; gap: 8px; }
 .slip-read-out {
@@ -1282,6 +1310,8 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
 
 /* แผงเทียบยอด Invoice DO กับ Slip — วางคู่กันเพื่อดูพร้อมกัน */
 .slip-check { display: flex; flex-direction: column; gap: 10px; }
+/* สลับดู Slip ทีละใบเมื่องานมีหลายใบ */
+.slip-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .slip-hint { margin: 0; font-size: 12px; color: var(--muted); }
 .slip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 900px) { .slip-grid { grid-template-columns: 1fr; } }
@@ -1940,3 +1970,14 @@ label.mini:has(.search-select) { overflow: visible; }
   .slip-batch-list { grid-template-columns: 1fr; }
   .slip-batch-foot .button { flex: 1; }
 }
+
+/*
+ * Slip และเอกสารแลก DO หลายใบในเซลล์เดียว — หัวข้อเล็กอยู่บน ชื่อไฟล์อยู่ล่าง
+ * ปุ่ม × ติดท้ายแต่ละใบ เอาเฉพาะใบที่อัปผิดออกได้โดยไม่ต้องเปิดอะไรเพิ่ม
+ */
+.do-attach-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.do-attach-list small { display: block; font-size: 10px; font-weight: 700; color: var(--muted); }
+.do-attach-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.do-attach-row .file-link { min-width: 0; }
+.do-attach-remove { flex: none; width: 22px; height: 22px; font-size: 14px; }
+.do-attach-error { white-space: pre-line; }

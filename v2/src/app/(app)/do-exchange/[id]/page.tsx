@@ -22,7 +22,7 @@ export default async function SlipPage({ params }: { params: Promise<{ id: strin
           <Link className="cell-link" href="/do-exchange">กลับไปหน้าจัดการแลก DO</Link>
         </p>
       </div>
-      <SlipCheckPanel jobId={id} invoiceDo={data.invoiceDo} slip={data.slip} />
+      <SlipCheckPanel jobId={id} invoiceDo={data.invoiceDo} slips={data.slips} />
     </>
   );
 }

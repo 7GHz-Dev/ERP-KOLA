@@ -29,3 +29,28 @@ export async function keepPages(
   pages.forEach((page) => out.addPage(page));
   return out.save();
 }
+
+/**
+ * ตรวจลำดับหน้าใหม่ของชุดที่รวมแล้ว — ต้องมีครบทุกหน้า หน้าละครั้งพอดี
+ *
+ * การเรียงหน้าใช้ keepPages ตัวเดียวกับการตัดหน้า ซึ่งยอมให้ทิ้งหรือซ้ำหน้าได้
+ * ตรงนี้กันไว้ เพราะชุดแลก DO ที่หายไปหนึ่งหน้า (เช่นสลิป) ดูด้วยตาแทบไม่ออก
+ * จนไปถึงสายเรือแล้วถูกตีกลับ
+ *
+ * คืนลำดับที่ใช้ได้ (เลขหน้าเริ่มจาก 0) หรือโยนข้อความที่บอกได้ว่าผิดตรงไหน
+ */
+export function checkPageOrder(order: unknown, total: number): number[] {
+  if (!Array.isArray(order) || order.length !== total) {
+    throw new Error(`ลำดับหน้าต้องมีครบ ${total} หน้า`);
+  }
+  const seen = new Set<number>();
+  for (const page of order) {
+    if (!Number.isInteger(page) || page < 0 || page >= total) {
+      throw new Error(`ไม่มีหน้าลำดับที่ ${String(page)} ในไฟล์นี้`);
+    }
+    if (seen.has(page)) throw new Error(`หน้า ${page + 1} ซ้ำกัน`);
+    seen.add(page);
+  }
+  if (order.every((page, i) => page === i)) throw new Error('ลำดับหน้าเหมือนเดิม ไม่ต้องบันทึก');
+  return order as number[];
+}

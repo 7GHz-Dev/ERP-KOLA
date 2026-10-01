@@ -7,6 +7,7 @@ import { approvals, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { storeInvoicePdf } from '@/lib/eoffice-bundle';
+import { DO_DOC_CATEGORIES, DO_SLIP_CATEGORIES, isDoMultiCategory } from '@/lib/do-attachments';
 import { logActivity, newId, recordStatus, required, runAction, text } from './common';
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -30,8 +31,8 @@ const UPLOAD_ROLES: Record<string, string[]> = {
   DO_LETTER_UPLOADED: ['ANN'],
   DO_LETTER_SIGNED: ['ANN'],
   // MAY อัป Slip ได้ด้วย เป็นคนจ่ายเงินค่าแลก D/O จึงถือสลิปตัวจริงอยู่ในมือ
-  DO_SLIP: ['ANN', 'MAY'],
-  DO_OTHER: ['ANN'],
+  ...Object.fromEntries(DO_SLIP_CATEGORIES.map((c) => [c, ['ANN', 'MAY']])),
+  ...Object.fromEntries(DO_DOC_CATEGORIES.map((c) => [c, ['ANN']])),
   DO_MERGED: ['ANN'],
   INVOICE_GOODS: ['NAMKANG'],
   SURRENDER: ['NAMKANG'],
@@ -56,7 +57,12 @@ async function uploadJobFileImpl(formData: FormData) {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job || job.isArchived) throw new Error('ไม่พบงานที่ต้องการอัปโหลดไฟล์');
 
-  const [current] = await db
+  /*
+   * Slip กับเอกสารแลก D/O มีได้หลายใบต่องาน — อัปเพิ่มแล้วต้องได้ไฟล์เพิ่ม ไม่ไปทับใบก่อน
+   * หมวดอื่นยังเป็นแบบเดิม ใบใหม่แทนใบเก่าและเก็บใบเก่าเป็นเวอร์ชันก่อนหน้า
+   */
+  const multi = isDoMultiCategory(category);
+  const [current] = multi ? [] : await db
     .select()
     .from(files)
     .where(and(eq(files.jobId, jobId), eq(files.category, category), eq(files.isCurrent, true)))
@@ -137,6 +143,35 @@ async function uploadJobFileImpl(formData: FormData) {
 }
 
 /** รับทราบว่า Invoice สินค้าถูกเปลี่ยนใหม่ — แถวจะหายแดง */
+/**
+ * เอา Slip หรือเอกสารแลก D/O ที่อัปผิดออก
+ *
+ * หมวดพวกนี้อัปเพิ่มได้เรื่อย ๆ ไม่ได้ทับกันเหมือนหมวดอื่น ถ้าไม่มีทางเอาออก
+ * ใบที่อัปผิดจะติดไปอยู่ในชุดแลกตลอด
+ *
+ * ไม่ลบไฟล์จริง แค่ปลดออกจากไฟล์ปัจจุบัน ย้อนดูได้ว่าเคยมีอะไรและใครเอาออก
+ * ส่งแลกไปแล้วเอาออกไม่ได้ เพราะชุดที่ส่งไปมีใบนั้นอยู่แล้ว
+ */
+async function removeDoAttachmentImpl(formData: FormData) {
+  const fileId = required(formData.get('fileId'), 'ไฟล์', 80);
+  const [file] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
+  if (!file || !file.isCurrent) throw new Error('ไม่พบไฟล์ หรือถูกเอาออกไปแล้ว');
+  if (!isDoMultiCategory(file.category)) throw new Error('ไฟล์หมวดนี้เอาออกจากตรงนี้ไม่ได้');
+
+  const user = await requireActiveSession(UPLOAD_ROLES[file.category] ?? []);
+
+  const [job] = await db.select({ doExchangedAt: jobs.doExchangedAt })
+    .from(jobs).where(eq(jobs.id, file.jobId)).limit(1);
+  if (job?.doExchangedAt) throw new Error('งานนี้ส่งแลก DO แล้ว เอาเอกสารออกไม่ได้');
+
+  await db.update(files).set({ isCurrent: false }).where(eq(files.id, file.id));
+  await logActivity(user.id, 'REMOVE_FILE', 'FILE', file.id,
+    { jobId: file.jobId, category: file.category, fileName: file.fileName });
+
+  revalidatePath('/do-exchange');
+  revalidatePath('/may/do-pay', 'layout');
+}
+
 async function acknowledgeInvoiceImpl(formData: FormData) {
   const user = await requireActiveSession(['PAINT', 'FAH']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
@@ -179,12 +214,24 @@ export async function uploadJobFile(formData: FormData) {
  */
 export async function attachDoSlip(formData: FormData): Promise<{ ok: boolean; detail?: string }> {
   try {
-    formData.set('category', 'DO_SLIP');
+    // หัวข้อของสลิปเลือกได้ (ค่า DO · มัดจำตู้ · DEM · DET · ล่าช้า) แต่ต้องเป็นหัวข้อสลิปเท่านั้น
+    const category = text(formData.get('category'), 40).toUpperCase();
+    formData.set('category', DO_SLIP_CATEGORIES.includes(category) ? category : 'DO_SLIP');
     await uploadJobFileImpl(formData);
     revalidatePath('/may/do-pay', 'layout');
     return { ok: true };
   } catch (error) {
     return { ok: false, detail: error instanceof Error ? error.message : 'แนบ Slip ไม่สำเร็จ' };
+  }
+}
+
+/** คืนผลเป็นค่า ไม่พากลับหน้าเดิม เพราะกดจากในแถวของตาราง ต้องขึ้นข้อความที่ปุ่มนั้น */
+export async function removeDoAttachment(formData: FormData): Promise<{ ok: boolean; detail?: string }> {
+  try {
+    await removeDoAttachmentImpl(formData);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : 'เอาไฟล์ออกไม่สำเร็จ' };
   }
 }
 

@@ -1,10 +1,11 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { files } from '@/db/schema';
 import { currentUser, roleAllows } from '@/lib/auth';
 import { downloadFile } from '@/lib/storage';
 import { driveOcrConfigured, driveOcrText } from '@/lib/drive-ocr';
 import { parseText } from '@/lib/slip-parse';
+import { DO_SLIP_CATEGORIES } from '@/lib/do-attachments';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -28,13 +29,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const { jobId } = (await request.json().catch(() => ({}))) as { jobId?: string };
+  const { jobId, fileId } = (await request.json().catch(() => ({}))) as { jobId?: string; fileId?: string };
   if (!jobId) return Response.json({ ok: false, detail: 'ไม่ได้ระบุงาน' }, { status: 400 });
 
+  /*
+   * งานหนึ่งมีสลิปได้หลายใบ — อ่านใบที่ระบุมา ต้องเป็นสลิปปัจจุบันของงานนี้เท่านั้น
+   * ไม่ระบุก็ใช้สลิปค่า DO ใบแรกเหมือนเดิม
+   */
   const [slip] = await db
     .select({ storageKey: files.storageKey, mimeType: files.mimeType, fileName: files.fileName })
     .from(files)
-    .where(and(eq(files.jobId, jobId), eq(files.category, 'DO_SLIP'), eq(files.isCurrent, true)))
+    .where(and(
+      eq(files.jobId, jobId),
+      eq(files.isCurrent, true),
+      fileId ? eq(files.id, fileId) : eq(files.category, 'DO_SLIP'),
+      inArray(files.category, DO_SLIP_CATEGORIES),
+    ))
+    .orderBy(asc(files.uploadedAt))
     .limit(1);
   if (!slip) return Response.json({ ok: false, detail: 'ยังไม่มีไฟล์ Slip' }, { status: 400 });
 

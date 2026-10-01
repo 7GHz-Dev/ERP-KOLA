@@ -9,3 +9,6 @@ export function doBundleFileName(blNo: string, kind: DoBundleKind): string {
 export function isDoBundleKind(value: unknown): value is DoBundleKind {
   return value === 'do' || value === 'doPlain' || value === 'doUploaded';
 }
+
+/** ไฟล์ชุดแลก DO ที่รวมแล้ว — เรียงหน้าใหม่ได้ก่อนส่งแลก */
+export const REORDERABLE_CATEGORIES = ['DO_MERGED', 'DO_BATCH_MERGED'];

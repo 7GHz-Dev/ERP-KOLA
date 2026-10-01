@@ -14,6 +14,11 @@ import { readMergeProgress, type MergeProgress } from '@/lib/merge-progress';
 
 type Step = MergeProgress;
 
+/** ส่วนท้ายของชุดแลก DO — Slip และเอกสารเรียงตามหัวข้อ ลำดับเดียวกับที่ระบบรวมจริง */
+const DO_REST_ORDER = 'Slip (ค่า DO → มัดจำตู้ → DEM → DET → แลก DO ล่าช้า)'
+  + ' → Invoice มัดจำตู้ → Invoice DEM → Invoice DET → Invoice DO ล่าช้า → เอกสารอื่น ๆ'
+  + ' · รวมเสร็จแล้วเรียงหน้าใหม่ได้';
+
 /** ปุ่มและลำดับชิ้นงานของชุดแต่ละแบบ — ปุ่มเดียวใช้ได้ทุกชุด */
 const BUNDLE_CFG = {
   eoffice: {
@@ -24,16 +29,16 @@ const BUNDLE_CFG = {
   do: {
     title: 'รวมชุดแลก DO (ประทับตรา)',
     label: 'เซ็นประทับตรา',
-    order: 'จดหมายแลก DO ฉบับประทับตรา → Arrival Notice / BL → Invoice DO → Slip → เอกสารอื่น ๆ',
+    order: 'จดหมายแลก DO ฉบับประทับตรา → Arrival Notice / BL → Invoice DO → ' + DO_REST_ORDER,
   },
   doPlain: {
     title: 'รวมชุดแลก DO (ไม่ประทับตรา)',
     label: 'ไม่เซ็นประทับตรา',
-    order: 'จดหมายแลก DO ฉบับเปล่า → Arrival Notice / BL → Invoice DO → Slip → เอกสารอื่น ๆ',
+    order: 'จดหมายแลก DO ฉบับเปล่า → Arrival Notice / BL → Invoice DO → ' + DO_REST_ORDER,
   },
   doUploaded: {
     title: 'รวมชุดแลก DO (อัปโหลดเอง)', label: 'แบบอัปโหลดเอง',
-    order: 'จดหมายที่อัปโหลดเอง → Arrival Notice / BL → Invoice DO → Slip → เอกสารอื่น ๆ',
+    order: 'จดหมายที่อัปโหลดเอง → Arrival Notice / BL → Invoice DO → ' + DO_REST_ORDER,
   },
 } as const;
 

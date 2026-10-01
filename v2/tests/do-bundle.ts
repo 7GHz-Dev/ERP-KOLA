@@ -4,6 +4,8 @@ import ts from 'typescript';
 import * as pdfLib from '@cantoo/pdf-lib';
 import { doBundleFileName, isDoBundleKind } from '../src/lib/do-bundle-options';
 import { readMergeProgress } from '../src/lib/merge-progress';
+import * as doAttachments from '../src/lib/do-attachments';
+import { checkPageOrder, keepPages } from '../src/lib/pdf-pages';
 
 function compile(path: string, mocks: Record<string, unknown>) {
   const output = ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -58,6 +60,7 @@ async function main() {
     '@/lib/actions/common': { logActivity: async () => {}, newId: () => `FILE-${inserts.length}` },
     '@/lib/eoffice-pdf': {}, '@/lib/xlsx-pdf': {},
     '@/lib/do-bundle-options': { doBundleFileName },
+    '@/lib/do-attachments': doAttachments,
     '@cantoo/pdf-lib': pdfLib,
     '@/lib/do-letter-store': { storeDoLetterPdf: async (_job: string, _user: string, stamp: boolean) => {
       generated.push(stamp);
@@ -80,6 +83,51 @@ async function main() {
     assert.ok(saved.note.includes('ยังขาด:'), 'Preserve missing-document notes in the saved preview');
   }
   assert.deepEqual(generated, [true, false], 'Uploaded mode must never generate a letter');
+
+  /*
+   * Slip กับเอกสารหลายใบต่องาน — ต้องเข้าชุดครบทุกใบ เรียงตามหัวข้อก่อน แล้วตามเวลาที่อัป
+   * ใส่ข้อมูลสลับลำดับไว้โดยตั้งใจ ถ้าระบบเรียงตามลำดับที่ฐานข้อมูลคืนมา ผลจะผิด
+   */
+  stored.set('slip-do-late', await makePdf([502]));
+  stored.set('slip-do-early', await makePdf([501]));
+  stored.set('slip-dem', await makePdf([503]));
+  stored.set('inv-dem', await makePdf([601, 602]));
+  stored.set('other', await makePdf([701]));
+  current = [
+    { category: 'DO_OTHER', storageKey: 'other', fileName: 'other.pdf', uploadedAt: '2026-10-01T01:00:00Z' },
+    { category: 'DO_INV_DEM', storageKey: 'inv-dem', fileName: 'inv-dem.pdf', uploadedAt: '2026-10-01T01:00:00Z' },
+    { category: 'DO_SLIP_DEM', storageKey: 'slip-dem', fileName: 'slip-dem.png', uploadedAt: '2026-10-01T00:00:00Z' },
+    { category: 'DO_SLIP', storageKey: 'slip-do-late', fileName: 'b.pdf', uploadedAt: '2026-10-01T09:00:00Z' },
+    { category: 'DO_SLIP', storageKey: 'slip-do-early', fileName: 'a.pdf', uploadedAt: '2026-10-01T08:00:00Z' },
+    { category: 'INVOICE_DO', storageKey: 'invoice', fileName: 'invoice.pdf' },
+    { category: 'DO_LETTER_UPLOADED', storageKey: 'uploaded', fileName: 'custom.pdf' },
+  ];
+  const multi = await buildBundle(job.id, 'ANN-1', undefined, 'doUploaded');
+  const multiPages = (await pdfLib.PDFDocument.load(stored.get(multi.fileId)!)).getPages().map(page => page.getWidth());
+  assert.deepEqual(multiPages, [305, 401, 402, 501, 502, 503, 601, 602, 701],
+    'letter → Invoice DO → Slip ค่า DO (by upload time) → Slip DEM → Invoice DEM → other');
+  const multiNote = inserts.at(-1).note;
+  assert.ok(multiNote.includes('Slip ค่า DO (2 ใบ'), 'Two slips under one heading are reported as one part with a count');
+  assert.ok(!/ค่ามัดจำตู้|ค่า DET|Invoice DET|ล่าช้า/.test(multiNote), 'Optional headings that are absent must not be reported as missing');
+
+  // ไม่มีสลิปค่า DO เลย ยังต้องเตือนเหมือนเดิม — เป็นใบหลักของทุกชุด
+  current = [
+    { category: 'DO_LETTER_UPLOADED', storageKey: 'uploaded', fileName: 'custom.pdf' },
+    { category: 'INVOICE_DO', storageKey: 'invoice', fileName: 'invoice.pdf' },
+  ];
+  await buildBundle(job.id, 'ANN-1', undefined, 'doUploaded');
+  assert.ok(inserts.at(-1).note.includes('Slip ค่า DO (ยังไม่มีไฟล์)'), 'Missing DO slip is still flagged');
+
+  // ลำดับหน้าใหม่ต้องครบทุกหน้า หน้าละครั้ง — กันหน้าหายหรือซ้ำโดยไม่ตั้งใจ
+  assert.deepEqual(checkPageOrder([2, 0, 1], 3), [2, 0, 1]);
+  assert.throws(() => checkPageOrder([0, 1], 3), /ครบ 3 หน้า/);
+  assert.throws(() => checkPageOrder([0, 0, 1], 3), /ซ้ำ/);
+  assert.throws(() => checkPageOrder([0, 1, 3], 3), /ไม่มีหน้า/);
+  assert.throws(() => checkPageOrder([0, 1.5, 2], 3), /ไม่มีหน้า/);
+  assert.throws(() => checkPageOrder([0, 1, 2], 3), /เหมือนเดิม/);
+  assert.throws(() => checkPageOrder('0,1,2', 3), /ครบ/);
+  const reordered = await keepPages(await makePdf([11, 22, 33]), checkPageOrder([2, 0, 1], 3));
+  assert.deepEqual((await pdfLib.PDFDocument.load(reordered)).getPages().map(page => page.getWidth()), [33, 11, 22]);
   current = [{ category: 'DO_LETTER', note: 'ระบบออกให้อัตโนมัติ', storageKey: 'plain' }];
   const before = inserts.length;
   await assert.rejects(buildBundle(job.id, 'ANN-1', undefined, 'doUploaded'), /อัปโหลดเอง/);
@@ -97,6 +145,6 @@ async function main() {
   assert.equal((await readMergeProgress(response, () => {})).fileId, 'FILE-OK');
   await assert.rejects(readMergeProgress(new Response('{"status":"error","detail":"ไม่มีสิทธิ์"}', { status: 401 }), () => {}), /ไม่มีสิทธิ์/);
   await assert.rejects(readMergeProgress(new Response('{"status":"reading"}\n'), () => {}), /ยังไม่เสร็จ/);
-  console.log('PASS: automatic letter modes, filenames, uploaded-only guard, real PDF page order and streaming responses');
+  console.log('PASS: automatic letter modes, filenames, uploaded-only guard, multi-slip heading order, page reorder and streaming responses');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -10,6 +10,8 @@ import { matchShippingLine } from '@/lib/do-letter';
 import { doQueueArrivalDates, listJobs, QUEUE } from '@/lib/queries/jobs';
 import { QueueFilter } from '@/components/VesselFilter';
 import { DoBundleSelection, DoBundleCheckbox } from '@/components/DoBundleSelection';
+import { DoAttachments } from '@/components/DoAttachments';
+import { doAttachmentsFor } from '@/lib/queries/do-files';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +47,8 @@ export default async function DoExchangePage({
      */
     doQueueArrivalDates(sent ? 'sent' : 'wait'),
   ]);
+  // สลิปกับเอกสารมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
+  const attachments = await doAttachmentsFor(rows.map((r) => r.id));
 
   const columns: Column[] = [
     {
@@ -105,27 +109,32 @@ export default async function DoExchangePage({
       ),
     },
     {
+      /*
+       * Slip หลายใบต่องาน แต่ละใบมีหัวข้อ — ค่า DO เป็นหลัก เพิ่มมัดจำตู้ · DEM · DET · ล่าช้าได้
+       * อัปเสร็จแล้วเปิดแผงเทียบยอดกับ Invoice DO ให้เลย
+       * ส่งแลกแล้วเหลือไว้ดูอย่างเดียว เพราะชุดที่ส่งไปรวมใบเหล่านี้ไว้แล้ว
+       */
       label: 'Slip โอนเงิน', kind: 'wrap', className: 'col-file',
-      render: (r) => {
-        const file = r.currentFiles?.DO_SLIP;
-        return (
-          <div className="file-cell">
-            <FileChip file={file} />
-            {/* อัปโหลดเสร็จแล้วเปิดแผงเทียบยอดกับ Invoice DO ให้เลย */}
-            <UploadForm jobId={r.id} category="DO_SLIP"
-              label={file ? 'เปลี่ยนไฟล์' : 'อัปโหลด Slip'}
-              thenOpen={`/do-exchange/${r.id}`} />
-          </div>
-        );
-      },
+      render: (r) => (
+        <DoAttachments
+          jobId={r.id}
+          kind="slip"
+          files={attachments.get(r.id)?.slips ?? []}
+          canEdit={!sent}
+          thenOpen={`/do-exchange/${r.id}`}
+        />
+      ),
     },
     {
+      // Invoice มัดจำตู้ · DEM · DET · DO ล่าช้า และอื่น ๆ — เพิ่มได้หลายหัวข้อ
       label: 'เอกสารอื่น ๆ', kind: 'wrap', className: 'col-file',
       render: (r) => (
-        <div className="file-cell">
-          <FileChip file={r.currentFiles?.DO_OTHER} />
-          <UploadForm jobId={r.id} category="DO_OTHER" label="+ เพิ่มเอกสาร" />
-        </div>
+        <DoAttachments
+          jobId={r.id}
+          kind="doc"
+          files={attachments.get(r.id)?.docs ?? []}
+          canEdit={!sent}
+        />
       ),
     },
     {

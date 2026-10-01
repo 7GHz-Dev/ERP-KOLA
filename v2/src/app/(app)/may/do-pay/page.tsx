@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
-import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
-import { UploadForm } from '@/components/ActionForms';
+import { JobTable, Tabs, type Column } from '@/components/JobTable';
 import { DoPayCards } from '@/components/DoPayCards';
+import { DoAttachments } from '@/components/DoAttachments';
+import { doAttachmentsFor } from '@/lib/queries/do-files';
 import { formatDateTime } from '@/lib/format';
 import { claimAmounts } from '@/lib/do-claim';
 import { doQueueArrivalDates, listJobs, QUEUE } from '@/lib/queries/jobs';
@@ -54,6 +55,9 @@ export default async function MayDoPayPage({
      */
     doQueueArrivalDates('wait'),
   ]);
+  // สลิปมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
+  const attachments = await doAttachmentsFor(rows.map((r) => r.id));
+  const slipsOf = (id: string) => attachments.get(id)?.slips ?? [];
 
   const columns: Column[] = [
     { label: 'เลือก', render: r => <DoPayCheckbox id={r.id} label={r.blNo ?? r.jobNo} /> },
@@ -99,25 +103,13 @@ export default async function MayDoPayPage({
     {
       /*
        * MAY เป็นคนจ่ายเงินค่าแลก D/O จึงถือสลิปตัวจริง อัปได้จากแถวนี้เลย
+       * หลายใบต่องาน เลือกหัวข้อได้ (ค่า DO · มัดจำตู้ · DEM · DET · ล่าช้า)
        * อัปเสร็จอยู่หน้าเดิม ไม่เด้งไปแผงดูไฟล์ จะได้อัปใบถัดไปต่อได้ทันที
        */
       label: 'Slip โอนเงิน', kind: 'wrap', className: 'col-file',
-      render: (r) => {
-        const file = r.currentFiles?.DO_SLIP;
-        return (
-          <div className="file-cell">
-            <FileChip file={file} />
-            {claimed ? null : (
-              <UploadForm
-                jobId={r.id}
-                category="DO_SLIP"
-                label={file ? 'เปลี่ยนไฟล์' : 'อัปโหลด Slip'}
-                stayHere
-              />
-            )}
-          </div>
-        );
-      },
+      render: (r) => (
+        <DoAttachments jobId={r.id} kind="slip" files={slipsOf(r.id)} canEdit={!claimed} />
+      ),
     },
   ];
 
@@ -155,7 +147,7 @@ export default async function MayDoPayPage({
 
       {/* จอมือถือใช้การ์ด จอใหญ่ใช้ตาราง สลับด้วย CSS ข้อมูลเป็นชุดเดียวกัน */}
       <div className="only-narrow">
-        <DoPayCards rows={rows} claimed={claimed} />
+        <DoPayCards rows={rows} claimed={claimed} slips={Object.fromEntries(rows.map((r) => [r.id, slipsOf(r.id)]))} />
         {rows.length ? null : (
           <p className="do-cards-empty">
             {claimed ? 'ยังไม่มีงานที่ตั้งเบิกแล้ว' : 'ยังไม่มีงานที่รอตั้งเบิก'}

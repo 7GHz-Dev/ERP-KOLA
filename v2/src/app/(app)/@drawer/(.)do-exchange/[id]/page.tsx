@@ -21,12 +21,14 @@ export default async function SlipDrawer({ params }: { params: Promise<{ id: str
   return (
     <FileDrawerShell
       title="เทียบยอด Invoice DO กับ Slip"
-      fileName={data.slip?.fileName ?? 'ยังไม่มีไฟล์ Slip'}
+      fileName={data.slips.length
+        ? `BL ${data.job.blNo ?? '-'} · Slip ${data.slips.length} ใบ`
+        : 'ยังไม่มีไฟล์ Slip'}
       meta={`งาน ${data.job.jobNo}`}
-      viewHref={data.slip ? `/files/${data.slip.id}` : '#'}
+      viewHref={data.slips[0] ? `/files/${data.slips[0].id}` : '#'}
       wide
     >
-      <SlipCheckPanel jobId={id} invoiceDo={data.invoiceDo} slip={data.slip} />
+      <SlipCheckPanel jobId={id} invoiceDo={data.invoiceDo} slips={data.slips} />
     </FileDrawerShell>
   );
 }

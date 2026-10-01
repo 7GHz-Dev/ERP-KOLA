@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { attachDoSlip } from '@/lib/actions/files';
 import { SearchSelect } from '@/components/SearchSelect';
 import type { SlipChoice } from '@/lib/do-slip-match';
+import { DO_SLIP_TYPES } from '@/lib/do-attachments';
 
 /**
  * อัป Slip ค่าแลก D/O ทีละหลายรูป — ระบบอ่านเลข BL จากช่องบันทึกช่วยจำแล้วจับคู่งานให้
@@ -27,6 +28,8 @@ type Row = {
   memo: string;
   /** งานที่จะแนบรูปนี้ — สลิปใบเดียวจ่ายหลาย BL ได้ */
   jobIds: string[];
+  /** หัวข้อของสลิป — ค่า DO เป็นค่าตั้งต้น เปลี่ยนเป็นมัดจำตู้ · DEM · DET · ล่าช้าได้ */
+  category: string;
   /** ระบบจับคู่ให้เอง ยังไม่มีคนแก้ */
   auto: boolean;
   saved?: boolean;
@@ -94,7 +97,7 @@ export function DoSlipBatch({ choices }: { choices: SlipChoice[] }) {
       thumbs.current.push(thumb);
       return {
         key: `${Date.now()}-${n}-${file.name}`, file, thumb, status: 'reading',
-        message: 'รอคิวอ่าน…', memo: '', jobIds: [], auto: false,
+        message: 'รอคิวอ่าน…', memo: '', jobIds: [], auto: false, category: 'DO_SLIP',
       };
     });
     // เลือกเพิ่มได้หลายรอบ รูปที่เลือกรอบก่อนยังอยู่
@@ -134,20 +137,10 @@ export function DoSlipBatch({ choices }: { choices: SlipChoice[] }) {
   }
 
   /*
-   * สองรูปชี้งานเดียวกัน — ไฟล์หลังจะทับไฟล์แรกจนเหลือใบเดียวโดยไม่มีใครเห็น
-   * ต้องให้แก้ก่อน เหมือนหน้าแนบ AN/BL หลายไฟล์
+   * หลายรูปชี้งานเดียวกันได้ — งานหนึ่งมีสลิปหลายใบ (โอนค่า DO สองรอบ หรือมีค่า DEM แยก)
+   * แต่ละรูปแนบเป็นใบใหม่ ไม่ทับกัน จึงไม่ต้องกันไว้เหมือนตอนที่งานหนึ่งมีสลิปได้ใบเดียว
    */
-  const dupIds = useMemo(() => {
-    const count = new Map<string, number>();
-    for (const r of rows) {
-      if (r.saved) continue;
-      for (const id of r.jobIds) count.set(id, (count.get(id) ?? 0) + 1);
-    }
-    return new Set([...count].filter(([, n]) => n > 1).map(([id]) => id));
-  }, [rows]);
-
-  const isReady = (r: Row) => r.status === 'ok' && !r.saved && r.jobIds.length > 0
-    && r.jobIds.every((id) => !dupIds.has(id));
+  const isReady = (r: Row) => r.status === 'ok' && !r.saved && r.jobIds.length > 0;
   const ready = rows.filter(isReady);
   const savedCount = rows.filter((r) => r.saved).length;
 
@@ -159,6 +152,7 @@ export function DoSlipBatch({ choices }: { choices: SlipChoice[] }) {
       for (const jobId of row.jobIds) {
         const fd = new FormData();
         fd.set('jobId', jobId);
+        fd.set('category', row.category);
         fd.set('file', row.file);
         const res = await attachDoSlip(fd).catch(() => ({ ok: false, detail: 'เชื่อมต่อไม่ได้' }));
         if (!res.ok) errors.push(`${byId.get(jobId)?.blNo ?? jobId}: ${res.detail ?? ''}`);
@@ -201,11 +195,11 @@ export function DoSlipBatch({ choices }: { choices: SlipChoice[] }) {
               {r.jobIds.map((id) => {
                 const c = byId.get(id);
                 return (
-                  <div key={id} className={`slip-card-job${dupIds.has(id) && !r.saved ? ' dup' : ''}`}>
+                  <div key={id} className="slip-card-job">
                     <span>
                       <b>{c?.blNo ?? id}</b>
                       <small>{[c?.consigneeName, c?.jobNo].filter(Boolean).join(' · ')}</small>
-                      {c?.hasSlip && !r.saved ? <small className="slip-card-warn">มี Slip เดิมอยู่ จะถูกแทนที่</small> : null}
+                      {c?.hasSlip && !r.saved ? <small className="slip-card-warn">มี Slip ค่า DO อยู่แล้ว · รูปนี้จะเพิ่มเป็นอีกใบ</small> : null}
                     </span>
                     {r.saved || busy ? null : (
                       <button
@@ -223,6 +217,19 @@ export function DoSlipBatch({ choices }: { choices: SlipChoice[] }) {
 
               {r.saved || r.status === 'reading' ? null : (
                 <label className="mini">
+                  <span>หัวข้อ</span>
+                  <select
+                    value={r.category}
+                    disabled={busy}
+                    onChange={(e) => patch(r.key, { category: e.target.value })}
+                  >
+                    {DO_SLIP_TYPES.map((t) => <option key={t.category} value={t.category}>{t.label}</option>)}
+                  </select>
+                </label>
+              )}
+
+              {r.saved || r.status === 'reading' ? null : (
+                <label className="mini">
                   <span>{r.jobIds.length ? 'เพิ่ม BL อื่นในสลิปนี้' : 'เลือกงาน'}</span>
                   <SearchSelect
                     choices={options.filter((o) => !r.jobIds.includes(o.id))}
@@ -235,9 +242,6 @@ export function DoSlipBatch({ choices }: { choices: SlipChoice[] }) {
 
               {r.saved ? <span className="badge approved">แนบแล้ว</span>
                 : r.saveError ? <span className="badge rejected">{r.saveError}</span>
-                : r.jobIds.some((id) => dupIds.has(id)) ? (
-                  <span className="badge rejected">BL นี้ถูกเลือกในรูปอื่นด้วย — เหลือไว้รูปเดียว</span>
-                )
                 : r.status === 'reading' ? <span className="badge pending">{r.message}</span>
                 : <span className={r.jobIds.length ? (r.auto ? 'badge neutral' : 'badge approved') : 'badge pending'}>
                   {r.jobIds.length && !r.auto ? 'เลือกเอง' : r.message}

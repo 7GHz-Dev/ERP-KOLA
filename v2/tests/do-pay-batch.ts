@@ -5,6 +5,7 @@ import * as jsx from 'react/jsx-runtime';
 import { doPaySelectionIds } from '../src/lib/do-pay-selection';
 import { allClaimText, claimAmountInput, depositInput, readBatchClaims } from '../src/lib/do-claim-batch';
 import { claimAmounts, claimText } from '../src/lib/do-claim';
+import * as doAttachments from '../src/lib/do-attachments';
 
 function compile(path: string, dependencies: Record<string, unknown>) {
   const output = ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -32,6 +33,7 @@ async function main() {
     '@/db/schema': { jobs: {}, files: {} },
     '@/lib/do-letter': {},
     '@/lib/queries/jobs': { sentToPartner: () => null },
+    '@/lib/do-attachments': doAttachments,
     '@/db': { db: { select: () => ({ from: () => ({ where: async () => {
       calls++;
       return calls % 2 ? jobs : [{ id: 'FILE-A', jobId: 'A', fileName: 'a.pdf', mimeType: 'application/pdf' }];

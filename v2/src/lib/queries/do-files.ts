@@ -4,6 +4,9 @@ import { files, jobs, masterRecords } from '@/db/schema';
 import { letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
 import { sentToPartner } from '@/lib/queries/jobs';
 import type { SlipChoice } from '@/lib/do-slip-match';
+import {
+  compareDoAttach, DO_DOC_CATEGORIES, DO_SLIP_CATEGORIES, type DoAttachment,
+} from '@/lib/do-attachments';
 
 export async function loadDoPayBatch(ids: string[]) {
   if (!ids.length || ids.length > 100) return null;
@@ -21,7 +24,38 @@ export async function loadDoPayBatch(ids: string[]) {
   return ids.map(id => ({ job: byId.get(id)!, invoiceDo: byJob.get(id) }));
 }
 
-/** ไฟล์ที่ใช้เทียบยอดของงานหนึ่ง — Invoice DO กับ Slip */
+/**
+ * Slip กับเอกสารแลก D/O ของหลายงานในรอบเดียว — แยกเป็นสองกองตามชนิด
+ *
+ * ไม่ใช้ currentFiles ของ listJobs เพราะตัวนั้นเก็บได้ไฟล์เดียวต่อหมวด
+ * แต่หมวดพวกนี้มีหลายใบต่องาน ถ้าใช้ตัวเดิมจะเห็นแค่ใบเดียวแล้วใบอื่นหายไปเงียบ ๆ
+ */
+export async function doAttachmentsFor(jobIds: string[]) {
+  const map = new Map<string, { slips: DoAttachment[]; docs: DoAttachment[] }>();
+  if (!jobIds.length) return map;
+  const rows = await db
+    .select({
+      id: files.id, jobId: files.jobId, category: files.category,
+      fileName: files.fileName, mimeType: files.mimeType, note: files.note,
+      uploadedAt: files.uploadedAt,
+    })
+    .from(files)
+    .where(and(
+      inArray(files.jobId, jobIds),
+      eq(files.isCurrent, true),
+      inArray(files.category, [...DO_SLIP_CATEGORIES, ...DO_DOC_CATEGORIES]),
+    ));
+  rows.sort(compareDoAttach);
+  for (const r of rows) {
+    const entry = map.get(r.jobId) ?? { slips: [], docs: [] };
+    const file = { id: r.id, category: r.category, fileName: r.fileName, mimeType: r.mimeType, note: r.note };
+    (DO_SLIP_CATEGORIES.includes(r.category) ? entry.slips : entry.docs).push(file);
+    map.set(r.jobId, entry);
+  }
+  return map;
+}
+
+/** ไฟล์ที่ใช้เทียบยอดของงานหนึ่ง — Invoice DO กับ Slip ทุกใบ */
 export async function loadSlipCheck(jobId: string) {
   const [job] = await db
     .select({ id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo })
@@ -30,24 +64,13 @@ export async function loadSlipCheck(jobId: string) {
     .limit(1);
   if (!job) return null;
 
-  const rows = await db
-    .select({
-      id: files.id, category: files.category,
-      fileName: files.fileName, mimeType: files.mimeType,
-    })
+  const [invoiceDo] = await db
+    .select({ id: files.id, fileName: files.fileName, mimeType: files.mimeType })
     .from(files)
-    .where(and(
-      eq(files.jobId, jobId),
-      eq(files.isCurrent, true),
-      inArray(files.category, ['INVOICE_DO', 'DO_SLIP']),
-    ));
+    .where(and(eq(files.jobId, jobId), eq(files.isCurrent, true), eq(files.category, 'INVOICE_DO')))
+    .limit(1);
 
-  const byCategory = new Map(rows.map((r) => [r.category, r]));
-  return {
-    job,
-    invoiceDo: byCategory.get('INVOICE_DO'),
-    slip: byCategory.get('DO_SLIP'),
-  };
+  return { job, invoiceDo, slips: (await doAttachmentsFor([jobId])).get(jobId)?.slips ?? [] };
 }
 
 /**
