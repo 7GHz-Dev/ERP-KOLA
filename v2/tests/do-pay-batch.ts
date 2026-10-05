@@ -132,17 +132,19 @@ async function main() {
   // รายงาน Excel — ยอดเป็นตัวเลขจริง วันที่เป็นวันที่จริง และมีแถวรวม
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(await claimReportXlsx([
-    { claimedOn: '2026-10-01', blNo: 'BL-1', doPayAmount: '18400.00', doDepositAmount: '20000.00', doOtherAmount: null, doOtherLabel: null },
-    { claimedOn: '2026-10-02', blNo: 'BL-2', doPayAmount: '2200.50', doDepositAmount: null, doOtherAmount: '1500.00', doOtherLabel: 'ค่าล้างตู้' },
+    { claimedOn: '2026-10-01', arrivedAt: '2026-09-30 17:45', blNo: 'BL-1', doPayAmount: '18400.00', doDepositAmount: '20000.00', doOtherAmount: null, doOtherLabel: null },
+    { claimedOn: '2026-10-02', arrivedAt: null, blNo: 'BL-2', doPayAmount: '2200.50', doDepositAmount: null, doOtherAmount: '1500.00', doOtherLabel: 'ค่าล้างตู้' },
   ]) as any);
   const sheet = wb.worksheets[0];
   assert.deepEqual((sheet.getRow(1).values as unknown[]).slice(1),
-    ['วันที่ตั้งเบิก', 'เลข BL', 'ยอดค่า DO', 'ยอดค่ามัดจำ', 'ยอดค่าอื่นๆ', 'ระบุ (ค่าอื่นๆ)']);
+    ['วันที่ตั้งเบิก', 'วันที่ส่งรายการมา', 'เลข BL', 'ยอดค่า DO', 'ยอดค่ามัดจำ', 'ยอดค่าอื่นๆ', 'ระบุ (ค่าอื่นๆ)']);
   assert.equal((sheet.getCell('A2').value as Date).toISOString().slice(0, 10), '2026-10-01');
-  assert.equal(sheet.getCell('C3').value, 2200.5);
-  assert.equal(sheet.getCell('D3').value, null);
-  assert.equal(sheet.getCell('F3').value, 'ค่าล้างตู้');
-  assert.deepEqual(sheet.getCell('C4').value, { formula: 'SUM(C2:C3)' });
+  assert.equal((sheet.getCell('B2').value as Date).toISOString().slice(0, 16), '2026-09-30T17:45');
+  assert.equal(sheet.getCell('B3').value, null);
+  assert.equal(sheet.getCell('D3').value, 2200.5);
+  assert.equal(sheet.getCell('E3').value, null);
+  assert.equal(sheet.getCell('G3').value, 'ค่าล้างตู้');
+  assert.deepEqual(sheet.getCell('D4').value, { formula: 'SUM(D2:D3)' });
   let authorized = true;
   let mutations: any[] = [];
   let records: any[] = [{ id: 'A', jobNo: 'JOB-A' }, { id: 'B', jobNo: 'JOB-B' }];

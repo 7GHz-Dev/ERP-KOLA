@@ -13,6 +13,8 @@ import { jobCreatedConditions } from '@/lib/job-created-date';
 export type ClaimReportRow = {
   /** วันที่ตั้งเบิกตามเวลาไทย YYYY-MM-DD */
   claimedOn: string;
+  /** วันเวลาที่รายการส่งเข้าคิวแลก DO ตามเวลาไทย YYYY-MM-DD HH:MI — ไม่มีคือ null */
+  arrivedAt: string | null;
   blNo: string | null;
   doPayAmount: string | null;
   doDepositAmount: string | null;
@@ -25,6 +27,15 @@ export async function claimReportRows(from?: string, to?: string): Promise<Claim
   return db.select({
     // ตัดวันด้วยเขตเวลาไทยให้ตรงกับที่หน้าจอแสดง ตั้งเบิกตอนเย็นจะได้ไม่กลายเป็นวันถัดไป
     claimedOn: sql<string>`to_char(${jobs.doClaimedAt} at time zone 'Asia/Bangkok', 'YYYY-MM-DD')`,
+    /*
+     * เวลาที่รายการส่งเข้ามา — นิยามเดียวกับคอลัมน์ "วันที่ส่งรายการมา" บนหน้าจอ
+     * PAINT ส่งทาง E-Office หรือ FAH ส่งทาง do_handoffs เอาครั้งแรกที่ถึง (least ข้าม null ให้)
+     */
+    // เขียนชื่อตารางเต็ม — ในคำสั่ง select ตารางเดียว drizzle พิมพ์ ${jobs.id} เป็น "id" เฉย ๆ
+    // ซึ่งในซับคิวรีจะกลายเป็น do_handoffs.id แล้วจับคู่ไม่เจอสักแถว
+    arrivedAt: sql<string | null>`to_char(least("jobs"."eoffice_sent_at",
+      (select min(dh.sent_at) from do_handoffs dh where dh.job_id = "jobs"."id"))
+      at time zone 'Asia/Bangkok', 'YYYY-MM-DD HH24:MI')`,
     blNo: jobs.blNo,
     doPayAmount: jobs.doPayAmount,
     doDepositAmount: jobs.doDepositAmount,
@@ -35,6 +46,15 @@ export async function claimReportRows(from?: string, to?: string): Promise<Claim
     eq(jobs.isArchived, false),
     ...jobCreatedConditions(sql`${jobs.doClaimedAt}`, from, to),
   )).orderBy(asc(jobs.doClaimedAt), asc(jobs.blNo));
+}
+
+/**
+ * ข้อความวันเวลาไทยจากฐาน → Date ที่ exceljs เขียนลงไฟล์ตรงตามตัวเลข
+ * exceljs ถือ Date เป็น UTC จึงสร้างด้วย Date.UTC ไม่ให้เขตเวลาของเครื่องเลื่อนชั่วโมง
+ */
+function excelDate(value: string): Date {
+  const [y, m, d, hh = 0, mi = 0] = value.split(/[-\s:]/).map(Number);
+  return new Date(Date.UTC(y, m - 1, d, hh, mi));
 }
 
 const money = (v: string | null) => (v === null || v === '' ? null : Number(v));
@@ -49,6 +69,7 @@ export async function claimReportXlsx(rows: ClaimReportRow[]): Promise<Buffer> {
   const ws = wb.addWorksheet('ตั้งเบิกแล้ว', { views: [{ state: 'frozen', ySplit: 1 }] });
   ws.columns = [
     { header: 'วันที่ตั้งเบิก', key: 'claimedOn', width: 14, style: { numFmt: 'dd/mm/yyyy' } },
+    { header: 'วันที่ส่งรายการมา', key: 'arrivedAt', width: 18, style: { numFmt: 'dd/mm/yyyy hh:mm' } },
     { header: 'เลข BL', key: 'blNo', width: 22 },
     { header: 'ยอดค่า DO', key: 'doPay', width: 14, style: { numFmt: '#,##0.00' } },
     { header: 'ยอดค่ามัดจำ', key: 'deposit', width: 14, style: { numFmt: '#,##0.00' } },
@@ -58,9 +79,9 @@ export async function claimReportXlsx(rows: ClaimReportRow[]): Promise<Buffer> {
   ws.getRow(1).font = { bold: true };
 
   for (const r of rows) {
-    const [y, m, d] = r.claimedOn.split('-').map(Number);
     ws.addRow({
-      claimedOn: new Date(Date.UTC(y, m - 1, d)),
+      claimedOn: excelDate(r.claimedOn),
+      arrivedAt: r.arrivedAt ? excelDate(r.arrivedAt) : null,
       blNo: r.blNo ?? '',
       doPay: money(r.doPayAmount),
       deposit: money(r.doDepositAmount),
@@ -72,7 +93,7 @@ export async function claimReportXlsx(rows: ClaimReportRow[]): Promise<Buffer> {
   if (rows.length) {
     const last = rows.length + 1;
     const total = ws.addRow({ blNo: 'รวม' });
-    for (const [key, letter] of [['doPay', 'C'], ['deposit', 'D'], ['other', 'E']] as const) {
+    for (const [key, letter] of [['doPay', 'D'], ['deposit', 'E'], ['other', 'F']] as const) {
       total.getCell(key).value = { formula: `SUM(${letter}2:${letter}${last})` };
     }
     total.font = { bold: true };
