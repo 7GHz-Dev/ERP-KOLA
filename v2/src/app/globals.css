@@ -1929,6 +1929,9 @@ label.mini:has(.search-select) { overflow: visible; }
   color: var(--red); cursor: pointer; text-decoration: underline;
 }
 .do-pay-add-deposit { align-self: flex-start; }
+/* บรรทัดยอดเพิ่มเติม — dropdown หัวข้ออยู่บน ช่องหัวข้อ (ค่าอื่นๆ) กับช่องยอดเรียงลงมา */
+.do-pay-extra { display: flex; flex-direction: column; gap: 6px; }
+.do-pay-extra select { width: auto; flex: 1; font-size: 13px; font-weight: 600; }
 
 /*
  * อัป Slip หลายรูปของ MAY — ใช้บนมือถือเป็นหลัก

@@ -4,9 +4,17 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { markDoClaimed, saveDoPayAmount } from '@/lib/actions/jobs';
 import { claimText } from '@/lib/do-claim';
-import { claimAmountInput, depositInput } from '@/lib/do-claim-batch';
+import {
+  checkExtras, claimAmountInput, depositInput, OTHER_LABEL_MAX, otherInput, type DoExtras,
+} from '@/lib/do-claim-batch';
 import { ConfirmSubmit } from '@/components/Interactions';
 import type { PreviewFile } from '@/components/SlipCheckPanel';
+
+type ExtraKind = 'deposit' | 'other';
+const EXTRA_KINDS: Array<{ value: ExtraKind; label: string }> = [
+  { value: 'deposit', label: 'ค่ามัดจำตู้' },
+  { value: 'other', label: 'ค่าอื่นๆ (ระบุ)' },
+];
 
 /**
  * แผงของ MAY — ดู Invoice DO แล้วกรอกยอดชำระ พร้อมคัดลอกข้อความเบิก
@@ -18,8 +26,8 @@ import type { PreviewFile } from '@/components/SlipCheckPanel';
  * formOnly ใช้ช่องกรอกเดียวกันในแผงหลายรายการ โดยมี preview รวมอยู่ด้านข้าง
  */
 export function DoPayPanel({
-  jobId, invoiceDo, blNo, eta, shipline, amount, deposit = null, claimedAt, nextId, formOnly = false,
-  amountValue, onAmountChange, depositValue, onDepositChange, disabled = false,
+  jobId, invoiceDo, blNo, eta, shipline, amount, extras, claimedAt, nextId, formOnly = false,
+  amountValue, onAmountChange, extrasValue, onExtrasChange, disabled = false,
 }: {
   jobId: string;
   invoiceDo?: PreviewFile;
@@ -27,36 +35,34 @@ export function DoPayPanel({
   eta: string | null;
   shipline: string | null;
   amount: string | null;
-  /** ค่ามัดจำตู้ที่เคยบันทึกไว้ — ไม่มีมัดจำเป็น null */
-  deposit?: string | null;
+  /** มัดจำตู้กับค่าอื่น ๆ ที่เคยบันทึกไว้ — ไม่ส่งมาคือยังไม่มี */
+  extras?: DoExtras;
   claimedAt: Date | string | null;
   /** งานถัดไปที่ยังรอตั้งเบิก — ไม่มีแล้วแปลว่าทำครบทุกใบ */
   nextId: string | null;
   formOnly?: boolean;
   amountValue?: string;
   onAmountChange?: (value: string) => void;
-  depositValue?: string;
-  onDepositChange?: (value: string) => void;
+  extrasValue?: DoExtras;
+  onExtrasChange?: (value: DoExtras) => void;
   disabled?: boolean;
 }) {
   const router = useRouter();
   const textArea = useRef<HTMLTextAreaElement>(null);
   const [localValue, setValue] = useState(amount ?? '');
   const value = amountValue ?? localValue;
-  const [localDeposit, setLocalDeposit] = useState(deposit ?? '');
-  const depositText = depositValue ?? localDeposit;
-  /*
-   * ช่องมัดจำซ่อนไว้จนกว่าจะกดเพิ่ม เพราะงานส่วนใหญ่ไม่มีมัดจำ
-   * งานที่เคยบันทึกมัดจำไว้แล้วต้องเห็นช่องทันที ไม่งั้นจะไม่รู้ว่าข้อความมียอดมัดจำติดไปด้วย
-   */
-  const [showDeposit, setShowDeposit] = useState(Boolean(depositText));
-  const changeDeposit = (next: string) => { setLocalDeposit(next); onDepositChange?.(next); };
-  const depositAmount = depositInput(depositText);
+  const [localExtras, setLocalExtras] = useState<DoExtras>(extras ?? { deposit: '', other: '', otherLabel: '' });
+  const extra = extrasValue ?? localExtras;
+  const changeExtras = (next: DoExtras) => { setLocalExtras(next); onExtrasChange?.(next); };
+  const checked = checkExtras(extra);
   const [copied, setCopied] = useState(false);
-  const text = claimText({ blNo, eta, shipline, amount: claimAmountInput(value), deposit: depositAmount ?? null });
+  const text = claimText({
+    blNo, eta, shipline, amount: claimAmountInput(value),
+    deposit: checked?.deposit ?? null, other: checked?.other.amount ?? null, otherLabel: checked?.other.label ?? null,
+  });
   const claimed = Boolean(claimedAt);
-  // มัดจำไม่บังคับ แต่ถ้าพิมพ์ไว้แล้วผิดรูปต้องกันไว้ ไม่งั้นข้อความเบิกจะหล่นยอดมัดจำไปเงียบ ๆ
-  const ready = claimAmountInput(value) !== null && depositAmount !== undefined;
+  // ยอดเพิ่มเติมไม่บังคับ แต่ถ้าพิมพ์ไว้แล้วผิดรูปต้องกันไว้ ไม่งั้นข้อความเบิกจะหล่นยอดไปเงียบ ๆ
+  const ready = claimAmountInput(value) !== null && checked !== undefined;
 
   const [saveNote, setSaveNote] = useState('');
 
@@ -75,7 +81,9 @@ export function DoPayPanel({
     const fd = new FormData();
     fd.set('jobId', jobId);
     fd.set('amount', value);
-    fd.set('deposit', depositText);
+    fd.set('deposit', extra.deposit);
+    fd.set('other', extra.other);
+    fd.set('otherLabel', extra.otherLabel);
     try {
       await saveDoPayAmount(fd);
       setSaveNote('บันทึกยอดแล้ว');
@@ -144,42 +152,7 @@ export function DoPayPanel({
             />
           </label>
 
-          {/*
-            ค่ามัดจำตู้ — มีเฉพาะบางงาน จึงเป็นปุ่มกดเพิ่ม ไม่ใช่ช่องที่โผล่ทุกใบ
-            มีมัดจำแล้วข้อความเบิกจะกลายเป็น ค่าDO+ค่ามัดจำ
-          */}
-          {showDeposit ? (
-            <label className="mini do-pay-deposit">
-              <span>
-                ค่ามัดจำตู้ (บาท)
-                {claimed ? null : (
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => { changeDeposit(''); setShowDeposit(false); }}
-                  >
-                    ลบ
-                  </button>
-                )}
-              </span>
-              <input
-                name="deposit"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="เช่น 20000"
-                value={depositText}
-                onChange={(e) => changeDeposit(e.target.value)}
-                disabled={claimed}
-              />
-            </label>
-          ) : claimed ? null : (
-            <button type="button" className="button tiny do-pay-add-deposit" onClick={() => setShowDeposit(true)}>
-              + เพิ่มค่ามัดจำตู้
-            </button>
-          )}
-          {depositAmount === undefined ? (
-            <p className="do-pay-note">ค่ามัดจำต้องเป็นตัวเลข เช่น 20000 หรือ 20,000</p>
-          ) : null}
+          <DoPayExtras value={extra} onChange={changeExtras} claimed={claimed} />
         </div>
 
         {/*
@@ -214,7 +187,9 @@ export function DoPayPanel({
               <input type="hidden" name="jobId" value={jobId} />
               {/* ส่งยอดที่กำลังพิมพ์ไปด้วย จะได้ไม่ต้องกดบันทึกยอดก่อนอีกที */}
               <input type="hidden" name="amount" value={value} />
-              <input type="hidden" name="deposit" value={depositText} />
+              <input type="hidden" name="deposit" value={extra.deposit} />
+              <input type="hidden" name="other" value={extra.other} />
+              <input type="hidden" name="otherLabel" value={extra.otherLabel} />
               {ready ? (
                 <ConfirmSubmit
                   label="ตั้งเบิกแล้ว"
@@ -246,5 +221,101 @@ export function DoPayPanel({
         </div>}
       </div>
     </fieldset>
+  );
+}
+
+/**
+ * ยอดเพิ่มเติมที่จ่ายไปพร้อมค่า DO — เลือกหัวข้อจาก dropdown ทีละบรรทัด
+ *
+ * งานส่วนใหญ่ไม่มี จึงซ่อนไว้จนกว่าจะกด "+ เพิ่มรายการ"
+ * งานที่เคยบันทึกไว้แล้วต้องเห็นบรรทัดทันที ไม่งั้นจะไม่รู้ว่าข้อความเบิกมียอดอื่นติดไปด้วย
+ * หัวข้อละหนึ่งบรรทัด (มัดจำ · ค่าอื่นๆ) เพราะรายงานแยกคอลัมน์ละยอด
+ * เลือก "ค่าอื่นๆ" แล้วต้องพิมพ์หัวข้อเอง จะได้รู้ว่าเป็นค่าอะไรตอนเบิกและตอนดูรายงาน
+ */
+function DoPayExtras({ value, onChange, claimed }: {
+  value: DoExtras;
+  onChange: (next: DoExtras) => void;
+  claimed: boolean;
+}) {
+  const [lines, setLines] = useState<ExtraKind[]>(() => [
+    ...(value.deposit ? ['deposit' as const] : []),
+    ...(value.other || value.otherLabel ? ['other' as const] : []),
+  ]);
+  const unused = EXTRA_KINDS.find((k) => !lines.includes(k.value))?.value;
+  const cleared = (kind: ExtraKind): Partial<DoExtras> =>
+    kind === 'deposit' ? { deposit: '' } : { other: '', otherLabel: '' };
+
+  // เปลี่ยนหัวข้อของบรรทัดแล้วยกยอดที่พิมพ์ไว้ไปด้วย ไม่ต้องพิมพ์ใหม่
+  const switchKind = (from: ExtraKind, to: ExtraKind) => {
+    const amount = from === 'deposit' ? value.deposit : value.other;
+    onChange({ ...value, ...cleared(from), ...(to === 'deposit' ? { deposit: amount } : { other: amount }) });
+    setLines((prev) => prev.map((k) => (k === from ? to : k)));
+  };
+  const remove = (kind: ExtraKind) => {
+    onChange({ ...value, ...cleared(kind) });
+    setLines((prev) => prev.filter((k) => k !== kind));
+  };
+  const deposit = depositInput(value.deposit);
+  const other = otherInput(value.other, value.otherLabel);
+
+  return (
+    <>
+      {lines.map((kind) => (
+        <div className="mini do-pay-deposit do-pay-extra" key={kind}>
+          <span>
+            <select
+              aria-label="หัวข้อยอดเพิ่มเติม"
+              value={kind}
+              disabled={claimed}
+              onChange={(e) => switchKind(kind, e.target.value as ExtraKind)}
+            >
+              {EXTRA_KINDS.map((k) => (
+                <option key={k.value} value={k.value} disabled={k.value !== kind && lines.includes(k.value)}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+            {claimed ? null : (
+              <button type="button" className="link-button" onClick={() => remove(kind)}>ลบ</button>
+            )}
+          </span>
+          {kind === 'other' ? (
+            <input
+              aria-label="ระบุหัวข้อค่าอื่นๆ"
+              autoComplete="off"
+              maxLength={OTHER_LABEL_MAX}
+              placeholder="ระบุหัวข้อ เช่น ค่าล้างตู้"
+              value={value.otherLabel}
+              onChange={(e) => onChange({ ...value, otherLabel: e.target.value })}
+              disabled={claimed}
+            />
+          ) : null}
+          <input
+            aria-label={kind === 'deposit' ? 'ค่ามัดจำตู้ (บาท)' : 'ยอดค่าอื่นๆ (บาท)'}
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder={kind === 'deposit' ? 'ยอด (บาท) เช่น 20000' : 'ยอด (บาท) เช่น 1500'}
+            value={kind === 'deposit' ? value.deposit : value.other}
+            onChange={(e) => onChange({ ...value, ...(kind === 'deposit' ? { deposit: e.target.value } : { other: e.target.value }) })}
+            disabled={claimed}
+          />
+        </div>
+      ))}
+      {claimed || !unused ? null : (
+        <button
+          type="button"
+          className="button tiny do-pay-add-deposit"
+          onClick={() => setLines((prev) => [...prev, unused])}
+        >
+          + เพิ่มรายการ (มัดจำ / ค่าอื่นๆ)
+        </button>
+      )}
+      {deposit === undefined ? (
+        <p className="do-pay-note">ค่ามัดจำต้องเป็นตัวเลข เช่น 20000 หรือ 20,000</p>
+      ) : null}
+      {other === undefined ? (
+        <p className="do-pay-note">ค่าอื่นๆ ต้องระบุหัวข้อและยอดเป็นตัวเลข หรือกดลบถ้าไม่มี</p>
+      ) : null}
+    </>
   );
 }

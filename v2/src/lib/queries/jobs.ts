@@ -189,6 +189,8 @@ export async function listJobs(filter: JobFilter = {}) {
       doExchangedAt: jobs.doExchangedAt,
       doPayAmount: jobs.doPayAmount,
       doDepositAmount: jobs.doDepositAmount,
+      doOtherAmount: jobs.doOtherAmount,
+      doOtherLabel: jobs.doOtherLabel,
       doClaimedAt: jobs.doClaimedAt,
       /*
        * เวลาที่รายการถูกส่งเข้ามาถึงคิวแลก DO

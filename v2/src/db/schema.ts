@@ -169,6 +169,14 @@ export const jobs = pgTable('jobs', {
    */
   doDepositAmount: numeric('do_deposit_amount', { precision: 18, scale: 2 }),
   /*
+   * ค่าอื่น ๆ ที่จ่ายไปพร้อมค่าแลก D/O — MAY เลือก "ค่าอื่นๆ" แล้วระบุหัวข้อเอง
+   *
+   * ยอดกับหัวข้อมาคู่กันเสมอ ว่างทั้งคู่แปลว่าไม่มี
+   * แยกจากมัดจำเพราะมัดจำได้คืน ส่วนค่าอื่น ๆ เป็นค่าใช้จ่ายจริง รายงานต้องแยกคอลัมน์
+   */
+  doOtherAmount: numeric('do_other_amount', { precision: 18, scale: 2 }),
+  doOtherLabel: text('do_other_label'),
+  /*
    * MAY คัดลอกข้อความแล้วส่งตั้งเบิกไปแล้ว — ใช้แยกแท็บรอตั้งเบิก/ตั้งเบิกแล้ว
    *
    * แยกจาก doPayAmountAt เพราะคนละขั้น กรอกยอดไว้แล้วยังไม่ได้ส่งตั้งเบิกก็มี

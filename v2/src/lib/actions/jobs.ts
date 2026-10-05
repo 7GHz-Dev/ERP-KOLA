@@ -8,7 +8,7 @@ import { requireActiveSession } from '@/lib/auth';
 import { notifyNewJobs } from '@/lib/line-notify';
 import { formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
-import { depositInput } from '@/lib/do-claim-batch';
+import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
 /**
@@ -486,6 +486,17 @@ function readDeposit(formData: FormData): string | null | undefined {
   return value;
 }
 
+/**
+ * ค่าอื่น ๆ จากฟอร์ม — ใช้กติกาเดียวกับมัดจำ ไม่มีช่องส่งมาคือไม่แตะค่าเดิม
+ * ส่งมาแล้วยอดกับหัวข้อต้องครบคู่ หรือว่างทั้งคู่ (ลบออก)
+ */
+function readOther(formData: FormData): { doOtherAmount: string | null; doOtherLabel: string | null } | undefined {
+  if (!formData.has('other')) return undefined;
+  const value = otherInput(text(formData.get('other'), 30), text(formData.get('otherLabel'), 200));
+  if (value === undefined) throw new Error(OTHER_ERROR);
+  return { doOtherAmount: value.amount, doOtherLabel: value.label };
+}
+
 async function saveDoPayAmountImpl(formData: FormData) {
   const user = await requireActiveSession(['MAY']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
@@ -501,15 +512,17 @@ async function saveDoPayAmountImpl(formData: FormData) {
     amount = n.toFixed(2);
   }
   const deposit = readDeposit(formData);
+  const other = readOther(formData);
 
   await db.update(jobs).set({
     doPayAmount: amount,
     doPayAmountBy: amount ? user.id : null,
     doPayAmountAt: amount ? new Date() : null,
     ...(deposit === undefined ? {} : { doDepositAmount: deposit }),
+    ...other,
     updatedBy: user.id, updatedAt: new Date(),
   }).where(eq(jobs.id, jobId));
-  await logActivity(user.id, 'SAVE_DO_PAY_AMOUNT', 'JOB', jobId, { amount, deposit });
+  await logActivity(user.id, 'SAVE_DO_PAY_AMOUNT', 'JOB', jobId, { amount, deposit, ...other });
 
   revalidatePath('/may/do-pay');
 }
@@ -540,6 +553,7 @@ async function markDoClaimedImpl(formData: FormData) {
   }
   if (!amount) throw new Error('กรุณากรอกยอดชำระก่อนกดตั้งเบิก');
   const deposit = readDeposit(formData);
+  const other = readOther(formData);
 
   const now = new Date();
   await db.update(jobs).set({
@@ -547,10 +561,14 @@ async function markDoClaimedImpl(formData: FormData) {
     doPayAmountBy: job.doPayAmountBy ?? user.id,
     doPayAmountAt: job.doPayAmountAt ?? now,
     ...(deposit === undefined ? {} : { doDepositAmount: deposit }),
+    ...other,
     doClaimedAt: now, doClaimedBy: user.id,
     updatedBy: user.id, updatedAt: now,
   }).where(eq(jobs.id, jobId));
-  await logActivity(user.id, 'MARK_DO_CLAIMED', 'JOB', jobId, { amount, deposit: deposit ?? job.doDepositAmount });
+  await logActivity(user.id, 'MARK_DO_CLAIMED', 'JOB', jobId, {
+    amount, deposit: deposit ?? job.doDepositAmount,
+    other: other?.doOtherAmount ?? job.doOtherAmount, otherLabel: other?.doOtherLabel ?? job.doOtherLabel,
+  });
 
   revalidatePath('/may/do-pay');
 }

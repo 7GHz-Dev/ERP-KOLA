@@ -13,6 +13,7 @@ export async function loadDoPayBatch(ids: string[]) {
   const selected = await db.select({
     id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo, eta: jobs.eta,
     shipline: jobs.shipline, doPayAmount: jobs.doPayAmount, doDepositAmount: jobs.doDepositAmount,
+    doOtherAmount: jobs.doOtherAmount, doOtherLabel: jobs.doOtherLabel,
     doClaimedAt: jobs.doClaimedAt,
   }).from(jobs).where(and(inArray(jobs.id, ids), eq(jobs.isArchived, false)));
   if (selected.length !== ids.length) return null;
@@ -85,6 +86,7 @@ export async function loadDoPay(jobId: string) {
       id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo,
       eta: jobs.eta, shipline: jobs.shipline, doPayAmount: jobs.doPayAmount,
       doDepositAmount: jobs.doDepositAmount,
+      doOtherAmount: jobs.doOtherAmount, doOtherLabel: jobs.doOtherLabel,
       doClaimedAt: jobs.doClaimedAt,
       consigneeName: sql<string | null>`consignee.name`,
     })

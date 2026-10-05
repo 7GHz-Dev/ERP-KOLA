@@ -139,6 +139,8 @@ async function adminUpdateJobImpl(formData: FormData) {
 
       doPayAmount: num('doPayAmount'),
       doDepositAmount: num('doDepositAmount'),
+      doOtherAmount: num('doOtherAmount'),
+      doOtherLabel: str('doOtherLabel', 60),
 
       updatedBy: user.id,
       updatedAt: new Date(),

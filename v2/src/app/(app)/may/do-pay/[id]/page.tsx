@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { DoPayPanel } from '@/components/DoPayPanel';
 import { requireUserReady } from '@/lib/auth';
 import { loadDoPay } from '@/lib/queries/do-files';
+import { extrasOf } from '@/lib/do-claim-batch';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export default async function DoPayPage({ params }: { params: Promise<{ id: stri
         eta={data.job.eta}
         shipline={data.job.shipline}
         amount={data.job.doPayAmount}
-        deposit={data.job.doDepositAmount}
+        extras={extrasOf(data.job)}
         claimedAt={data.job.doClaimedAt}
         nextId={data.nextId}
       />

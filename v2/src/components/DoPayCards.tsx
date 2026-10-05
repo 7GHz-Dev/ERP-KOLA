@@ -32,7 +32,7 @@ export function DoPayCards({
               <b>{r.blNo ?? '-'}</b>
               <small>{r.consigneeName ?? '-'}</small>
             </div>
-            {r.doPayAmount ? <span className="do-card-amount">{claimAmounts(r.doPayAmount, r.doDepositAmount)}</span> : null}
+            {r.doPayAmount ? <span className="do-card-amount">{claimAmounts(r.doPayAmount, r.doDepositAmount, r.doOtherAmount, r.doOtherLabel)}</span> : null}
           </div>
 
           <dl className="do-card-kv">

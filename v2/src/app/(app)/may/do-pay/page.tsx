@@ -70,7 +70,7 @@ export default async function MayDoPayPage({
       render: (r) => (
         <div className="do-pay-cell">
           <Link className="button tiny primary" href={`/may/do-pay/${r.id}`}>ดู</Link>
-          {r.doPayAmount ? <b>{claimAmounts(r.doPayAmount, r.doDepositAmount)}</b> : null}
+          {r.doPayAmount ? <b>{claimAmounts(r.doPayAmount, r.doDepositAmount, r.doOtherAmount, r.doOtherLabel)}</b> : null}
         </div>
       ),
     },
@@ -124,6 +124,19 @@ export default async function MayDoPayPage({
         <Link className="button primary" href="/may/do-slips">อัป Slip หลายรูป</Link>
       </div>
       <Tabs basePath="/may/do-pay" items={TABS} active={tab} carry={carry} />
+
+      {/*
+        รายงาน Excel ของงานที่ตั้งเบิกแล้ว — ฟอร์ม GET ธรรมดา เบราว์เซอร์โหลดไฟล์เองได้ ไม่ต้องใช้ JavaScript
+        กรองด้วยวันที่ตั้งเบิก ไม่ใช่วันที่ส่งรายการมา เพราะบัญชีกระทบยอดตามวันที่เบิกเงิน
+      */}
+      {claimed ? (
+        <form className="search-form chip-row" method="get" action="/api/may/do-claims-report">
+          <label>วันที่ตั้งเบิก ตั้งแต่ <input type="date" name="from" /></label>
+          <label>ถึง <input type="date" name="to" /></label>
+          <button className="button tiny primary" type="submit">ดาวน์โหลด Excel</button>
+          <span className="meta">เว้นวันที่ว่างไว้ = ทุกรายการที่ตั้งเบิกแล้ว</span>
+        </form>
+      ) : null}
 
       {/*
         กรองทั้งตารางด้วยวันที่รายการส่งเข้ามา — ชุดตัวเลือกเดียวกับของ ANN

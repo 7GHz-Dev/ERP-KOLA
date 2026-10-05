@@ -3,29 +3,35 @@
 import { useActionState, useRef, useState } from 'react';
 import { DoPayPanel } from './DoPayPanel';
 import { ConfirmSubmit } from './Interactions';
-import { allClaimText, claimAmountInput, depositInput } from '@/lib/do-claim-batch';
+import { allClaimText, checkExtras, claimAmountInput, extrasOf, type DoExtras } from '@/lib/do-claim-batch';
 import { markDoClaimedBatch, saveDoPayAmountsBatch } from '@/lib/actions/do-claim-batch';
 import type { loadDoPayBatch } from '@/lib/queries/do-files';
 
 export function DoPayBatchForms({ entries }: { entries: NonNullable<Awaited<ReturnType<typeof loadDoPayBatch>>> }) {
   const [amounts, setAmounts] = useState<Record<string, string>>({});
-  const [deposits, setDeposits] = useState<Record<string, string>>({});
+  const [extras, setExtras] = useState<Record<string, DoExtras>>({});
   const [selected, setSelected] = useState<string[]>([]);
   const [copyStatus, setCopyStatus] = useState('');
   const textArea = useRef<HTMLTextAreaElement>(null);
   const [state, action, pending] = useActionState(markDoClaimedBatch, { error: '', completed: [], message: '' });
   const amountOf = (id: string, original: string | null) => amounts[id] ?? original ?? '';
-  const depositOf = (id: string, original: string | null) => deposits[id] ?? original ?? '';
-  // ยอดค่า DO ต้องมี ส่วนมัดจำว่างได้ แต่ถ้าพิมพ์ไว้ต้องถูกรูป
-  const valid = (job: { id: string; doPayAmount: string | null; doDepositAmount: string | null }) =>
-    claimAmountInput(amountOf(job.id, job.doPayAmount)) !== null
-    && depositInput(depositOf(job.id, job.doDepositAmount)) !== undefined;
+  type Job = (typeof entries)[number]['job'];
+  const extrasFor = (job: Job) => extras[job.id] ?? extrasOf(job);
+  // ยอดค่า DO ต้องมี ส่วนมัดจำกับค่าอื่นๆ ว่างได้ แต่ถ้าพิมพ์ไว้ต้องถูกรูป
+  const valid = (job: Job) =>
+    claimAmountInput(amountOf(job.id, job.doPayAmount)) !== null && checkExtras(extrasFor(job)) !== undefined;
+  // ช่องยอดเพิ่มเติมของแต่ละงานที่ส่งไปกับฟอร์ม — ชื่อช่องตรงกับที่ readBatchClaims อ่าน
+  const extraFields = (job: Job): Array<[string, string]> => {
+    const e = extrasFor(job);
+    return [[`deposit:${job.id}`, e.deposit], [`other:${job.id}`, e.other], [`otherLabel:${job.id}`, e.otherLabel]];
+  };
   const available = entries.filter(({ job }) => !job.doClaimedAt && !state.completed.includes(job.id));
   const chosen = available.filter(({ job }) => selected.includes(job.id));
   const ready = chosen.length > 0 && chosen.every(({ job }) => valid(job));
   const allReady = entries.every(({ job }) => valid(job));
   const text = allClaimText(entries.map(({ job }) => ({
-    ...job, amount: amountOf(job.id, job.doPayAmount), deposit: depositOf(job.id, job.doDepositAmount),
+    ...job, amount: amountOf(job.id, job.doPayAmount),
+    deposit: extrasFor(job).deposit, other: extrasFor(job).other, otherLabel: extrasFor(job).otherLabel,
   })));
   /*
    * บันทึกยอดทุกรายการที่ยังไม่ได้ตั้งเบิก
@@ -39,7 +45,7 @@ export function DoPayBatchForms({ entries }: { entries: NonNullable<Awaited<Retu
       if (!valid(job)) continue;
       fd.append('jobId', job.id);
       fd.set(`amount:${job.id}`, amountOf(job.id, job.doPayAmount));
-      fd.set(`deposit:${job.id}`, depositOf(job.id, job.doDepositAmount));
+      for (const [name, value] of extraFields(job)) fd.set(name, value);
     }
     if (!fd.getAll('jobId').length) return '';
     const result = await saveDoPayAmountsBatch(fd);
@@ -62,7 +68,7 @@ export function DoPayBatchForms({ entries }: { entries: NonNullable<Awaited<Retu
       <b>ข้อความเบิกทุกรายการ ({entries.length})</b>
       <textarea ref={textArea} className="do-pay-text" rows={6} readOnly value={text} aria-label="ข้อความเบิกทุกรายการ" />
       <button className="button ok do-pay-copy" type="button" disabled={!allReady || pending} onClick={() => void copyAll()}>คัดลอกข้อความ · บันทึกยอดทุกรายการ</button>
-      {!allReady ? <p className="do-pay-note">กรอกยอดให้ครบและถูกต้องทุกรายการก่อนคัดลอก (ค่ามัดจำเว้นว่างได้)</p> : null}
+      {!allReady ? <p className="do-pay-note">กรอกยอดให้ครบและถูกต้องทุกรายการก่อนคัดลอก (ค่ามัดจำ/ค่าอื่นๆ เว้นว่างได้)</p> : null}
       <p className="do-pay-note" role="status">{copyStatus}</p>
     </div>
     <form action={action} className="do-pay-claim">
@@ -72,7 +78,7 @@ export function DoPayBatchForms({ entries }: { entries: NonNullable<Awaited<Retu
         {chosen.map(({ job }) => <span key={job.id}>
           <input type="hidden" name="jobId" value={job.id} />
           <input type="hidden" name={`amount:${job.id}`} value={amountOf(job.id, job.doPayAmount)} />
-          <input type="hidden" name={`deposit:${job.id}`} value={depositOf(job.id, job.doDepositAmount)} />
+          {extraFields(job).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
         </span>)}
         <p>เลือก {chosen.length} รายการ</p>
         {ready ? <ConfirmSubmit label={`ตั้งเบิกแล้ว (${chosen.length} รายการ)`} tone="primary"
@@ -94,8 +100,8 @@ export function DoPayBatchForms({ entries }: { entries: NonNullable<Awaited<Retu
         <DoPayPanel jobId={job.id} blNo={job.blNo} eta={job.eta} shipline={job.shipline}
           amount={job.doPayAmount} amountValue={amountOf(job.id, job.doPayAmount)}
           onAmountChange={value => { setAmounts(previous => ({ ...previous, [job.id]: value })); setCopyStatus(''); }}
-          deposit={job.doDepositAmount} depositValue={depositOf(job.id, job.doDepositAmount)}
-          onDepositChange={value => { setDeposits(previous => ({ ...previous, [job.id]: value })); setCopyStatus(''); }}
+          extras={extrasOf(job)} extrasValue={extrasFor(job)}
+          onExtrasChange={value => { setExtras(previous => ({ ...previous, [job.id]: value })); setCopyStatus(''); }}
           claimedAt={job.doClaimedAt ?? (claimed ? 'claimed' : null)} nextId={null} formOnly disabled={pending} />
       </section>;
     })}

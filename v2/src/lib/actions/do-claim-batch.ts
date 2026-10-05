@@ -27,16 +27,17 @@ export async function markDoClaimedBatch(previous: BatchClaimState, data: FormDa
         // ANN ส่งแลกไปก่อนแล้วก็ยังตั้งเบิกได้ — ตั้งเบิกเป็นขั้นของ MAY ไม่ขึ้นกับการส่งแลก
       }
       const now = new Date();
-      for (const { id, amount, deposit } of claims) {
+      for (const { id, amount, deposit, other, otherLabel } of claims) {
         const job = byId.get(id)!;
         await tx.update(jobs).set({
-          doPayAmount: amount, doDepositAmount: deposit, doPayAmountBy: job.doPayAmountBy ?? user.id,
+          doPayAmount: amount, doDepositAmount: deposit, doOtherAmount: other, doOtherLabel: otherLabel,
+          doPayAmountBy: job.doPayAmountBy ?? user.id,
           doPayAmountAt: job.doPayAmountAt ?? now, doClaimedAt: now, doClaimedBy: user.id,
           updatedBy: user.id, updatedAt: now,
         }).where(eq(jobs.id, id));
         await tx.insert(activityLog).values({
           id: newId('LOG'), userId: user.id, action: 'MARK_DO_CLAIMED', entityType: 'JOB', entityId: id,
-          detail: JSON.stringify({ amount, deposit, batch: true }),
+          detail: JSON.stringify({ amount, deposit, other, otherLabel, batch: true }),
         });
       }
     });
@@ -68,14 +69,14 @@ export async function saveDoPayAmountsBatch(data: FormData): Promise<{ ok: boole
         .orderBy(jobs.id).for('update');
       const byId = new Map(records.map(job => [job.id, job]));
       const now = new Date();
-      for (const { id, amount, deposit } of claims) {
+      for (const { id, amount, deposit, other, otherLabel } of claims) {
         const job = byId.get(id);
         if (!job || job.isArchived) throw new Error('มี JOB ที่ไม่พบหรือถูกปิดการใช้งาน กรุณารีเฟรชรายการ');
         // ตั้งเบิกไปแล้วไม่ต้องแก้ยอด เพราะยอดถูกล็อกไปกับการตั้งเบิกแล้ว
         if (job.doClaimedAt) continue;
         await tx.update(jobs).set({
-          doPayAmount: amount, doDepositAmount: deposit, doPayAmountBy: job.doPayAmountBy ?? user.id,
-          doPayAmountAt: job.doPayAmountAt ?? now,
+          doPayAmount: amount, doDepositAmount: deposit, doOtherAmount: other, doOtherLabel: otherLabel,
+          doPayAmountBy: job.doPayAmountBy ?? user.id, doPayAmountAt: job.doPayAmountAt ?? now,
           updatedBy: user.id, updatedAt: now,
         }).where(eq(jobs.id, id));
       }

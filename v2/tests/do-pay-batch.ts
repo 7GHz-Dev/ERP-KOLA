@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
 import { doPaySelectionIds } from '../src/lib/do-pay-selection';
-import { allClaimText, claimAmountInput, depositInput, readBatchClaims } from '../src/lib/do-claim-batch';
+import * as claimBatch from '../src/lib/do-claim-batch';
+import { allClaimText, claimAmountInput, depositInput, otherInput, readBatchClaims } from '../src/lib/do-claim-batch';
+import { claimReportXlsx } from '../src/lib/do-claim-report';
+import ExcelJS from 'exceljs';
 import { claimAmounts, claimText } from '../src/lib/do-claim';
 import * as doAttachments from '../src/lib/do-attachments';
 
@@ -66,7 +69,7 @@ async function main() {
     },
     './DoPayPanel': { DoPayPanel: 'AmountForm' },
     './Interactions': { ConfirmSubmit: 'ConfirmSubmit' },
-    '@/lib/do-claim-batch': { allClaimText, claimAmountInput, depositInput },
+    '@/lib/do-claim-batch': claimBatch,
     '@/lib/actions/do-claim-batch': { markDoClaimedBatch: () => {} },
   });
   visit(DoPayBatchForms({ entries: nodes.find(node => node.type === 'BatchForms').props.entries }));
@@ -94,6 +97,17 @@ async function main() {
   assert.equal(depositInput(''), null);
   assert.equal(depositInput(' 20,000 '), '20000.00');
   assert.equal(depositInput('abc'), undefined);
+  // ค่าอื่นๆ — ยอดกับหัวข้อต้องมาคู่กัน
+  assert.deepEqual(otherInput('', ''), { amount: null, label: null });
+  assert.deepEqual(otherInput('1,500', '  ค่าล้าง   ตู้ '), { amount: '1500.00', label: 'ค่าล้าง ตู้' });
+  assert.equal(otherInput('1500', ''), undefined);
+  assert.equal(otherInput('', 'ค่าล้างตู้'), undefined);
+  assert.equal(otherInput('abc', 'ค่าล้างตู้'), undefined);
+  assert.equal(otherInput('1', 'x'.repeat(61)), undefined);
+  assert.equal(claimAmounts('18400.00', '20000.00', '1500.00', 'ค่าล้างตู้'), '18,400+20,000+1,500 (ค่าล้างตู้)');
+  assert.equal(claimAmounts('18400.00', null, '1500.00', 'ค่าล้างตู้'), '18,400+1,500 (ค่าล้างตู้)');
+  assert.equal(allClaimText([{ blNo: 'X', eta: null, shipline: 'ONE', amount: '100', other: '50', otherLabel: 'ค่าล่าช้า' }]),
+    'X=100+50 (ค่าล่าช้า)\nETA  ของ ONE');
   for (const bad of ['', '-1', 'abc', '1,2', '1.234', 'Infinity', '10000000000000000']) assert.equal(claimAmountInput(bad), null);
   assert.equal(claimAmountInput('0'), '0.00');
   const form = new FormData();
@@ -101,13 +115,34 @@ async function main() {
   form.append('jobId', 'A'); form.set('amount:A', '2200.50');
   form.set('amount:UNSELECTED', '999');
   assert.deepEqual(readBatchClaims(form), [
-    { id: 'B', amount: '18400.00', deposit: null }, { id: 'A', amount: '2200.50', deposit: null },
+    { id: 'B', amount: '18400.00', deposit: null, other: null, otherLabel: null },
+    { id: 'A', amount: '2200.50', deposit: null, other: null, otherLabel: null },
   ]);
   form.set('deposit:A', 'bad');
   assert.throws(() => readBatchClaims(form), /มัดจำ/);
   form.delete('deposit:A');
   form.set('deposit:B', '20,000');
-  assert.deepEqual(readBatchClaims(form)[0], { id: 'B', amount: '18400.00', deposit: '20000.00' });
+  assert.deepEqual(readBatchClaims(form)[0], { id: 'B', amount: '18400.00', deposit: '20000.00', other: null, otherLabel: null });
+  form.set('other:B', '1500');
+  assert.throws(() => readBatchClaims(form), /ค่าอื่นๆ/);
+  form.set('otherLabel:B', 'ค่าล้างตู้');
+  assert.deepEqual(readBatchClaims(form)[0], { id: 'B', amount: '18400.00', deposit: '20000.00', other: '1500.00', otherLabel: 'ค่าล้างตู้' });
+  form.delete('other:B'); form.delete('otherLabel:B');
+
+  // รายงาน Excel — ยอดเป็นตัวเลขจริง วันที่เป็นวันที่จริง และมีแถวรวม
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await claimReportXlsx([
+    { claimedOn: '2026-10-01', blNo: 'BL-1', doPayAmount: '18400.00', doDepositAmount: '20000.00', doOtherAmount: null, doOtherLabel: null },
+    { claimedOn: '2026-10-02', blNo: 'BL-2', doPayAmount: '2200.50', doDepositAmount: null, doOtherAmount: '1500.00', doOtherLabel: 'ค่าล้างตู้' },
+  ]) as any);
+  const sheet = wb.worksheets[0];
+  assert.deepEqual((sheet.getRow(1).values as unknown[]).slice(1),
+    ['วันที่ตั้งเบิก', 'เลข BL', 'ยอดค่า DO', 'ยอดค่ามัดจำ', 'ยอดค่าอื่นๆ', 'ระบุ (ค่าอื่นๆ)']);
+  assert.equal((sheet.getCell('A2').value as Date).toISOString().slice(0, 10), '2026-10-01');
+  assert.equal(sheet.getCell('C3').value, 2200.5);
+  assert.equal(sheet.getCell('D3').value, null);
+  assert.equal(sheet.getCell('F3').value, 'ค่าล้างตู้');
+  assert.deepEqual(sheet.getCell('C4').value, { formula: 'SUM(C2:C3)' });
   let authorized = true;
   let mutations: any[] = [];
   let records: any[] = [{ id: 'A', jobNo: 'JOB-A' }, { id: 'B', jobNo: 'JOB-B' }];
