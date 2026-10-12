@@ -14,8 +14,8 @@ import { drawCoordinateGrid } from '@/lib/pdf-grid';
  *
  *   1. จดหมายขอรับ D/O (SURRENDER / SEAWAY-BILL) ในนาม KOLA
  *   2. ฉบับเดียวกันในนาม MAESOT FREEZONE
- *   3. ใบลากตู้ (Container/Chassis Interchange Agreement) — ตู้ละหน้า
- *   4. จดหมายยืนยันชื่อบริษัทในการออกใบค่ามัดจำตู้
+ *   3. จดหมายยืนยันชื่อบริษัทในการออกใบค่ามัดจำตู้
+ *   4. ใบลากตู้ (Container/Chassis Interchange Agreement) — ตู้ละ 2 แผ่นเหมือนกัน
  *
  * EVERGREEN ไม่รับจดหมายโครงกลางแบบสายอื่น จึงวาดตามแบบฟอร์มของสายเรือเอง
  * ชื่อบริษัท ที่อยู่ ผู้ลงนาม ตราและลายเซ็น ยังมาจาก /master/do-letter ชุดเดียวกับสายอื่น
@@ -391,10 +391,13 @@ export async function renderEvergreenDoLetterPdf(
 
   doRequest(1);
   doRequest(2);
-  const containers = (data.containers ?? []).map((c) => c.trim()).filter(Boolean);
-  // ยังไม่มีเลขตู้ก็ออกหนึ่งหน้า เว้นช่องไว้เขียนมือ
-  for (const c of containers.length ? containers : ['']) interchange(c);
   depositLetter();
+  const containers = (data.containers ?? []).map((c) => c.trim()).filter(Boolean);
+  // ใบลากตู้ยื่นสองแผ่นเหมือนกัน · ยังไม่มีเลขตู้ก็ออกชุดเดียว เว้นช่องไว้เขียนมือ
+  for (const c of containers.length ? containers : ['']) {
+    interchange(c);
+    interchange(c);
+  }
 
   return kit.save();
 }

@@ -43,11 +43,11 @@ async function main() {
   const pages = async (data: Parameters<typeof renderDoLetterPdf>[0]) =>
     (await pdfLib.PDFDocument.load(await renderDoLetterPdf(data, defaultForm()))).getPageCount();
 
-  // จดหมาย KOLA + MAESOT FREEZONE + ใบลากตู้ตู้ละหน้า + ยืนยันค่ามัดจำ
-  assert.equal(await pages({ ...base, containers: ['TRHU6287406'] }), 4);
-  assert.equal(await pages({ ...base, containers: ['TRHU6287406', 'TCLU1122336', 'SEGU9025014'] }), 6);
-  // ยังไม่มีเลขตู้ก็ยังออกใบลากตู้หนึ่งหน้าให้เขียนมือ
-  assert.equal(await pages({ ...base, containers: [] }), 4);
+  // จดหมาย KOLA + MAESOT FREEZONE + ยืนยันค่ามัดจำ + ใบลากตู้ตู้ละ 2 แผ่น
+  assert.equal(await pages({ ...base, containers: ['TRHU6287406'] }), 5);
+  assert.equal(await pages({ ...base, containers: ['TRHU6287406', 'TCLU1122336', 'SEGU9025014'] }), 9);
+  // ยังไม่มีเลขตู้ก็ยังออกใบลากตู้หนึ่งชุดให้เขียนมือ
+  assert.equal(await pages({ ...base, containers: [] }), 5);
   // สายอื่นยังเป็นจดหมายสองใบเหมือนเดิม
   assert.equal(await pages({ ...base, shippingLine: 'WAN HAI' }), 2);
 
