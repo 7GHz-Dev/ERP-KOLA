@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { files, jobs, masterRecords } from '@/db/schema';
-import { letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
+import { EVERGREEN, letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
+import { slashDate } from '@/lib/do-letter-evergreen';
 import { sentToPartner } from '@/lib/queries/jobs';
 import type { SlipChoice } from '@/lib/do-slip-match';
 import {
@@ -188,10 +189,14 @@ export async function loadDoLetterText(jobId: string) {
     ))
     .limit(1);
 
+  const line = matchShippingLine(job.shipline);
+  // ชุดของ EVERGREEN เขียนเรือกับเที่ยวติดกันและใช้วันที่แบบ 01/10/2026
+  const evergreen = line === EVERGREEN;
+
   return {
     job,
     letter,
-    line: matchShippingLine(job.shipline),
+    line,
     /*
      * ค่าที่จะถูกพิมพ์ถ้าไม่แก้อะไรเลย
      *
@@ -202,8 +207,8 @@ export async function loadDoLetterText(jobId: string) {
       blNo: job.blNo,
       origin: (job.originPort ?? '').trim().toUpperCase() || null,
       destination: normalizeDestination(port?.name ?? null) || null,
-      vessel: [job.vessel, job.voyage].filter(Boolean).join('  V. ') || null,
-      eta: letterDate(job.eta ?? null) || null,
+      vessel: [job.vessel, job.voyage].filter(Boolean).join(evergreen ? ' ' : '  V. ') || null,
+      eta: (evergreen ? slashDate(job.eta) : letterDate(job.eta ?? null)) || null,
     },
     edited: {
       blNo: job.doLetterBlNo,

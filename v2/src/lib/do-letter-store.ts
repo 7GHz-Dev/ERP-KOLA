@@ -1,11 +1,11 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
-import { files, jobs, masterRecords } from '@/db/schema';
+import { containers, files, jobs, masterRecords } from '@/db/schema';
 import { buildKey, downloadFile, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId } from '@/lib/actions/common';
 import { renderDoLetterPdf } from '@/lib/do-letter-pdf';
 import {
-  LETTER_COMPANIES, loadDoLetterForm, matchShippingLine, normalizeDestination,
+  EVERGREEN, LETTER_COMPANIES, loadDoLetterForm, matchShippingLine, normalizeDestination,
   signKey, stampKey, type CompanyNo,
 } from '@/lib/do-letter';
 import { extractPdfTextServer, parsePortOfLoading } from '@/lib/port-of-loading';
@@ -104,6 +104,20 @@ export async function storeDoLetterPdf(jobId: string, userId: string, withStamp 
 
   const originName = await resolveOriginPort(jobId, job.originPort);
 
+  // ชุดของ EVERGREEN ต้องใช้เลขตู้ (ใบลากตู้ตู้ละหน้า) และชื่อผู้รับสินค้า สายอื่นไม่ต้องโหลด
+  const evergreen = line === EVERGREEN ? {
+    containers: (await db.select({ no: containers.containerNo }).from(containers)
+      .where(eq(containers.jobId, jobId)).orderBy(containers.runningNo))
+      .map((c) => c.no ?? '').filter(Boolean),
+    consigneeName: job.consigneeId
+      ? (await db.select({ name: masterRecords.name }).from(masterRecords)
+          .where(eq(masterRecords.id, job.consigneeId)).limit(1))[0]?.name ?? null
+      : null,
+    grossWeight: job.grossWeight,
+    depositAmount: job.doDepositAmount,
+    blType: job.blType,
+  } : {};
+
   const overrides = {
     blNo: job.doLetterBlNo,
     origin: job.doLetterOrigin,
@@ -124,6 +138,7 @@ export async function storeDoLetterPdf(jobId: string, userId: string, withStamp 
     originName,
     // ข้อความที่ผู้ใช้แก้ไว้บนจดหมายฉบับนี้ ทับค่าที่มาจากข้อมูลงาน
     overrides,
+    ...evergreen,
   }, undefined, withStamp ? { stamps: await loadStampAssets() } : {});
 
   /*
@@ -131,7 +146,7 @@ export async function storeDoLetterPdf(jobId: string, userId: string, withStamp 
    * ออกใบหนึ่งใหม่ไม่ไปทับอีกใบ เพราะบางสายเรือขอฉบับเซ็นสด บางสายรับฉบับประทับ
    */
   const category = withStamp ? 'DO_LETTER_SIGNED' : 'DO_LETTER';
-  // ไฟล์เดียวมีสองหน้า — ใบของ KOLA และใบของ MAESOT FREEZONE
+  // ไฟล์เดียวมีสองหน้า — ใบของ KOLA และใบของ MAESOT FREEZONE (EVERGREEN เป็นชุด 4 แบบ)
   const fileName = `${job.jobNo} [จดหมายแลก DO ${line}${withStamp ? ' ประทับตรา' : ''}].pdf`;
   const id = newId('FIL');
   const key = buildKey(jobId, category, id, fileName);

@@ -20,8 +20,14 @@ export const SHIPPING_LINES = [
   'CNC', 'WAN HAI', 'MAERSK', 'ONE', 'NEX', 'TOKO LINE', 'NAMSUNG', 'OOCL',
   'RCL', 'CEVA', 'KOLA YANG MING', 'ALPINE', 'ENTERPRISE', 'PILOT',
   'M+R FORWARDING', 'TOLL GLOBAL', 'K LINE', 'KMTC', 'COSCO', 'SINOKOR',
-  'FUJITRANS', 'SEALS', 'EASTERN', 'JJ', 'CU LINES', 'KNOT GLOBAL',
+  'FUJITRANS', 'SEALS', 'EASTERN', 'JJ', 'CU LINES', 'KNOT GLOBAL', 'EVERGREEN',
 ] as const;
+
+/**
+ * EVERGREEN ไม่ได้ใช้จดหมายโครงเดียวกับสายอื่น — ออกเป็นชุดเอกสารตามแบบของสายเรือเอง
+ * ดู do-letter-evergreen.ts
+ */
+export const EVERGREEN = 'EVERGREEN';
 
 /**
  * ชื่อบริษัทตัวแทนสายเรือ — ต่อท้าย "ผู้จัดการแผนกขาเข้า บริษัท" บนบรรทัด "เรียน"
@@ -60,6 +66,7 @@ export const SHIPPING_LINE_COMPANIES: Record<string, string> = {
   'JJ': 'JINJIANG SHIPPING AGENCY CO.,LTD.',
   'CU LINES': 'CU LINES (THAILAND) CO., LTD.',
   'KNOT GLOBAL': 'Knot Global Holdings Co.,Ltd.',
+  'EVERGREEN': 'EVERGREEN SHIPPING AGENCY (THAILAND) CO.,LTD.',
 };
 
 export type FormField = {

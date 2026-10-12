@@ -35,7 +35,8 @@
     "test:dates": "tsx --tsconfig tsconfig.json tests/arrival-dates.ts",
     "line:check": "tsx scripts/line-check.ts",
     "test:line": "tsx --tsconfig tsconfig.json tests/line-notify.ts",
-    "test:auth": "tsx --tsconfig tsconfig.json tests/auth-policy.ts"
+    "test:auth": "tsx --tsconfig tsconfig.json tests/auth-policy.ts",
+    "test:letter": "tsx --tsconfig tsconfig.json tests/do-letter-evergreen.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",

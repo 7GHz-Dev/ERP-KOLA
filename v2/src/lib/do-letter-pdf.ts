@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  CUSTOM_NOTES, DETAIL_ROWS, LETTER_COMPANIES, customNoteBlock, customNoteKey,
+  CUSTOM_NOTES, DETAIL_ROWS, EVERGREEN, LETTER_COMPANIES, customNoteBlock, customNoteKey,
   labelKey, letterDate, loadDoLetterForm, signBlock, signerBlock, signerTitleBlock, stampBlock,
   type CompanyNo, type DoLetterForm,
 } from '@/lib/do-letter';
 import { drawCoordinateGrid } from '@/lib/pdf-grid';
+import { renderEvergreenDoLetterPdf } from '@/lib/do-letter-evergreen';
 
 /**
  * ออกไฟล์ PDF จดหมายขอแลก D/O
@@ -76,6 +77,20 @@ export type DoLetterData = {
    * ช่องไหนว่างหรือไม่ส่งมา ใช้ค่าจากงานตามเดิม
    */
   overrides?: Partial<Record<(typeof DETAIL_ROWS)[number], string | null>>;
+  /*
+   * ช่องที่ใช้เฉพาะชุดเอกสารของ EVERGREEN — สายอื่นไม่ได้อ่าน
+   * ไม่ส่งมาก็เว้นบรรทัดว่างไว้ให้เขียนด้วยมือ
+   */
+  /** เลขตู้ — ใบลากตู้ออกตู้ละหน้า */
+  containers?: string[];
+  /** น้ำหนักรวม (กก.) */
+  grossWeight?: string | number | null;
+  /** ชื่อผู้รับสินค้า บนจดหมายยืนยันชื่อบริษัทออกใบค่ามัดจำตู้ */
+  consigneeName?: string | null;
+  /** ยอดมัดจำตู้ (บาท) */
+  depositAmount?: string | number | null;
+  /** ชนิด B/L ของงาน — ใช้ติ๊กช่อง SURRENDER / SEAWAY-BILL ให้ */
+  blType?: string | null;
 };
 
 /**
@@ -124,13 +139,16 @@ export type RenderOptions = {
   stamps?: Partial<Record<CompanyNo, { stamp?: Buffer; sign?: Buffer }>>;
 };
 
-export async function renderDoLetterPdf(
-  data: DoLetterData,
-  form?: DoLetterForm,
-  options: RenderOptions = {},
-): Promise<Buffer> {
-  const f = form ?? await loadDoLetterForm();
-  const line = data.shippingLine;
+export const PAGE_W = 595.28;
+export const PAGE_H = 841.89;
+
+/**
+ * เอกสาร PDF เปล่าที่ฝังฟอนต์ไทยไว้แล้ว พร้อมตัววาดข้อความที่วางสระไทยถูกที่
+ *
+ * แยกออกมาให้จดหมายแบบเฉพาะสายเรือ (เช่นชุดของ EVERGREEN) ใช้ตัววาดเดียวกัน
+ * ไม่ต้องคัดลอกการตั้งฟอนต์กับการจัดวางสระไปไว้อีกที่
+ */
+export async function createLetterKit() {
   const { BlendMode, PDFDocument, rgb } = await import('@cantoo/pdf-lib');
   const fontkitModule = await import('@pdf-lib/fontkit');
   const fontkit = fontkitModule.default;
@@ -154,7 +172,6 @@ export async function renderDoLetterPdf(
     (HAS_THAI.test(text) ? thai : latin)[useBold ? 'bold' : 'regular'];
 
   const size = (pt: number) => pt * fonts.sizeRatio;
-  const b = (key: string) => f.block(key, line);
 
   const widthOf = (text: string, pt: number, useBold = false) =>
     pick(text, useBold).widthOfTextAtSize(text, pt);
@@ -187,8 +204,99 @@ export async function renderDoLetterPdf(
     return out;
   };
 
-  const PAGE_W = 595.28;
-  const PAGE_H = 841.89;
+  type Page = ReturnType<typeof doc.addPage>;
+  type TextOpts = { bold?: boolean; pt?: number };
+
+  /** ตัววาดของหน้าหนึ่ง — y ที่ส่งเข้ามานับจากขอบบน แต่ pdf-lib นับจากขอบล่าง จึงกลับด้านให้ที่นี่ */
+  const writer = (page: Page) => {
+    const draw = (text: string, at: { x: number; y: number }, opts: TextOpts = {}) => {
+      if (!text) return;
+      const pt = size(opts.pt ?? 16);
+      const font = pick(text, opts.bold);
+      let x = at.x;
+      for (const c of clustersOf(text, pt, Boolean(opts.bold))) {
+        page.drawText(c.text, { x, y: PAGE_H - at.y, size: pt, font, color: rgb(0, 0, 0) });
+        x += c.advance;
+      }
+    };
+    /** วาดกึ่งกลางรอบ x ที่ตั้งไว้ ใช้กับหัวจดหมายที่ต้องอยู่กลางหน้า */
+    const drawCentered = (text: string, at: { x: number; y: number }, opts: TextOpts = {}) => {
+      if (!text) return;
+      draw(text, { x: at.x - widthOf(text, size(opts.pt ?? 16), opts.bold) / 2, y: at.y }, opts);
+    };
+    /** วาดให้ท้ายข้อความชิด x ที่ตั้งไว้ */
+    const drawRight = (text: string, at: { x: number; y: number }, opts: TextOpts = {}) => {
+      if (!text) return;
+      draw(text, { x: at.x - widthOf(text, size(opts.pt ?? 16), opts.bold), y: at.y }, opts);
+    };
+    /** เส้นตรง — พิกัดนับจากขอบบนเหมือนข้อความ · dotted = เส้นไข่ปลาแบบช่องกรอกในฟอร์ม */
+    const line = (x1: number, y1: number, x2: number, y2: number, thickness = 1, dotted = false) => {
+      page.drawLine({
+        start: { x: x1, y: PAGE_H - y1 }, end: { x: x2, y: PAGE_H - y2 },
+        thickness, color: rgb(0, 0, 0),
+        ...(dotted ? { dashArray: [1, 2] } : {}),
+      });
+    };
+    /*
+     * วางรูปโดยให้ y คือ "ขอบบน" ของรูป นับจากขอบบนกระดาษเหมือนบล็อกข้อความอื่น
+     * pdf-lib วาดรูปโดยอิงขอบล่าง จึงต้องลบความสูงออกอีกทีตอนแปลงพิกัด
+     *
+     * ความกว้างกำหนดเอง ความสูงคิดตามสัดส่วนจริงของรูป จึงไม่มีทางถูกยืดจนเพี้ยน
+     * PNG ที่มีพื้นหลังโปร่งวาดตรง ๆ ได้เลย ส่วน JPEG ไม่มีช่องโปร่งใส
+     * จึงใช้ blend multiply ให้พื้นขาวจางหายไปแทน ผู้ใช้จะอัปแบบไหนมาก็ได้ผลที่ใช้งานได้ทั้งคู่
+     */
+    const image = (entry: EmbeddedImage | undefined, at: { x: number; y: number; width: number }) => {
+      if (!entry) return;
+      const { image: img, isPng } = entry;
+      const height = (img.height / img.width) * at.width;
+      page.drawImage(img as Parameters<typeof page.drawImage>[0], {
+        x: at.x, y: PAGE_H - at.y - height, width: at.width, height,
+        ...(isPng ? {} : { blendMode: BlendMode.Multiply }),
+      });
+    };
+    return { page, draw, drawCentered, drawRight, line, image };
+  };
+
+  /** ฝังรูป — ดูจากลายเซ็นไบต์แรกว่าเป็น PNG หรือ JPEG ไม่เชื่อนามสกุลไฟล์ */
+  const embedImage = async (bytes?: Buffer): Promise<EmbeddedImage | undefined> => {
+    if (!bytes) return undefined;
+    const isPng = bytes.subarray(1, 4).toString('latin1') === 'PNG';
+    return { image: await (isPng ? doc.embedPng(bytes) : doc.embedJpg(bytes)), isPng };
+  };
+
+  return {
+    doc, rgb, latin, size, widthOf, writer, embedImage,
+    addPage: () => writer(doc.addPage([PAGE_W, PAGE_H])),
+    /** ตราและลายเซ็นของทุกบริษัท ฝังให้เสร็จก่อนวาด เพราะ embedPng/embedJpg เป็น async */
+    embedStamps: async (stamps: RenderOptions['stamps']) => {
+      const out: Partial<Record<CompanyNo, { stamp?: EmbeddedImage; sign?: EmbeddedImage }>> = {};
+      for (const co of LETTER_COMPANIES) {
+        const assets = stamps?.[co];
+        if (assets) out[co] = { stamp: await embedImage(assets.stamp), sign: await embedImage(assets.sign) };
+      }
+      return out;
+    },
+    save: async () => Buffer.from(await doc.save()),
+  };
+}
+
+export type LetterKit = Awaited<ReturnType<typeof createLetterKit>>;
+export type PageWriter = ReturnType<LetterKit['writer']>;
+type EmbeddedImage = { image: { width: number; height: number }; isPng: boolean };
+
+export async function renderDoLetterPdf(
+  data: DoLetterData,
+  form?: DoLetterForm,
+  options: RenderOptions = {},
+): Promise<Buffer> {
+  const f = form ?? await loadDoLetterForm();
+  const line = data.shippingLine;
+  // EVERGREEN ใช้ชุดเอกสารของสายเรือเอง 4 หน้า ไม่ใช่จดหมายสองใบแบบสายอื่น
+  if (line === EVERGREEN) return renderEvergreenDoLetterPdf(data, f, options);
+
+  const kit = await createLetterKit();
+  const { latin, size, widthOf, rgb } = kit;
+  const b = (key: string) => f.block(key, line);
 
   // รายละเอียดงานเหมือนกันทั้งสองใบ คิดครั้งเดียวแล้วใช้ซ้ำ
   const fromJob: Record<(typeof DETAIL_ROWS)[number], string | null> = {
@@ -216,59 +324,17 @@ export async function renderDoLetterPdf(
     (row) => [f.value(labelKey(row), line), detailValues[row]],
   );
 
+  // ฝังรูปให้เสร็จก่อนเริ่มวาด ตัววาดจดหมายเป็น sync ทั้งก้อน
+  const embedded = await kit.embedStamps(options.stamps);
+
   /**
    * วาดจดหมายหนึ่งใบของบริษัทหนึ่ง
    *
    * ทุกใบใช้เนื้อความและพิกัดชุดเดียวกัน ต่างแค่หัวจดหมาย ที่อยู่ และผู้ลงนาม
    * จึงแยกเป็นฟังก์ชันแล้ววนเรียกตามจำนวนบริษัท ไม่ต้องเขียนโครงจดหมายซ้ำ
    */
-  /*
-   * ฝังรูปให้เสร็จก่อนเริ่มวาด เพราะ embedPng/embedJpg เป็น async
-   * แต่ตัววาดจดหมายเป็น sync ทั้งก้อน แยกขั้นตอนกันจึงไม่ต้องแปลงทั้งไฟล์เป็น async
-   */
-  type Embedded = { image: Awaited<ReturnType<typeof doc.embedPng>>; isPng: boolean };
-  const embedded: Partial<Record<CompanyNo, { stamp?: Embedded; sign?: Embedded }>> = {};
-  for (const co of LETTER_COMPANIES) {
-    const assets = options.stamps?.[co];
-    if (!assets) continue;
-    const embed = async (bytes?: Buffer) => {
-      if (!bytes) return undefined;
-      // ดูจากลายเซ็นไบต์แรกว่าเป็น PNG หรือ JPEG ไม่เชื่อนามสกุลไฟล์
-      const isPng = bytes.subarray(1, 4).toString('latin1') === 'PNG';
-      return { image: await (isPng ? doc.embedPng(bytes) : doc.embedJpg(bytes)), isPng };
-    };
-    embedded[co] = { stamp: await embed(assets.stamp), sign: await embed(assets.sign) };
-  }
-
   const drawLetter = (co: CompanyNo) => {
-    const page = doc.addPage([PAGE_W, PAGE_H]);
-
-    /** y ที่ส่งเข้ามานับจากขอบบน แต่ pdf-lib นับจากขอบล่าง จึงกลับด้านให้ที่นี่ */
-    const draw = (
-      text: string,
-      at: { x: number; y: number },
-      opts: { bold?: boolean; pt?: number } = {},
-    ) => {
-      if (!text) return;
-      const pt = size(opts.pt ?? 16);
-      const font = pick(text, opts.bold);
-      let x = at.x;
-      for (const c of clustersOf(text, pt, Boolean(opts.bold))) {
-        page.drawText(c.text, { x, y: PAGE_H - at.y, size: pt, font, color: rgb(0, 0, 0) });
-        x += c.advance;
-      }
-    };
-
-    /** วาดกึ่งกลางรอบ x ที่ตั้งไว้ ใช้กับหัวจดหมายที่ต้องอยู่กลางหน้า */
-    const drawCentered = (
-      text: string,
-      at: { x: number; y: number },
-      opts: { bold?: boolean; pt?: number } = {},
-    ) => {
-      if (!text) return;
-      const pt = size(opts.pt ?? 16);
-      draw(text, { x: at.x - widthOf(text, pt, opts.bold) / 2, y: at.y }, opts);
-    };
+    const { page, draw, drawCentered, image } = kit.addPage();
 
     // วาดเส้นตารางก่อน ข้อความจะได้อยู่ทับเส้น ไม่ถูกเส้นบัง
     if (options.grid) drawCoordinateGrid(page, latin.regular, PAGE_W, PAGE_H, rgb);
@@ -401,32 +467,12 @@ export async function renderDoLetterPdf(
     /*
      * ตราประทับกับลายเซ็น — วาดก่อนชื่อผู้ลงนาม ตัวหนังสือจะได้อยู่บนสุด
      * ของจริงประทับคร่อมชื่อ ถ้าวาดทีหลังจะบังชื่อจนอ่านไม่ออก
-     *
-     * ความกว้างมาจาก gap ของบล็อก ความสูงคิดตามสัดส่วนจริงของรูป
-     * จึงไม่มีทางถูกยืดจนตราเบี้ยว ส่วน y ที่ตั้งไว้คือขอบล่างของรูป
+     * ความกว้างมาจาก gap ของบล็อก ส่วน y ที่ตั้งไว้คือขอบบนของรูป
      */
     const placeImage = (
-      entry: { image: { width: number; height: number }; isPng: boolean } | undefined,
+      entry: Parameters<typeof image>[0],
       at: { x: number; y: number; gap: number },
-    ) => {
-      if (!entry) return;
-      const { image, isPng } = entry;
-      const width = at.gap;
-      const height = (image.height / image.width) * width;
-      /*
-       * y ที่ตั้งไว้คือ "ขอบบน" ของรูป นับจากขอบบนกระดาษเหมือนบล็อกข้อความอื่น
-       * pdf-lib วาดรูปโดยอิงขอบล่าง จึงต้องลบความสูงออกอีกทีตอนแปลงพิกัด
-       */
-      /*
-       * PNG ที่มีพื้นหลังโปร่งวาดตรง ๆ ได้เลย
-       * ส่วน JPEG ไม่มีช่องโปร่งใส จึงใช้ blend multiply ให้พื้นขาวจางหายไปแทน
-       * ผู้ใช้จะอัปแบบไหนมาก็ได้ผลที่ใช้งานได้ทั้งคู่
-       */
-      page.drawImage(image as Parameters<typeof page.drawImage>[0], {
-        x: at.x, y: PAGE_H - at.y - height, width, height,
-        ...(isPng ? {} : { blendMode: BlendMode.Multiply }),
-      });
-    };
+    ) => image(entry, { x: at.x, y: at.y, width: at.gap });
     placeImage(embedded[co]?.stamp, b(stampBlock(co)));
     placeImage(embedded[co]?.sign, b(signBlock(co)));
 
@@ -456,5 +502,5 @@ export async function renderDoLetterPdf(
 
   for (const co of LETTER_COMPANIES) drawLetter(co);
 
-  return Buffer.from(await doc.save());
+  return kit.save();
 }
