@@ -1586,14 +1586,18 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
 }
 .bl-search-actions { display: flex; gap: 8px; }
 
-/* เพิ่ม Shipper ใหม่จากหน้ารับงาน */
+/* เพิ่ม Shipper / Consignee ใหม่จากหน้ารับงาน */
 .repeat-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
-.quick-shipper {
+.quick-add {
   display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 240px;
   padding: 10px 12px; background: var(--surface);
   border: 1px solid var(--blue); border-radius: 8px;
 }
-.quick-shipper-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.quick-add-actions { display: flex; justify-content: flex-end; gap: 7px; }
+/* ช่องเลือกที่มีปุ่มเพิ่มต่อท้าย กางฟอร์มเพิ่มแล้วขึ้นบรรทัดใหม่เต็มความกว้าง */
+.field-with-add { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
+.field-with-add > select { flex: 1; min-width: 180px; }
+.field-with-add > .quick-add { flex-basis: 100%; }
 
 .do-cell-bl { grid-column: 1 / -1; }
 .do-cell-bl input { font-weight: 600; }
@@ -1879,7 +1883,7 @@ label.mini:has(.search-select) { overflow: visible; }
  */
 .bl-edit-shipper { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
 .bl-edit-shipper > .search-select { flex: 1; min-width: 180px; }
-.bl-edit-shipper > .quick-shipper { flex-basis: 100%; }
+.bl-edit-shipper > .quick-add { flex-basis: 100%; }
 
 /*
  * หน้าติดตามการใช้งานและค่าใช้จ่าย (ADMIN)

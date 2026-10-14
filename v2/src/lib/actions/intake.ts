@@ -217,37 +217,58 @@ async function createJobFromIntakeImpl(formData: FormData) {
 }
 
 /** เพิ่ม Shipper ใหม่จากหน้ารับงาน โดยไม่ต้องออกไปหน้า Master Data */
-async function quickAddShipperImpl(formData: FormData) {
+/**
+ * หัวข้อที่ PAINT เพิ่มเองได้จากหน้ารับงานและแผงแก้ BL โดยไม่ต้องเป็น ADMIN
+ * สองหัวข้อนี้เจอรายชื่อใหม่บ่อยตอนคีย์ใบแรกของลูกค้าใหม่
+ */
+const QUICK_ADD: Record<string, { label: string; prefix: string }> = {
+  shippers: { label: 'Shipper', prefix: 'SHP' },
+  consignees: { label: 'Consignee', prefix: 'CNE' },
+};
+
+async function quickAddMasterImpl(formData: FormData) {
   const user = await requireActiveSession(['PAINT']);
-  const name = required(formData.get('name'), 'ชื่อ Shipper', 180);
+  const type = text(formData.get('type'), 40);
+  const spec = QUICK_ADD[type];
+  if (!spec) throw new Error('หัวข้อนี้เพิ่มจากหน้านี้ไม่ได้');
+  const name = required(formData.get('name'), `ชื่อ ${spec.label}`, 180);
   let code = text(formData.get('code'), 60).toUpperCase();
 
   const [dup] = await db
     .select({ id: masterRecords.id })
     .from(masterRecords)
-    .where(and(eq(masterRecords.type, 'shippers'), sql`upper(${masterRecords.name}) = ${name.toUpperCase()}`))
+    .where(and(eq(masterRecords.type, type), sql`upper(${masterRecords.name}) = ${name.toUpperCase()}`))
     .limit(1);
   if (dup) throw new Error('ชื่อนี้มีอยู่ใน Master Data แล้ว');
 
   // เว้นรหัสว่างไว้ = ให้ระบบรันต่อจากเลขสูงสุดที่ใช้แล้ว ไม่ใช่นับจำนวนแถว
   if (!code) {
     const [max] = await db
-      .select({ value: sql<number>`coalesce(max(nullif(regexp_replace(code, '^SHP', ''), '')::int), 0)` })
+      .select({
+        value: sql<number>`coalesce(max(nullif(regexp_replace(code, ${`^${spec.prefix}`}, ''), '')::int), 0)`,
+      })
       .from(masterRecords)
-      .where(and(eq(masterRecords.type, 'shippers'), sql`code ~ '^SHP[0-9]+$'`));
-    code = `SHP${String((max?.value ?? 0) + 1).padStart(4, '0')}`;
+      .where(and(eq(masterRecords.type, type), sql`code ~ ${`^${spec.prefix}[0-9]+$`}`));
+    code = `${spec.prefix}${String(Number(max?.value ?? 0) + 1).padStart(4, '0')}`;
+  } else {
+    const [taken] = await db
+      .select({ id: masterRecords.id })
+      .from(masterRecords)
+      .where(and(eq(masterRecords.type, type), eq(masterRecords.code, code)))
+      .limit(1);
+    if (taken) throw new Error(`รหัส ${code} มีอยู่แล้ว เว้นว่างให้ระบบตั้งให้ได้`);
   }
 
   const id = newId('MD');
-  await db.insert(masterRecords).values({ id, type: 'shippers', code, name });
-  await logActivity(user.id, 'CREATE_MASTER', 'shippers', id, { code, name });
+  await db.insert(masterRecords).values({ id, type, code, name });
+  await logActivity(user.id, 'CREATE_MASTER', type, id, { code, name });
 
   revalidatePath('/intake/an');
   revalidatePath('/intake/bl');
   revalidatePath('/master');
 
   // คืนค่าให้หน้ารับงานเลือกรายการที่เพิ่งเพิ่มในแถวที่กำลังกรอกได้ทันที
-  return { id, name };
+  return { id, code, name };
 }
 
 export async function intakeDefaults() {
@@ -270,6 +291,6 @@ export async function createJobFromIntake(formData: FormData) {
   return runAction(() => createJobFromIntakeImpl(formData));
 }
 
-export async function quickAddShipper(formData: FormData) {
-  return runAction(() => quickAddShipperImpl(formData));
+export async function quickAddMaster(formData: FormData) {
+  return runAction(() => quickAddMasterImpl(formData));
 }

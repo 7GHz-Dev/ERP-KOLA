@@ -6,7 +6,7 @@ import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
 import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
 import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect, SearchText } from '@/components/SearchSelect';
-import { QuickAddShipper } from '@/components/QuickAddShipper';
+import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 
 /**
@@ -77,6 +77,9 @@ export function IntakeForm({
    */
   const [jobTypeId, setJobTypeId] = useState(defaults.jobTypeId ?? '');
   const [notifyId, setNotifyId] = useState(defaults.notifyId ?? '');
+  const [consigneeId, setConsigneeId] = useState(defaults.consigneeId ?? '');
+  // Consignee ที่เพิ่งเพิ่ม — ใส่ในรายการเองก่อน router.refresh() ดึงรายการใหม่มาถึง
+  const [addedConsignees, setAddedConsignees] = useState<Option[]>([]);
   const [product, setProduct] = useState('รถยนต์เก่าใช้แล้ว');
   /*
    * เมืองต้นทางต้องคุมค่าเอง เพราะเป็นช่องพิมพ์ค้นหาที่เลือกจากรายการได้ด้วย
@@ -292,6 +295,7 @@ export function IntakeForm({
     // สามช่องนี้อยู่นอกฟอร์ม การเปลี่ยน key จึงไม่ล้างให้ ต้องคืนค่าตั้งต้นเอง
     setJobTypeId(defaults.jobTypeId ?? '');
     setNotifyId(defaults.notifyId ?? '');
+    setConsigneeId(defaults.consigneeId ?? '');
     setProduct('รถยนต์เก่าใช้แล้ว');
     setOriginPort('');
     setParsed({});
@@ -417,8 +421,9 @@ export function IntakeForm({
               เพิ่ม Shipper ที่ยังไม่มีในระบบได้จากตรงนี้เลย
               เพิ่มเสร็จเลือกให้ในแถวแรกที่ยังว่าง ไม่ต้องไปหาในรายการเอง
             */}
-            <QuickAddShipper
-              onAdded={(id, name) => setBlRows((rows) => {
+            <QuickAddMaster
+              type="shippers"
+              onAdded={({ id, name }) => setBlRows((rows) => {
                 const at = rows.findIndex((r) => !r.shipperId);
                 const target = at >= 0 ? at : rows.length - 1;
                 return rows.map((r, i) => (i === target ? { ...r, shipperId: id, shipperName: name } : r));
@@ -482,9 +487,18 @@ export function IntakeForm({
           <input name="eta" type="date" key={parsed.eta} defaultValue={parsed.eta ?? ''} />
         </Field>
         <Field label="CONSIGNEE">
-          <select name="consigneeId" defaultValue={defaults.consigneeId ?? ''}>
-            <Options list={options.consignees} />
-          </select>
+          <div className="field-with-add">
+            <select name="consigneeId" value={consigneeId} onChange={(e) => setConsigneeId(e.target.value)}>
+              <Options list={withAdded(options.consignees, addedConsignees)} />
+            </select>
+            <QuickAddMaster
+              type="consignees"
+              onAdded={(added) => {
+                setAddedConsignees((list) => [...list, added]);
+                setConsigneeId(added.id);
+              }}
+            />
+          </div>
         </Field>
         <Field label="NOTIFY PARTY">
           <select
@@ -576,6 +590,11 @@ function Field({ label, wide, children }: { label: string; wide?: boolean; child
       <div className="extract-control">{children}</div>
     </div>
   );
+}
+
+/** รายการจากเซิร์ฟเวอร์ต่อด้วยรายการที่เพิ่งเพิ่มซึ่งยังไม่อยู่ในนั้น */
+function withAdded(list: Option[], added: Option[]) {
+  return [...list, ...added.filter((a) => !list.some((o) => o.id === a.id))];
 }
 
 function Options({ list }: { list: Option[] }) {

@@ -6,7 +6,7 @@ import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
 import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
 import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect } from '@/components/SearchSelect';
-import { QuickAddShipper } from '@/components/QuickAddShipper';
+import { QuickAddMaster } from '@/components/QuickAddMaster';
 
 /**
  * รับงานทีละหลายใบ — เลือก PDF หลายไฟล์พร้อมกัน หนึ่งไฟล์เป็นหนึ่งงาน
@@ -249,8 +249,9 @@ export function IntakeBatch({
                           />
                           {/* Shipper ที่ยังไม่มีในระบบ เพิ่มแล้วเลือกให้แถวนี้เลย */}
                           {r.shipperId ? null : (
-                            <QuickAddShipper
-                              onAdded={(id, name) => patch(i, { shipperId: id, shipperName: name })}
+                            <QuickAddMaster
+                              type="shippers"
+                              onAdded={({ id, name }) => patch(i, { shipperId: id, shipperName: name })}
                             />
                           )}
                         </div>

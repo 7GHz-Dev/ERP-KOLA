@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { updateBlInfo } from '@/lib/actions/jobs';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 import { SearchSelect, SearchText } from '@/components/SearchSelect';
-import { QuickAddShipper } from '@/components/QuickAddShipper';
+import { QuickAddMaster } from '@/components/QuickAddMaster';
 import type { Option } from '@/lib/queries/master';
 
 /**
@@ -76,6 +76,9 @@ export function BlEditPanel({
   // SearchSelect เป็นช่องพิมพ์ค้นหา ค่าจึงต้องเก็บเองแล้วส่งผ่าน hidden
   const [personId, setPersonId] = useState(job.personId ?? '');
   const [shipperId, setShipperId] = useState(job.shipperId ?? '');
+  const [consigneeId, setConsigneeId] = useState(job.consigneeId ?? '');
+  // Consignee ที่เพิ่งเพิ่ม — ใส่ในรายการเองก่อน router.refresh() ดึงรายการใหม่มาถึง
+  const [addedConsignees, setAddedConsignees] = useState<Option[]>([]);
   // เมืองต้นทางคุมค่าเอง เพราะเป็นช่องพิมพ์ค้นหาที่เลือกจากรายการได้ด้วย
   const [originPort, setOriginPort] = useState(job.originPort ?? '');
   const docs = [source, other].filter(Boolean) as PreviewDoc[];
@@ -215,14 +218,26 @@ export function BlEditPanel({
                 placeholder="พิมพ์ค้นหา Shipper"
                 onChange={setShipperId}
               />
-              <QuickAddShipper onAdded={(id) => setShipperId(id)} />
+              <QuickAddMaster type="shippers" onAdded={({ id }) => setShipperId(id)} />
             </div>
           </Field>
           <Field label="CONSIGNEE">
-            <select name="consigneeId" defaultValue={job.consigneeId ?? ''}>
-              <option value="">— ไม่ระบุ —</option>
-              <Opts list={options.consignees} />
-            </select>
+            <div className="field-with-add">
+              <select name="consigneeId" value={consigneeId} onChange={(e) => setConsigneeId(e.target.value)}>
+                <option value="">— ไม่ระบุ —</option>
+                <Opts list={[
+                  ...options.consignees,
+                  ...addedConsignees.filter((a) => !options.consignees.some((o) => o.id === a.id)),
+                ]} />
+              </select>
+              <QuickAddMaster
+                type="consignees"
+                onAdded={(added) => {
+                  setAddedConsignees((list) => [...list, added]);
+                  setConsigneeId(added.id);
+                }}
+              />
+            </div>
           </Field>
           <Field label="NOTIFY PARTY">
             <select name="notifyPartyId" defaultValue={job.notifyPartyId ?? ''}>
