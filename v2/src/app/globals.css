@@ -320,6 +320,12 @@ a.card:hover { background: #f7fafc; }
 
 .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .do-bundle-actions { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+/* ส่งแลกผ่านเว็บ CMA อยู่เหนือปุ่มส่งแลกแล้ว — ซ้อนกันเป็นคอลัมน์ ไม่ดันช่องให้กว้าง */
+.do-send-actions { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
+.do-request-state { display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 220px; }
+.do-request-ref { display: flex; gap: 6px; }
+.do-request-ref > input { flex: 1; min-width: 0; }
+.do-request-billing { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
 .inline-form { display: inline; }
 .button.danger { background: var(--red); border-color: var(--red); color: #fff; }
 .button.danger:hover { background: #8e252c; }

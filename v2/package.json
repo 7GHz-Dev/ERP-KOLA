@@ -36,7 +36,8 @@
     "line:check": "tsx scripts/line-check.ts",
     "test:line": "tsx --tsconfig tsconfig.json tests/line-notify.ts",
     "test:auth": "tsx --tsconfig tsconfig.json tests/auth-policy.ts",
-    "test:letter": "tsx --tsconfig tsconfig.json tests/do-letter-evergreen.ts"
+    "test:letter": "tsx --tsconfig tsconfig.json tests/do-letter-evergreen.ts",
+    "worker:do": "tsx --tsconfig tsconfig.json scripts/do-request-worker.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",
@@ -56,6 +57,7 @@
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "drizzle-kit": "^0.30.1",
+    "playwright-core": "^1.49.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }

@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { automationTasks } from '@/db/schema';
 import { downloadFile } from '@/lib/storage';
-import { completeTask, failTask } from '@/lib/automation';
+import { completeTask, CUSTOMS_TASK_TYPES, failTask } from '@/lib/automation';
 
 /**
  * REST สำหรับโปรแกรม Python
@@ -32,7 +32,8 @@ async function claimNext(args: any) {
       and(eq(automationTasks.status, 'PROCESSING'), lt(automationTasks.claimedAt, staleBefore)),
     )!,
   ];
-  if (type) conditions.push(eq(automationTasks.type, type));
+  // ไม่ระบุชนิด = worker ใบขนรุ่นเดิม ให้เห็นเฉพาะงานใบขน ไม่คว้างานขอ D/O ไปทำผิดตัว
+  conditions.push(type ? eq(automationTasks.type, type) : inArray(automationTasks.type, CUSTOMS_TASK_TYPES));
 
   const [task] = await db.select().from(automationTasks)
     .where(and(...conditions)).orderBy(asc(automationTasks.createdAt)).limit(1);

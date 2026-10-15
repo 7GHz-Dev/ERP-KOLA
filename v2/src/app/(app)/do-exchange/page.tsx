@@ -6,12 +6,14 @@ import {
 } from '@/components/ActionForms';
 import { DoLetterButton } from '@/components/DoLetterButton';
 import { formatDateTime } from '@/lib/format';
-import { matchShippingLine } from '@/lib/do-letter';
+import { LETTER_COMPANIES, loadDoLetterForm, matchShippingLine } from '@/lib/do-letter';
+import { isCmaGroupLine } from '@/lib/automation';
+import { DoRequestButton, type BillingChoice } from '@/components/DoRequestButton';
 import { doQueueArrivalDates, listJobs, QUEUE } from '@/lib/queries/jobs';
 import { QueueFilter } from '@/components/VesselFilter';
 import { DoBundleSelection, DoBundleCheckbox } from '@/components/DoBundleSelection';
 import { DoAttachments } from '@/components/DoAttachments';
-import { doAttachmentsFor } from '@/lib/queries/do-files';
+import { doAttachmentsFor, doRequestTasksFor } from '@/lib/queries/do-files';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +50,16 @@ export default async function DoExchangePage({
     doQueueArrivalDates(sent ? 'sent' : 'wait'),
   ]);
   // สลิปกับเอกสารมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
-  const attachments = await doAttachmentsFor(rows.map((r) => r.id));
+  const [attachments, doRequests, letterForm] = await Promise.all([
+    doAttachmentsFor(rows.map((r) => r.id)),
+    doRequestTasksFor(rows.filter((r) => isCmaGroupLine(r.shipline)).map((r) => r.id)),
+    loadDoLetterForm(),
+  ]);
+  // ที่อยู่ออกใบเสร็จตั้งต้น — ชื่อและที่อยู่บริษัทเดียวกับหัวจดหมายแลก D/O ทั้งสองใบ
+  const billing: BillingChoice[] = LETTER_COMPANIES.map((co) => {
+    const name = letterForm.coValue(co, 'companyName', 'CNC');
+    return { label: name, text: [name, letterForm.coValue(co, 'companyAddress', 'CNC')].filter(Boolean).join('\n') };
+  });
 
   const columns: Column[] = [
     {
@@ -164,7 +175,18 @@ export default async function DoExchangePage({
           // รวมชุดแล้วจึงกดส่งได้ ในแถวเดียวกับที่เพิ่งรวมชุดเสร็จ
           label: 'จัดการ', kind: 'actions',
           render: (r) => (
-            <SendDoExchangedButton jobId={r.id} ready={Boolean(r.currentFiles?.DO_MERGED)} />
+            <div className="row-actions do-send-actions">
+              {/* สายกลุ่ม CMA CGM ยื่นขอ D/O ผ่านเว็บได้ ให้ระบบกรอกเว็บแทนแล้วย้ายแท็บให้เมื่อเสร็จ */}
+              {isCmaGroupLine(r.shipline) ? (
+                <DoRequestButton
+                  jobId={r.id}
+                  ready={Boolean(r.currentFiles?.DO_MERGED)}
+                  task={doRequests.get(r.id) ?? null}
+                  billing={billing}
+                />
+              ) : null}
+              <SendDoExchangedButton jobId={r.id} ready={Boolean(r.currentFiles?.DO_MERGED)} />
+            </div>
           ),
         },
   ];

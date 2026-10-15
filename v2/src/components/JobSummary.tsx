@@ -198,7 +198,7 @@ export function JobSummary({
             <div className="task-list">
               {tasks.map((t) => (
                 <div key={t.id} className="document-line">
-                  <span className="label">{t.type === 'DRAFT_ENTRY' ? 'สร้าง Draft' : 'ทำใบขน'}</span>
+                  <span className="label">{t.type === 'DRAFT_ENTRY' ? 'สร้าง Draft' : t.type === 'DO_REQUEST_CMA' ? 'ขอ D/O เว็บ CMA' : 'ทำใบขน'}</span>
                   <span>
                     {TASK_STATUS[t.status] ?? t.status}
                     {' · '}

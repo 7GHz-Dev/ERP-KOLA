@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { files, jobs, masterRecords } from '@/db/schema';
+import { automationTasks, files, jobs, masterRecords } from '@/db/schema';
 import { EVERGREEN, letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
 import { slashDate } from '@/lib/do-letter-evergreen';
 import { sentToPartner } from '@/lib/queries/jobs';
@@ -246,3 +246,29 @@ export async function loadSlipChoices(): Promise<SlipChoice[]> {
     .filter((r) => r.blNo)
     .map((r) => ({ ...r, blNo: r.blNo ?? '', hasSlip: Boolean(r.hasSlip) }));
 }
+
+/**
+ * งานขอ D/O ผ่านเว็บ CMA CGM ล่าสุดของแต่ละงาน — ใช้บอกในแถวว่าอยู่ในคิว · กำลังกรอก · พัง
+ * เอาแค่ใบล่าสุด เพราะใบที่พังแล้วกดส่งใหม่ ใบเก่าไม่มีความหมายกับคนดูแล้ว
+ */
+export async function doRequestTasksFor(jobIds: string[]) {
+  const map = new Map<string, DoRequestTask>();
+  if (!jobIds.length) return map;
+  const rows = await db
+    .select({
+      id: automationTasks.id, jobId: automationTasks.jobId, status: automationTasks.status,
+      error: automationTasks.error, resultRefNo: automationTasks.resultRefNo,
+      createdAt: automationTasks.createdAt,
+    })
+    .from(automationTasks)
+    .where(and(inArray(automationTasks.jobId, jobIds), eq(automationTasks.type, 'DO_REQUEST_CMA')))
+    .orderBy(desc(automationTasks.createdAt));
+  for (const r of rows) {
+    if (r.jobId && !map.has(r.jobId)) {
+      map.set(r.jobId, { id: r.id, status: r.status, error: r.error, resultRefNo: r.resultRefNo });
+    }
+  }
+  return map;
+}
+
+export type DoRequestTask = { id: string; status: string; error: string | null; resultRefNo: string | null };
