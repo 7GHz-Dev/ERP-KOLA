@@ -23,10 +23,10 @@ const SAMPLE = {
   portName: 'LAEM CHABANG, THAILAND',
   originName: 'NAGOYA',
   // ใช้เฉพาะชุดของ EVERGREEN
-  containers: ['TRHU6287406'],
+  containers: ['TRHU6287406', 'EGHU9134552', 'TCNU7720318'],
   grossWeight: '5490',
   consigneeName: 'MAESOT FREEZONE CO.,LTD',
-  depositAmount: '8000',
+  depositAmount: null,
   blType: 'SWB',
 };
 

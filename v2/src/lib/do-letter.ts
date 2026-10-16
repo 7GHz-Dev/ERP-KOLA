@@ -78,9 +78,17 @@ export type FormField = {
   wide?: boolean;
   /** ตั้งได้เฉพาะค่ากลาง ไม่ต้องมีให้แยกรายสายเรือ */
   sharedOnly?: boolean;
+  /** ชุดเอกสาร EVERGREEN อ่านช่องนี้ด้วย — ขึ้นในแท็บ EVERGREEN */
+  evergreen?: boolean;
+  /** มีเฉพาะในแท็บ EVERGREEN สายอื่นไม่ได้ใช้ */
+  evergreenOnly?: boolean;
+  /** ค่าที่ชุด EVERGREEN ใช้เมื่อเว้นว่าง ถ้าต่างจากค่ากลางของจดหมายสายอื่น */
+  evergreenFallback?: string;
 };
 
-export const DO_LETTER_GROUPS = ['หัวจดหมาย', 'เนื้อความ', 'ป้ายกำกับ', 'ผู้ลงนาม', 'ข้อความเพิ่มเติม'] as const;
+export const DO_LETTER_GROUPS = [
+  'หัวจดหมาย', 'เนื้อความ', 'ป้ายกำกับ', 'ผู้ลงนาม', 'ข้อความเพิ่มเติม', 'ค่ามัดจำตู้',
+] as const;
 
 /**
  * จดหมายหนึ่งงานออกสองใบ — ใบของ KOLA และใบของ MAESOT FREEZONE
@@ -137,17 +145,21 @@ export type CustomNoteNo = (typeof CUSTOM_NOTES)[number];
 export const customNoteKey = (n: CustomNoteNo) => `note${n}`;
 export const customNoteBlock = (n: CustomNoteNo) => `note${n}`;
 
+/** คีย์ของช่องที่มีเฉพาะชุด EVERGREEN — เก็บแบบสายเรือ (EVERGREEN::<คีย์>) เหมือนช่องอื่น */
+export const EG_DEPOSIT_PER_CONTAINER = 'eg.depositPerContainer';
+export const EG_DEPOSIT_PHONE = 'eg.depositPhone';
+
 export const DO_LETTER_FIELDS: FormField[] = [
   { key: companyKey(1, 'companyName'), label: 'ชื่อบริษัท ใบที่ 1', group: 'หัวจดหมาย',
-    fallback: 'KOLA SHIPPING CO.,LTD', wide: true },
+    fallback: 'KOLA SHIPPING CO.,LTD', wide: true, evergreen: true },
   { key: companyKey(1, 'companyAddress'), label: 'ที่อยู่ ใบที่ 1', group: 'หัวจดหมาย',
     fallback: '567 MOO 7, THASAILUAT, MAE SOT, TAK, THAILAND 63110  Tel. 087-5252697',
-    wide: true, hint: 'ที่อยู่และเบอร์โทรอยู่บรรทัดเดียวกันตามต้นฉบับ' },
+    wide: true, evergreen: true, hint: 'ที่อยู่และเบอร์โทรอยู่บรรทัดเดียวกันตามต้นฉบับ' },
   { key: companyKey(2, 'companyName'), label: 'ชื่อบริษัท ใบที่ 2', group: 'หัวจดหมาย',
-    fallback: 'MAESOT FREEZONE CO.,LTD', wide: true },
+    fallback: 'MAESOT FREEZONE CO.,LTD', wide: true, evergreen: true },
   { key: companyKey(2, 'companyAddress'), label: 'ที่อยู่ ใบที่ 2', group: 'หัวจดหมาย',
     fallback: '888/2 M.7, THASAILOUD MAESOT, TAK,THAILAND 63110 TEL: 092-689-5294 EMAIL: MAESOT.FZ@GMAIL.COM',
-    wide: true },
+    wide: true, evergreen: true },
 
   { key: 'subject', label: 'เรื่อง', group: 'เนื้อความ', fallback: 'ขอแลก D/O', wide: true },
   { key: 'attention', label: 'เรียน', group: 'เนื้อความ',
@@ -180,10 +192,18 @@ export const DO_LETTER_FIELDS: FormField[] = [
 
   { key: 'closing', label: 'คำลงท้าย', group: 'ผู้ลงนาม', fallback: 'ขอแสดงความนับถือ', wide: true },
   { key: companyKey(1, 'signerName'), label: 'ชื่อผู้ลงนาม ใบที่ 1', group: 'ผู้ลงนาม',
-    fallback: 'TANAKORN   TASALEE', hint: 'ระบบใส่วงเล็บครอบให้เอง' },
+    fallback: 'TANAKORN   TASALEE', hint: 'ระบบใส่วงเล็บครอบให้เอง', evergreen: true },
   { key: companyKey(2, 'signerName'), label: 'ชื่อผู้ลงนาม ใบที่ 2', group: 'ผู้ลงนาม',
-    fallback: 'อัครเดช ตาสะทึ', hint: 'ระบบใส่วงเล็บครอบให้เอง' },
-  { key: 'signerTitle', label: 'ตำแหน่ง (ใช้ทั้งสองใบ)', group: 'ผู้ลงนาม', fallback: 'DIRECTOR' },
+    fallback: 'อัครเดช ตาสะทึ', hint: 'ระบบใส่วงเล็บครอบให้เอง', evergreen: true },
+  { key: 'signerTitle', label: 'ตำแหน่ง (ใช้ทั้งสองใบ)', group: 'ผู้ลงนาม', fallback: 'DIRECTOR',
+    evergreen: true, evergreenFallback: 'กรรมการบริษัท' },
+
+  // ---- ใช้เฉพาะชุดเอกสาร EVERGREEN ----
+  { key: EG_DEPOSIT_PER_CONTAINER, label: 'ค่ามัดจำตู้ต่อ 1 ตู้ (บาท)', group: 'ค่ามัดจำตู้',
+    fallback: '8000', evergreenOnly: true,
+    hint: 'คูณจำนวนตู้ของงาน แล้วกรอกในช่อง "เป็นผู้ที่สำรองจ่ายค่ามัดจำตู้ไปจริง เป็นจำนวนเงิน"' },
+  { key: EG_DEPOSIT_PHONE, label: 'เบอร์โทรท้ายจดหมายยืนยันค่ามัดจำ', group: 'ผู้ลงนาม',
+    fallback: '091-8585681', evergreenOnly: true },
 
   ...CUSTOM_NOTES.map((n) => ({
     key: customNoteKey(n),
@@ -211,6 +231,8 @@ export type LetterBlock = {
   y: number;
   /** ระยะห่างระหว่างบรรทัดในบล็อกนี้ (บล็อกที่มีหลายบรรทัด) */
   gap?: number;
+  /** ช่องที่ตั้งได้ — ไม่ระบุ = x และ y (และระยะบรรทัดถ้ามี) */
+  parts?: Array<'x' | 'y' | 'gap'>;
 };
 
 export const LETTER_BLOCKS: LetterBlock[] = [
@@ -268,7 +290,63 @@ export const LETTER_BLOCKS: LetterBlock[] = [
   })),
 ];
 
-const BLOCK_BY_KEY = new Map(LETTER_BLOCKS.map((b) => [b.key, b]));
+/**
+ * ตำแหน่งบนชุดเอกสาร EVERGREEN — คนละชุดกับจดหมายสายอื่นเพราะหน้าตาไม่เหมือนกันเลย
+ *
+ * เดิมแท็บ EVERGREEN ขึ้นตารางของจดหมายโครงกลาง ผู้ดูแลแก้แล้วกดบันทึกได้
+ * แต่ตัววาดของ EVERGREEN ไม่ได้อ่านค่าพวกนั้น PDF จึงไม่เปลี่ยนอะไรเลย
+ * ค่าตั้งต้นตรงนี้คือตำแหน่งที่ใช้อยู่จริงบนแบบฟอร์มของสายเรือ
+ */
+export const EVERGREEN_BLOCKS: LetterBlock[] = [
+  // จดหมายขอรับ D/O (หน้า KOLA และ MAESOT FREEZONE) — หัวจดหมายใช้ร่วมกับจดหมายยืนยันค่ามัดจำ
+  { key: 'eg.header', label: 'หัวจดหมาย (x = กึ่งกลาง · gap = ระยะชื่อถึงที่อยู่)', x: 298, y: 82, gap: 20 },
+  { key: 'eg.rule', label: 'เส้นคาดใต้หัวจดหมาย (x = ระยะขอบซ้าย/ขวา)', x: 75, y: 124 },
+  { key: 'eg.date', label: 'วันที่ (x = ขอบขวา)', x: 525, y: 185 },
+  { key: 'eg.subject', label: 'เรื่อง · ช่องติ๊ก SURRENDER / SEAWAY (gap = ระยะช่องติ๊ก)', x: 85, y: 230, gap: 22 },
+  { key: 'eg.attention', label: 'เรียน', x: 85, y: 280 },
+  { key: 'eg.details', label: 'รายละเอียด (บริษัท · เรือ · B/L · แจ้งออก B/L)', x: 85, y: 325, gap: 25 },
+  { key: 'eg.request', label: 'ย่อหน้า "ดังนั้นทางบริษัทฯ จึงขอรับ D/O…"', x: 85, y: 470, gap: 24 },
+  { key: 'eg.closingLine', label: 'บรรทัด "จึงเรียนมาเพื่อทราบ…"', x: 85, y: 555 },
+  { key: 'eg.closing', label: 'คำลงท้าย (x = กึ่งกลาง)', x: 385, y: 600 },
+  { key: 'eg.signer', label: 'ชื่อผู้ลงนาม (x = กึ่งกลาง · gap = ระยะบรรทัดตำแหน่ง)', x: 385, y: 670, gap: 22 },
+  { key: 'eg.payee', label: 'หมายเหตุสั่งจ่ายเช็คท้ายหน้า', x: 85, y: 745, gap: 18 },
+  // จดหมายยืนยันชื่อบริษัทในการออกใบค่ามัดจำตู้
+  { key: 'eg.depDate', label: 'ยืนยันค่ามัดจำ · วันที่ (x = ขอบขวา)', x: 525, y: 170 },
+  { key: 'eg.depSubject', label: 'ยืนยันค่ามัดจำ · เรื่อง / เรียน (gap = ระยะสองบรรทัด)', x: 85, y: 215, gap: 30 },
+  { key: 'eg.depBody', label: 'ยืนยันค่ามัดจำ · เนื้อความ (gap = ระยะบรรทัด)', x: 85, y: 280, gap: 33 },
+  { key: 'eg.depClosing', label: 'ยืนยันค่ามัดจำ · ย่อหน้าปิดท้าย', x: 85, y: 575, gap: 24 },
+  { key: 'eg.depSigner', label: 'ยืนยันค่ามัดจำ · ชื่อผู้ลงนาม (x = กึ่งกลาง)', x: 385, y: 712, gap: 22 },
+  // ใบลากตู้
+  { key: 'eg.icContainer', label: 'ใบลากตู้ · CONTAINER NO. (gap = ระยะบรรทัดเมื่อตู้ยาวหลายบรรทัด)', x: 62, y: 631, gap: 18 },
+  { key: 'eg.icSigner', label: 'ใบลากตู้ · เส้นลงนาม (x = ต้นเส้น)', x: 300, y: 742 },
+  // ตราและลายเซ็นวางตามชื่อผู้ลงนามของแต่ละหน้าเอง ตั้งได้แค่ความกว้าง
+  ...LETTER_COMPANIES.map((co) => ({
+    key: `eg.stamp${co}`, label: `ตราประทับ ใบที่ ${co} (gap = ความกว้าง)`, x: 0, y: 0, gap: 95,
+    parts: ['gap' as const],
+  })),
+  ...LETTER_COMPANIES.map((co) => ({
+    key: `eg.sign${co}`, label: `ลายเซ็น ใบที่ ${co} (gap = ความกว้าง)`, x: 0, y: 0, gap: 90,
+    parts: ['gap' as const],
+  })),
+];
+
+const BLOCK_BY_KEY = new Map([...LETTER_BLOCKS, ...EVERGREEN_BLOCKS].map((b) => [b.key, b]));
+
+/** ตารางตำแหน่งของแท็บนั้น — EVERGREEN ใช้ชุดของตัวเอง */
+export function blocksFor(line: string): LetterBlock[] {
+  return line === EVERGREEN ? EVERGREEN_BLOCKS : LETTER_BLOCKS;
+}
+
+/** ช่องตั้งค่าของแท็บนั้น — แท็บ EVERGREEN ขึ้นเฉพาะช่องที่ชุดเอกสารนั้นอ่านจริง */
+export function fieldsFor(line: string): FormField[] {
+  if (line === EVERGREEN) return DO_LETTER_FIELDS.filter((f) => f.evergreen || f.evergreenOnly);
+  return DO_LETTER_FIELDS.filter((f) => !f.evergreenOnly && (!line || !f.sharedOnly));
+}
+
+/** ช่องที่ตั้งได้ของบล็อกนั้น */
+export function blockParts(block: LetterBlock): Array<'x' | 'y' | 'gap'> {
+  return block.parts ?? (block.gap === undefined ? ['x', 'y'] : ['x', 'y', 'gap']);
+}
 
 /** โค้ดที่ใช้เก็บพิกัดของแต่ละบล็อกใน master_records */
 export const blockCode = (key: string, part: 'x' | 'y' | 'gap') => `pos.${key}.${part}`;
@@ -374,6 +452,9 @@ export function canEditBlAtDo(shipline: string | null): boolean {
   return matched !== null && BL_EDITABLE_LINES.includes(matched);
 }
 
+/** บล็อกที่เติมค่าตั้งต้นครบแล้ว — parts ยังเป็นตัวเลือกเหมือนเดิม */
+export type PlacedBlock = Omit<Required<LetterBlock>, 'parts'> & Pick<LetterBlock, 'parts'>;
+
 export type DoLetterForm = {
   /** ค่าดิบที่บันทึกไว้ ยังไม่เติมค่าตั้งต้น */
   raw: (key: string) => string;
@@ -382,7 +463,7 @@ export type DoLetterForm = {
   /** ค่าของช่องที่แยกตามบริษัท เช่น ชื่อบริษัทและผู้ลงนามของใบนั้น */
   coValue: (co: CompanyNo, field: string, line?: string) => string;
   /** ตำแหน่งของบล็อกหนึ่ง ผสมกับค่าเริ่มต้นแล้ว — ของสายเรือทับค่ากลางได้ */
-  block: (key: string, line?: string) => Required<LetterBlock>;
+  block: (key: string, line?: string) => PlacedBlock;
   /** ชื่อบริษัทตัวแทนที่ต่อท้ายบรรทัด "เรียน" — ที่ตั้งเอง → ชื่อตามสายเรือ */
   attentionCompany: (line?: string) => string;
 };

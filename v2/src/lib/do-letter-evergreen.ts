@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  EVERGREEN, lineKey, signBlock, stampBlock, type CompanyNo, type DoLetterForm,
+  EG_DEPOSIT_PER_CONTAINER, EG_DEPOSIT_PHONE, EVERGREEN, LETTER_COMPANIES, lineKey,
+  type CompanyNo, type DoLetterForm,
 } from '@/lib/do-letter';
 import {
   PAGE_H, PAGE_W, createLetterKit,
@@ -10,12 +11,17 @@ import {
 import { drawCoordinateGrid } from '@/lib/pdf-grid';
 
 /**
- * ชุดเอกสารแลก D/O ของ EVERGREEN — 4 แบบ เรียงหน้าตามที่ยื่นจริง
+ * ชุดเอกสารแลก D/O ของ EVERGREEN — เรียงหน้าตามที่ยื่นจริง
  *
  *   1. จดหมายขอรับ D/O (SURRENDER / SEAWAY-BILL) ในนาม KOLA
  *   2. ฉบับเดียวกันในนาม MAESOT FREEZONE
  *   3. จดหมายยืนยันชื่อบริษัทในการออกใบค่ามัดจำตู้
- *   4. ใบลากตู้ (Container/Chassis Interchange Agreement) — ตู้ละ 2 แผ่นเหมือนกัน
+ *   4–7. ใบลากตู้ (Container/Chassis Interchange Agreement) 4 แผ่น
+ *        ประทับตรา KOLA · MAESOT FREEZONE · KOLA · MAESOT FREEZONE
+ *        แผ่นเดียวมีเลขตู้ครบทุกตู้ของงานในช่อง CONTAINER NO.
+ *
+ * ตำแหน่งบนกระดาษ ตำแหน่งผู้ลงนาม เบอร์โทร และค่ามัดจำต่อตู้ ตั้งได้ที่แท็บ EVERGREEN
+ * ของ /master/do-letter (บล็อก eg.*) — ไม่ใช้ตารางตำแหน่งของจดหมายโครงกลาง
  *
  * EVERGREEN ไม่รับจดหมายโครงกลางแบบสายอื่น จึงวาดตามแบบฟอร์มของสายเรือเอง
  * ชื่อบริษัท ที่อยู่ ผู้ลงนาม ตราและลายเซ็น ยังมาจาก /master/do-letter ชุดเดียวกับสายอื่น
@@ -28,10 +34,28 @@ const LOGO_PATH = path.join(process.cwd(), 'assets', 'forms', 'evergreen-logo.jp
 
 const AGENT_TH = 'บริษัท เอเวอร์กรีน ชิปปิ้ง เอเยนซี่ (ไทยแลนด์) จำกัด';
 const AGENT_EN = 'EVERGREEN SHIPPING AGENCY (THAILAND) CO.,LTD.';
-/** เบอร์ผู้ลงนามท้ายจดหมายยืนยันค่ามัดจำ ตามต้นฉบับ */
+/** เบอร์ผู้ลงนามท้ายจดหมายยืนยันค่ามัดจำ ตามต้นฉบับ — ตั้งใหม่ได้ที่แท็บ EVERGREEN */
 const DEPOSIT_SIGNER_PHONE = '091-8585681';
 /** ตำแหน่งผู้ลงนามบนชุดนี้เป็นภาษาไทย — ตั้ง "ตำแหน่ง" ของสาย EVERGREEN ไว้ก็ใช้ค่านั้นแทน */
 const SIGNER_TITLE = 'กรรมการบริษัท';
+/** ค่ามัดจำต่อตู้ตั้งต้น (บาท) */
+export const DEFAULT_DEPOSIT_PER_CONTAINER = 8000;
+
+/**
+ * ยอดมัดจำบนจดหมายยืนยัน = ค่ามัดจำต่อตู้ × จำนวนตู้ของงาน
+ * ตั้งค่าต่อตู้ไว้ไม่ใช่ตัวเลขก็ใช้ค่าตั้งต้น · ยังไม่มีเลขตู้ใช้ยอดที่บันทึกไว้กับงาน (ถ้ามี)
+ */
+export function depositTotal(
+  perContainerSetting: string, containerCount: number, fallback?: string | number | null,
+): number | null {
+  const rate = Number(String(perContainerSetting ?? '').replace(/,/g, '').trim());
+  const perContainer = perContainerSetting.trim() && Number.isFinite(rate) && rate > 0
+    ? rate : DEFAULT_DEPOSIT_PER_CONTAINER;
+  if (containerCount > 0) return perContainer * containerCount;
+  const saved = Number(fallback);
+  return fallback !== null && fallback !== undefined && fallback !== '' && Number.isFinite(saved) && saved > 0
+    ? saved : null;
+}
 
 const TH_MONTHS = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -71,7 +95,7 @@ function weightText(value: DoLetterData['grossWeight']): string {
 }
 
 /** 8000 → "8,000" · มีสตางค์จึงแสดงทศนิยม */
-function amountText(value: DoLetterData['depositAmount']): string {
+export function amountText(value: DoLetterData['depositAmount']): string {
   const n = Number(value);
   if (value === null || value === undefined || value === '' || !Number.isFinite(n) || n <= 0) return '';
   return n.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
@@ -110,7 +134,12 @@ export async function renderEvergreenDoLetterPdf(
   const letterDay = thaiLetterDate(data.letterDate ?? new Date());
   const choice = blChoice(data.blType);
   const signerTitle = f.raw(lineKey(EVERGREEN, 'signerTitle')) || SIGNER_TITLE;
+  const depositPhone = f.raw(lineKey(EVERGREEN, EG_DEPOSIT_PHONE)) || DEPOSIT_SIGNER_PHONE;
   const company = (co: CompanyNo) => f.coValue(co, 'companyName', EVERGREEN);
+  /** ตำแหน่งที่ตั้งไว้ในแท็บ EVERGREEN — ไม่ได้ตั้งก็เป็นตำแหน่งตามแบบฟอร์มเดิม */
+  const at = (key: string) => f.block(key, EVERGREEN);
+  const containers = (data.containers ?? []).map((c) => c.trim()).filter(Boolean);
+  const deposit = depositTotal(f.raw(lineKey(EVERGREEN, EG_DEPOSIT_PER_CONTAINER)), containers.length, data.depositAmount);
 
   const newPage = () => {
     const w = kit.addPage();
@@ -177,38 +206,43 @@ export async function renderEvergreenDoLetterPdf(
   const RIGHT = PAGE_W - 70;
   const INDENT = size(36);
 
-  const paragraph = (w: PageWriter, text: string, y: number, gap: number, bold: boolean) => {
-    wrap(text, RIGHT - LEFT, bold, INDENT).forEach((t, i) => {
-      w.draw(t, { x: LEFT + (i === 0 ? INDENT : 0), y: y + i * gap }, { bold });
+  const paragraph = (
+    w: PageWriter, text: string, y: number, gap: number, bold: boolean, left = LEFT,
+  ) => {
+    wrap(text, RIGHT - left, bold, INDENT).forEach((t, i) => {
+      w.draw(t, { x: left + (i === 0 ? INDENT : 0), y: y + i * gap }, { bold });
     });
   };
 
   /** หัวจดหมายของบริษัท — ชื่อตัวใหญ่ ที่อยู่แยกบรรทัดเบอร์โทร เส้นคาดหนา */
   const letterhead = (w: PageWriter, co: CompanyNo) => {
-    const cx = PAGE_W / 2;
-    w.drawCentered(company(co), { x: cx, y: 82 }, { bold: true, pt: 26 });
+    const head = at('eg.header');
+    const rule = at('eg.rule');
+    w.drawCentered(company(co), { x: head.x, y: head.y }, { bold: true, pt: 26 });
     const address = f.coValue(co, 'companyAddress', EVERGREEN);
     // ต้นฉบับขึ้นเบอร์โทรบรรทัดใหม่ ค่ากลางเก็บไว้บรรทัดเดียวจึงแยกตรงคำว่า Tel
     const [addr, ...rest] = address.split(/\s+(?=TEL)/i);
-    w.drawCentered(addr, { x: cx, y: 102 }, { pt: 15 });
-    if (rest.length) w.drawCentered(rest.join(' '), { x: cx, y: 117 }, { pt: 15 });
-    w.line(LEFT - 10, 124, RIGHT + 10, 124, 2);
+    w.drawCentered(addr, { x: head.x, y: head.y + head.gap }, { pt: 15 });
+    if (rest.length) w.drawCentered(rest.join(' '), { x: head.x, y: head.y + head.gap + 15 }, { pt: 15 });
+    w.line(rule.x, rule.y, PAGE_W - rule.x, rule.y, 2);
   };
 
-  /** ตราประทับหน้าชื่อ ลายเซ็นเหนือชื่อ — ความกว้างตามที่ตั้งไว้ในหน้าตั้งค่าจดหมาย */
+  /** ตราประทับหน้าชื่อ ลายเซ็นเหนือชื่อ — ความกว้างตั้งได้ที่แท็บ EVERGREEN */
   const stampAndSign = (w: PageWriter, co: CompanyNo, nameX: number, nameY: number) => {
-    const stampW = f.block(stampBlock(co), EVERGREEN).gap;
-    const signW = f.block(signBlock(co), EVERGREEN).gap;
+    const stampW = at(`eg.stamp${co}`).gap;
+    const signW = at(`eg.sign${co}`).gap;
     w.image(embedded[co]?.stamp, { x: nameX - stampW - 10, y: nameY - stampW * 0.75, width: stampW });
     w.image(embedded[co]?.sign, { x: nameX - signW / 2, y: nameY - 62, width: signW });
   };
 
   /** ผู้ลงนามกึ่งกลางที่ x — ชื่อในวงเล็บแล้วตามด้วยบรรทัดอื่น (ตำแหน่ง เบอร์โทร) */
-  const signature = (w: PageWriter, co: CompanyNo, cx: number, y: number, lines: string[]) => {
+  const signature = (
+    w: PageWriter, co: CompanyNo, cx: number, y: number, lineGap: number, lines: string[],
+  ) => {
     stampAndSign(w, co, cx, y);
     const signer = f.coValue(co, 'signerName', EVERGREEN);
     if (signer) w.drawCentered(`(${signer})`, { x: cx, y }, { bold: true });
-    lines.forEach((t, i) => w.drawCentered(t, { x: cx, y: y + 22 * (i + 1) }, { bold: true }));
+    lines.forEach((t, i) => w.drawCentered(t, { x: cx, y: y + lineGap * (i + 1) }, { bold: true }));
   };
 
   // ---------- 1–2 · จดหมายขอรับ D/O ----------
@@ -220,40 +254,50 @@ export async function renderEvergreenDoLetterPdf(
     w.page.drawText(sub, { x: (PAGE_W - subW) / 2, y: PAGE_H - 140, size: 10, font: kit.latin.regular });
     w.line((PAGE_W - subW) / 2, 142, (PAGE_W + subW) / 2, 142, 0.6);
 
-    w.drawRight(letterDay, { x: RIGHT, y: 185 });
+    const date = at('eg.date');
+    w.drawRight(letterDay, { x: date.x, y: date.y });
 
     // เรื่อง — ช่องติ๊กสองชั้นอยู่คอลัมน์เดียวกับช่องติ๊กในเนื้อความ
-    const BOX_X = 330;
-    w.draw('เรื่อง', { x: LEFT, y: 230 }, { bold: true });
-    w.draw('ขอใช้จดหมายรับ D/O เนื่องจาก OB/L', { x: LEFT + 40, y: 230 });
+    const subject = at('eg.subject');
+    const BOX_X = subject.x + 245;
+    w.draw('เรื่อง', { x: subject.x, y: subject.y }, { bold: true });
+    w.draw('ขอใช้จดหมายรับ D/O เนื่องจาก OB/L', { x: subject.x + 40, y: subject.y });
     const boxes = (y: number) => {
       checkbox(w, { x: BOX_X, y }, choice === 'SURRENDER');
       w.draw('SURRENDER', { x: BOX_X + 22, y });
-      checkbox(w, { x: BOX_X, y: y + 22 }, choice === 'SEAWAY');
-      w.draw('SEAWAY-BILL', { x: BOX_X + 22, y: y + 22 });
+      checkbox(w, { x: BOX_X, y: y + subject.gap }, choice === 'SEAWAY');
+      w.draw('SEAWAY-BILL', { x: BOX_X + 22, y: y + subject.gap });
     };
-    boxes(230);
-    w.draw('เรียน', { x: LEFT, y: 280 }, { bold: true });
-    w.draw('เจ้าหน้าที่แผนกเรือขาเข้า', { x: LEFT + 40, y: 280 });
+    boxes(subject.y);
+    const attention = at('eg.attention');
+    w.draw('เรียน', { x: attention.x, y: attention.y }, { bold: true });
+    w.draw('เจ้าหน้าที่แผนกเรือขาเข้า', { x: attention.x + 40, y: attention.y });
 
-    let x = labelFill(w, 'เนื่องด้วยบริษัท', company(co), { x: LEFT + INDENT, y: 325 }, 260);
-    x = labelFill(w, 'มีสินค้าเข้ามากับเรือ', vesselVoy, { x: LEFT, y: 350 }, 175);
-    labelFill(w, 'เที่ยววันที่', etaText, { x, y: 350 }, RIGHT - x - widthOf('เที่ยววันที่', size(16)) - 4);
-    x = labelFill(w, 'B/L NBR.', blNo, { x: LEFT, y: 375 }, 165);
-    x = labelFill(w, 'จำนวนสินค้า', weight ? `${weight} KGS.` : '', { x, y: 375 }, 120);
-    w.draw('ซึ่งผู้ขายของบริษัทฯ ได้ทำการแจ้งออก B/L เป็น', { x: LEFT, y: 400 });
-    boxes(400);
+    const d = at('eg.details');
+    const row = (n: number) => d.y + d.gap * n;
+    const right = RIGHT;
+    let x = labelFill(w, 'เนื่องด้วยบริษัท', company(co), { x: d.x + INDENT, y: row(0) }, 260);
+    x = labelFill(w, 'มีสินค้าเข้ามากับเรือ', vesselVoy, { x: d.x, y: row(1) }, 175);
+    labelFill(w, 'เที่ยววันที่', etaText, { x, y: row(1) }, right - x - widthOf('เที่ยววันที่', size(16)) - 4);
+    x = labelFill(w, 'B/L NBR.', blNo, { x: d.x, y: row(2) }, 165);
+    labelFill(w, 'จำนวนสินค้า', weight ? `${weight} KGS.` : '', { x, y: row(2) }, 120);
+    w.draw('ซึ่งผู้ขายของบริษัทฯ ได้ทำการแจ้งออก B/L เป็น', { x: d.x, y: row(3) });
+    boxes(row(3));
 
-    paragraph(w, 'ดังนั้นทางบริษัทฯ จึงขอรับ D/O โดยใช้จดหมายของทางบริษัทฯ เพื่อไปทำการปล่อยสินค้า ซึ่งในการนี้ หากเกิดความเสียหายใด ๆ เกิดขึ้นทุกประการทางบริษัทฯ ยินดีจะรับผิดชอบความเสียหายนั้น', 470, 24, false);
-    w.draw('จึงเรียนมาเพื่อทราบและโปรดดำเนินการ', { x: LEFT + INDENT, y: 555 });
+    const request = at('eg.request');
+    paragraph(w, 'ดังนั้นทางบริษัทฯ จึงขอรับ D/O โดยใช้จดหมายของทางบริษัทฯ เพื่อไปทำการปล่อยสินค้า ซึ่งในการนี้ หากเกิดความเสียหายใด ๆ เกิดขึ้นทุกประการทางบริษัทฯ ยินดีจะรับผิดชอบความเสียหายนั้น', request.y, request.gap, false, request.x);
+    const closingLine = at('eg.closingLine');
+    w.draw('จึงเรียนมาเพื่อทราบและโปรดดำเนินการ', { x: closingLine.x + INDENT, y: closingLine.y });
 
-    const cx = 385;
-    w.drawCentered('ขอแสดงความนับถือ', { x: cx, y: 600 });
-    signature(w, co, cx, 670, [signerTitle]);
+    const closing = at('eg.closing');
+    w.drawCentered('ขอแสดงความนับถือ', { x: closing.x, y: closing.y });
+    const signer = at('eg.signer');
+    signature(w, co, signer.x, signer.y, signer.gap, [signerTitle]);
 
-    w.draw('**ถ้าจ่ายเป็นเช็คสั่งจ่ายในนาม :', { x: LEFT, y: 745 }, { pt: 14 });
-    w.draw(AGENT_TH, { x: LEFT, y: 763 }, { pt: 14 });
-    w.draw(AGENT_EN, { x: LEFT, y: 785 }, { pt: 17 });
+    const payee = at('eg.payee');
+    w.draw('**ถ้าจ่ายเป็นเช็คสั่งจ่ายในนาม :', { x: payee.x, y: payee.y }, { pt: 14 });
+    w.draw(AGENT_TH, { x: payee.x, y: payee.y + payee.gap }, { pt: 14 });
+    w.draw(AGENT_EN, { x: payee.x, y: payee.y + payee.gap * 2 + 4 }, { pt: 17 });
   };
 
   // ---------- 3 · ใบลากตู้ ----------
@@ -294,7 +338,41 @@ export async function renderEvergreenDoLetterPdf(
     return start + width + 6;
   };
 
-  const interchange = (container: string) => {
+  /**
+   * เลขตู้ทุกตู้ในช่อง CONTAINER NO. — ตัดขึ้นบรรทัดใหม่ตรงจุลภาคเมื่อยาวเกินเส้น
+   * แต่ละบรรทัดมีเส้นไข่ปลาของตัวเอง · ยังไม่มีเลขตู้ก็เหลือเส้นเปล่าไว้เขียนมือ
+   */
+  const containerLines = (w: PageWriter, x: number, y: number, right: number, gap: number) => {
+    const label = 'CONTAINER NO.';
+    text(w, label, x, y, helvBold, 10.5);
+    const start = x + helvBold.widthOfTextAtSize(label, 10.5) + 4;
+    const width = right - start;
+    // ตู้เยอะจนเกิน 5 บรรทัด ย่อตัวอักษรลงให้ยังอยู่เหนือเส้นลงนาม
+    const pt = containers.length > 20 ? 8.5 : 10.5;
+    const lines: string[] = [];
+    let current = '';
+    for (const c of containers) {
+      const next = current ? `${current}, ${c}` : c;
+      if (current && helvBold.widthOfTextAtSize(next, pt) > width - 8) {
+        lines.push(`${current},`);
+        current = c;
+      } else {
+        current = next;
+      }
+    }
+    lines.push(current);
+    lines.forEach((t, i) => {
+      const ly = y + i * gap;
+      w.line(start, ly + 2, start + width, ly + 2, 0.8, true);
+      if (t) {
+        const vw = helvBold.widthOfTextAtSize(t, pt);
+        text(w, t, start + Math.max(0, (width - vw) / 2), ly - 1, helvBold, pt);
+      }
+    });
+  };
+
+  /** ใบลากตู้หนึ่งแผ่น ประทับตราของบริษัท co */
+  const interchange = (co: CompanyNo) => {
     const w = newPage();
     const L = 62;
     const R = PAGE_W - 62;
@@ -336,13 +414,14 @@ export async function renderEvergreenDoLetterPdf(
     const x = stdFill(w, 'F.V.', fv, L, 545, 200);
     stdFill(w, 'VOY', voy, x, 545, R - x - helvBold.widthOfTextAtSize('VOY', 10.5) - 4);
     stdFill(w, 'B/L NO.', blNo, L, 588, R - L - helvBold.widthOfTextAtSize('B/L NO.', 10.5) - 4);
-    stdFill(w, 'CONTAINER NO.', container, L, 631, 320);
+    const ic = at('eg.icContainer');
+    containerLines(w, ic.x, ic.y, R, ic.gap);
 
-    // ผู้ลากตู้คือ KOLA — ประทับตราเหนือเส้นลงนาม
-    const sx = 300;
-    stampAndSign(w, 1, sx + 105, 738);
-    w.line(sx, 742, R - 10, 742, 0.8, true);
-    text(w, 'Merchant’s Authorised Signature', sx + 4, 759, courierBoldOblique, 12);
+    // ประทับตราของบริษัทที่ยื่นแผ่นนั้น เหนือเส้นลงนาม
+    const sig = at('eg.icSigner');
+    stampAndSign(w, co, sig.x + 105, sig.y - 4);
+    w.line(sig.x, sig.y, R - 10, sig.y, 0.8, true);
+    text(w, 'Merchant’s Authorised Signature', sig.x + 4, sig.y + 17, courierBoldOblique, 12);
 
     w.draw('ฟอร์ม ใบลากตู้', { x: L, y: 805 }, { pt: 13 });
   };
@@ -351,52 +430,56 @@ export async function renderEvergreenDoLetterPdf(
   const depositLetter = () => {
     const w = newPage();
     letterhead(w, 1);
-    w.drawRight(letterDay, { x: RIGHT, y: 170 }, { bold: true });
+    const date = at('eg.depDate');
+    w.drawRight(letterDay, { x: date.x, y: date.y }, { bold: true });
 
-    w.draw('เรื่อง', { x: LEFT, y: 215 }, { bold: true });
-    w.draw('ยืนยันชื่อบริษัทในการออกใบค่ามัดจำตู้', { x: LEFT + 40, y: 215 }, { bold: true });
-    w.draw('เรียน', { x: LEFT, y: 245 }, { bold: true });
-    w.draw(`ผู้จัดการแผนก การเงิน ${AGENT_TH}`, { x: LEFT + 40, y: 245 }, { bold: true });
+    const subject = at('eg.depSubject');
+    w.draw('เรื่อง', { x: subject.x, y: subject.y }, { bold: true });
+    w.draw('ยืนยันชื่อบริษัทในการออกใบค่ามัดจำตู้', { x: subject.x + 40, y: subject.y }, { bold: true });
+    w.draw('เรียน', { x: subject.x, y: subject.y + subject.gap }, { bold: true });
+    w.draw(`ผู้จัดการแผนก การเงิน ${AGENT_TH}`, { x: subject.x + 40, y: subject.y + subject.gap }, { bold: true });
 
     const consignee = (data.consigneeName ?? '').trim() || company(2);
-    const gap = 33;
-    let y = 280;
+    const body = at('eg.depBody');
+    const L0 = body.x;
+    const gap = body.gap;
+    let y = body.y;
     const endFill = (label: string, value: string, x: number) =>
       labelFill(w, label, value, { x, y }, RIGHT - x - widthOf(label, size(16), true) - 4, true);
 
-    endFill('เนื่องจาก ทางบริษัท', consignee, LEFT + INDENT);
+    endFill('เนื่องจาก ทางบริษัท', consignee, L0 + INDENT);
     y += gap;
-    const x = labelFill(w, 'ได้มีสินค้าเข้ามากับเรือ', vesselVoy, { x: LEFT, y }, 165, true);
+    const x = labelFill(w, 'ได้มีสินค้าเข้ามากับเรือ', vesselVoy, { x: L0, y }, 165, true);
     endFill('เข้าวันที่', etaText, x);
     y += gap;
-    endFill('B/L EGLV', blNo, LEFT);
+    endFill('B/L EGLV', blNo, L0);
     y += gap;
-    endFill('ได้มอบหมายให้กับบริษัท', company(1), LEFT);
+    endFill('ได้มอบหมายให้กับบริษัท', company(1), L0);
     y += gap;
-    w.draw('เป็นตัวแทนดำเนินพิธีการนำเข้าสินค้าให้กับทางบริษัทฯ หรือ เป็นบริษัทของลูกค้าที่ผ่านมากับทางบริษัทฯ', { x: LEFT, y }, { bold: true });
+    w.draw('เป็นตัวแทนดำเนินพิธีการนำเข้าสินค้าให้กับทางบริษัทฯ หรือ เป็นบริษัทของลูกค้าที่ผ่านมากับทางบริษัทฯ', { x: L0, y }, { bold: true });
     y += gap;
+    // ค่ามัดจำต่อตู้ × จำนวนตู้ — ตั้งค่าต่อตู้ได้ที่แท็บ EVERGREEN
     const label = 'และเป็นผู้ที่สำรองจ่ายค่ามัดจำตู้ไปจริง เป็นจำนวนเงิน';
-    const end = labelFill(w, label, amountText(data.depositAmount), { x: LEFT, y },
-      RIGHT - LEFT - widthOf(label, size(16), true) - widthOf('บาท', size(16), true) - 12, true);
+    const end = labelFill(w, label, amountText(deposit), { x: L0, y },
+      RIGHT - L0 - widthOf(label, size(16), true) - widthOf('บาท', size(16), true) - 12, true);
     w.draw('บาท', { x: end, y }, { bold: true });
     y += gap;
-    paragraph(w, `ดังนั้น ขอให้ทาง ${AGENT_TH} โปรดดำเนินการ และทำเรื่องคืนเงินค่ามัดจำตู้ให้กับบริษัทดังกล่าวได้โดยตรง`, y, gap, true);
+    paragraph(w, `ดังนั้น ขอให้ทาง ${AGENT_TH} โปรดดำเนินการ และทำเรื่องคืนเงินค่ามัดจำตู้ให้กับบริษัทดังกล่าวได้โดยตรง`, y, gap, true, L0);
 
-    paragraph(w, 'จึงเรียนมาเพื่อโปรดดำเนินการ หากเกิดความเสียหายใด ๆ ทางบริษัทฯ ยินดีรับผิดชอบทุกประการ', 575, 24, true);
+    const closing = at('eg.depClosing');
+    paragraph(w, 'จึงเรียนมาเพื่อโปรดดำเนินการ หากเกิดความเสียหายใด ๆ ทางบริษัทฯ ยินดีรับผิดชอบทุกประการ', closing.y, closing.gap, true, closing.x);
 
-    const cx = 385;
-    w.drawCentered('ขอแสดงความนับถือ', { x: cx, y: 640 }, { bold: true });
-    signature(w, 1, cx, 712, [signerTitle, `เบอร์โทร ${DEPOSIT_SIGNER_PHONE}`]);
+    const signer = at('eg.depSigner');
+    w.drawCentered('ขอแสดงความนับถือ', { x: signer.x, y: signer.y - 72 }, { bold: true });
+    signature(w, 1, signer.x, signer.y, signer.gap, [signerTitle, `เบอร์โทร ${depositPhone}`]);
   };
 
   doRequest(1);
   doRequest(2);
   depositLetter();
-  const containers = (data.containers ?? []).map((c) => c.trim()).filter(Boolean);
-  // ใบลากตู้ยื่นสองแผ่นเหมือนกัน · ยังไม่มีเลขตู้ก็ออกชุดเดียว เว้นช่องไว้เขียนมือ
-  for (const c of containers.length ? containers : ['']) {
-    interchange(c);
-    interchange(c);
+  // ใบลากตู้ 4 แผ่น ประทับตราสลับ KOLA · MAESOT FREEZONE สองรอบ — แผ่นเดียวมีเลขตู้ครบทุกตู้
+  for (let round = 0; round < 2; round += 1) {
+    for (const co of LETTER_COMPANIES) interchange(co);
   }
 
   return kit.save();

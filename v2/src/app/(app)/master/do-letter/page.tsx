@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { requireUserReady } from '@/lib/auth';
 import { masterCounts } from '@/lib/queries/master';
 import {
-  DO_LETTER_FIELDS, DO_LETTER_GROUPS, LETTER_BLOCKS, LETTER_COMPANIES, SHIPPING_LINES,
-  blockCode, lineKey, loadDoLetterForm,
+  DO_LETTER_GROUPS, EVERGREEN, LETTER_COMPANIES, SHIPPING_LINES,
+  blockCode, blockParts, blocksFor, fieldsFor, lineKey, loadDoLetterForm,
   signKey, signNameKey, stampKey, stampNameKey,
 } from '@/lib/do-letter';
 import { FormPreviewPane } from '@/components/FormPreviewPane';
@@ -32,7 +32,9 @@ export default async function DoLetterFormPage({
   const [form, counts] = await Promise.all([loadDoLetterForm(), masterCounts()]);
   // เปลี่ยนทุกครั้งที่หน้าถูกเรนเดอร์ใหม่ (คือหลังกดบันทึก) ให้แผงตัวอย่างโหลดเอง
   const reloadKey = Date.now();
-  const fields = DO_LETTER_FIELDS.filter((f) => !line || !f.sharedOnly);
+  const evergreen = line === EVERGREEN;
+  const fields = fieldsFor(line);
+  const blocks = blocksFor(line);
   const groups = DO_LETTER_GROUPS.filter((g) => fields.some((f) => f.group === g));
 
   return (
@@ -122,7 +124,11 @@ export default async function DoLetterFormPage({
             <input type="hidden" name="line" value={line} />
 
             <div className="doc-form-bar">
-              <span>ฟอนต์ Angsana New · กระดาษ A4 แนวตั้ง · ออกครั้งละ 2 ใบ (KOLA · MAESOT FREEZONE)</span>
+              <span>
+                {evergreen
+                  ? 'ชุดเอกสารของ EVERGREEN · จดหมายขอรับ D/O 2 ใบ · ยืนยันค่ามัดจำตู้ · ใบลากตู้ 4 แผ่น'
+                  : 'ฟอนต์ Angsana New · กระดาษ A4 แนวตั้ง · ออกครั้งละ 2 ใบ (KOLA · MAESOT FREEZONE)'}
+              </span>
               <FormPreviewPane
                 src={`/api/do-letter/preview?grid=1${line ? `&line=${encodeURIComponent(line)}` : ''}`}
                 title={`ตัวอย่างพร้อมเส้นพิกัด${line ? ` · ${line}` : ''}`}
@@ -147,7 +153,10 @@ export default async function DoLetterFormPage({
                     // ชื่อบริษัทตัวแทนมีค่าตั้งต้นตามสายเรือ จึงต้องถามผ่านตัวช่วยของฟอร์ม
                     const inherited = f.key === 'attentionCompany'
                       ? (line ? form.attentionCompany(line) : '')
-                      : (line ? form.value(f.key) : f.fallback);
+                      : evergreen && (f.evergreenOnly || f.evergreenFallback)
+                        // ชุด EVERGREEN มีค่าตั้งต้นของตัวเอง ไม่ได้สืบจากค่ากลางของจดหมายสายอื่น
+                        ? (f.evergreenFallback ?? f.fallback)
+                        : (line ? form.value(f.key) : f.fallback);
                     const long = ['notice', 'options', 'request'].includes(f.key) || f.key.startsWith('note');
                     return (
                       <label key={f.key} className={f.wide ? 'doc-field wide' : 'doc-field'}>
@@ -178,8 +187,9 @@ export default async function DoLetterFormPage({
                     <tr><th>บล็อก</th><th>x</th><th>y</th><th>ระยะบรรทัด</th></tr>
                   </thead>
                   <tbody>
-                    {LETTER_BLOCKS.map((bk) => {
+                    {blocks.map((bk) => {
                       const at = form.block(bk.key, line || undefined);
+                      const parts = blockParts(bk);
                       return (
                         <tr key={bk.key}>
                           <th scope="row">{bk.label}</th>
@@ -187,12 +197,13 @@ export default async function DoLetterFormPage({
                             <td key={part}>
                               <input
                                 type="number"
-                                step="1"
+                                // รับทศนิยมได้ — step=1 ทำให้เบราว์เซอร์ไม่ยอมส่งฟอร์มเมื่อมีค่าอย่าง 82.5
+                                step="any"
                                 min="0"
                                 name={blockCode(bk.key, part)}
                                 defaultValue={at[part]}
-                                // บล็อกบรรทัดเดียวไม่ต้องตั้งระยะบรรทัด
-                                disabled={part === 'gap' && bk.gap === undefined}
+                                // บล็อกบรรทัดเดียวไม่ต้องตั้งระยะบรรทัด · ตราและลายเซ็นของ EVERGREEN ตั้งได้แค่ความกว้าง
+                                disabled={!parts.includes(part)}
                               />
                             </td>
                           ))}

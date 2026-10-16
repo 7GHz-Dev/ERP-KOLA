@@ -6,8 +6,8 @@ import { db } from '@/db';
 import { jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import {
-  DO_LETTER_ASSET_PREFIX, DO_LETTER_FIELDS, LETTER_BLOCKS, LETTER_COMPANIES, SHIPPING_LINES,
-  blockCode, lineKey, saveDoLetterValues,
+  DO_LETTER_ASSET_PREFIX, LETTER_COMPANIES, SHIPPING_LINES,
+  blockCode, blockParts, blocksFor, fieldsFor, lineKey, saveDoLetterValues,
   signKey, signNameKey, stampKey, stampNameKey, type CompanyNo,
 } from '@/lib/do-letter';
 import { ensureBucket, uploadFile } from '@/lib/storage';
@@ -36,14 +36,12 @@ async function saveDoLetterFormImpl(formData: FormData) {
     entries.set(line ? lineKey(line, field) : field, text(formData.get(field), maxLength));
   };
 
-  for (const field of DO_LETTER_FIELDS) {
-    if (line && field.sharedOnly) continue;
-    collect(field.key, 4000);
-  }
+  // เก็บเฉพาะช่องที่แท็บนั้นมีจริง — แท็บ EVERGREEN มีชุดช่องและตำแหน่งของตัวเอง
+  for (const field of fieldsFor(line)) collect(field.key, 4000);
 
   // พิกัดของแต่ละบล็อก — ว่าง = กลับไปใช้ตำแหน่งเริ่มต้น
-  for (const block of LETTER_BLOCKS) {
-    for (const part of ['x', 'y', 'gap'] as const) collect(blockCode(block.key, part), 12);
+  for (const block of blocksFor(line)) {
+    for (const part of blockParts(block)) collect(blockCode(block.key, part), 12);
   }
 
   await saveDoLetterValues(entries, () => newId('MD'));
