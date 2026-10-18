@@ -2023,3 +2023,68 @@ label.mini:has(.search-select) { overflow: visible; }
   .admin-job-section .extract-grid { grid-template-columns: minmax(0, 1fr); }
   .admin-rows { display: block; overflow-x: auto; }
 }
+
+/* ---------- Template กรอกเว็บ (/master/web-templates) ---------- */
+
+.wt-create { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.wt-create .field { margin-bottom: 0; flex: 1; min-width: 220px; }
+.wt-create-example { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.wt-create-example small, .wt-sub { color: var(--muted); }
+.wt-sub { display: block; font-size: 11px; }
+.wt-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.wt-inline { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.wt-inline .field { margin-bottom: 0; min-width: 160px; }
+.wt-inline .field.grow { flex: 1; }
+.wt-inline input, .wt-inline textarea {
+  width: 100%; padding: 6px 9px; font: inherit; font-size: 12px; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+}
+.wt-tabs { margin: 0; }
+.wt-help { margin: 0 0 8px; font-size: 12px; }
+.wt-check { display: flex !important; align-items: center; gap: 6px; }
+.wt-check input { width: auto !important; min-height: 0 !important; }
+.wt-check span { margin: 0 !important; }
+.wt-roles { display: flex; flex-wrap: wrap; gap: 12px; }
+.wt-json {
+  width: 100%; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--canvas);
+}
+.doc-form-grid .field select, .doc-form-grid .field textarea {
+  width: 100%; min-height: 32px; padding: 5px 9px; font-size: 12px; font-family: inherit;
+  color: var(--ink); border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+}
+.wt-input-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.wt-input-row input, .wt-input-row select {
+  min-height: 30px; padding: 4px 8px; font: inherit; font-size: 12px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink);
+}
+.wt-input-row .grow { flex: 1; min-width: 200px; }
+.wt-steps { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.wt-step { border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+.wt-step.wt-submit { border-left-color: var(--red); }
+.wt-step.wt-waitText, .wt-step.wt-pause { border-left-color: var(--amber); }
+.wt-step.wt-upload { border-left-color: var(--green); }
+.wt-step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.wt-step-head > b { min-width: 22px; color: var(--muted); }
+.wt-step-head select { min-height: 28px; padding: 3px 6px; font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.wt-target-sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.wt-step-tools { display: flex; gap: 4px; }
+.wt-step-body { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.wt-value-row { display: flex; gap: 6px; }
+.wt-value-row input { flex: 1; }
+.wt-value-row select { width: auto !important; }
+.wt-target { margin-top: 6px; font-size: 12px; }
+.wt-target summary { cursor: pointer; color: var(--blue); margin-bottom: 6px; }
+.wt-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.wt-detail { display: flex; flex-direction: column; gap: 2px; max-width: 420px; }
+@media (max-width: 640px) {
+  .wt-step-head { flex-wrap: wrap; }
+  .wt-target-sum { flex-basis: 100%; order: 3; }
+}
+.wt-inline select {
+  padding: 6px 9px; font: inherit; font-size: 12px; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface); min-height: 32px;
+}
+.wt-import { margin-top: 10px; font-size: 12px; }
+.wt-import summary { cursor: pointer; color: var(--blue); }
+.wt-import-form { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }

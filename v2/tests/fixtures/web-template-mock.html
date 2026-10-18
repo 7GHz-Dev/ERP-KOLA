@@ -1,0 +1,145 @@
+<!doctype html>
+<!--
+  หน้าจำลองเว็บขอ D/O แบบ CMA CGM — ใช้ทดสอบตัวเล่นและตัวบันทึกของ Template กรอกเว็บ (tests/web-template.ts)
+  มีของยากที่เว็บจริงมี: combobox แบบ Salesforce, ช่องใน shadow DOM, ปุ่ม Next ที่เปิดหลังเพิ่ม BL,
+  ช่องแนบไฟล์ที่ซ่อนไว้สองช่อง, หน้าต่าง Upload ที่ปุ่ม Done กดได้หลังอัปเสร็จ
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mock DO portal</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 24px; }
+  .hidden { display: none; }
+  .chip { display: inline-block; background: #def; padding: 2px 8px; border-radius: 10px; margin: 4px; }
+  [role=listbox] { border: 1px solid #999; margin: 0; padding: 0; list-style: none; width: 220px; }
+  [role=option] { padding: 4px 8px; cursor: pointer; }
+  .modal { position: fixed; inset: 30% 30%; background: #fff; border: 2px solid #333; padding: 16px; }
+  label { display: block; margin-top: 10px; }
+</style>
+</head>
+<body>
+<section id="step1">
+  <h1>Create new request</h1>
+
+  <span id="svc-label">Service Type</span>
+  <button type="button" role="combobox" aria-labelledby="svc-label" aria-expanded="false" id="svc">Select an option</button>
+  <ul role="listbox" id="svc-list" class="hidden">
+    <li role="option">Export Documents</li>
+    <li role="option">New Delivery Order</li>
+  </ul>
+
+  <label for="agency">Agency Location</label>
+  <select id="agency">
+    <option>Select</option>
+    <option>Singapore</option>
+    <option>Thailand</option>
+  </select>
+
+  <bl-field></bl-field>
+
+  <h3>Approved BL Reference(s)</h3>
+  <div id="chips"></div>
+  <button type="button" id="next" disabled>Next</button>
+</section>
+
+<section id="step2" class="hidden">
+  <h1>Upload your documents</h1>
+  <p>Payment Document(s)</p>
+  <button type="button" class="pick" data-i="0">Upload Files</button>
+  <input type="file" class="hidden" data-i="0">
+  <div class="names" data-i="0"></div>
+
+  <p>Supporting Document(s)</p>
+  <button type="button" class="pick" data-i="1">Upload Files</button>
+  <input type="file" class="hidden" data-i="1">
+  <div class="names" data-i="1"></div>
+
+  <label for="payref">Payment reference number</label>
+  <input id="payref">
+
+  <label for="extra">Additional information</label>
+  <textarea id="extra" placeholder="Write a comment"></textarea>
+
+  <p><button type="button" id="submit">Submit</button></p>
+</section>
+
+<section id="done" class="hidden">
+  <h1>Thank you</h1>
+  <p id="confirm"></p>
+</section>
+
+<div class="modal hidden" id="modal">
+  <p>Upload Files</p>
+  <p id="modal-name"></p>
+  <button type="button" id="modal-done" disabled>Done</button>
+</div>
+
+<script>
+  // ช่องกรอก BL อยู่ใน shadow DOM แบบเปิด เหมือน Lightning Web Component
+  customElements.define('bl-field', class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = '<label for="bl">BL Reference</label><input id="bl"> <button type="button" id="add">Add</button>';
+      root.getElementById('add').onclick = () => {
+        const v = root.getElementById('bl').value.trim();
+        if (!v) return;
+        setTimeout(() => {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = v;
+          document.getElementById('chips').appendChild(chip);
+          window.__state.bl.push(v);
+          document.getElementById('next').disabled = false;
+        }, 400);
+      };
+    }
+  });
+
+  window.__state = { svc: '', agency: '', bl: [], files: [[], []], payref: '', extra: '', submitted: false };
+
+  const svc = document.getElementById('svc');
+  const list = document.getElementById('svc-list');
+  svc.onclick = () => list.classList.toggle('hidden');
+  for (const opt of list.children) {
+    opt.onclick = () => { svc.textContent = opt.textContent; window.__state.svc = opt.textContent; list.classList.add('hidden'); };
+  }
+  document.getElementById('agency').onchange = (e) => { window.__state.agency = e.target.value; };
+  document.getElementById('next').onclick = () => {
+    document.getElementById('step1').classList.add('hidden');
+    document.getElementById('step2').classList.remove('hidden');
+  };
+
+  // ปุ่ม Upload Files เปิดกล่องเลือกไฟล์ของช่องที่ซ่อนอยู่ แล้วขึ้นหน้าต่างที่ต้องกด Done
+  const inputs = [...document.querySelectorAll('input[type=file]')];
+  for (const b of document.querySelectorAll('.pick')) b.onclick = () => inputs[Number(b.dataset.i)].click();
+  let current = -1;
+  for (const input of inputs) {
+    input.onchange = () => {
+      current = Number(input.dataset.i);
+      const names = [...input.files].map((f) => f.name);
+      window.__state.files[current] = names;
+      document.getElementById('modal-name').textContent = names.join(', ');
+      document.getElementById('modal').classList.remove('hidden');
+      const done = document.getElementById('modal-done');
+      done.disabled = true;
+      setTimeout(() => { done.disabled = false; }, 700);
+    };
+  }
+  document.getElementById('modal-done').onclick = () => {
+    document.getElementById('modal').classList.add('hidden');
+    document.querySelector(`.names[data-i="${current}"]`).textContent = window.__state.files[current].join(', ');
+  };
+
+  document.getElementById('submit').onclick = () => {
+    window.__state.payref = document.getElementById('payref').value;
+    window.__state.extra = document.getElementById('extra').value;
+    window.__state.submitted = true;
+    document.getElementById('step2').classList.add('hidden');
+    document.getElementById('done').classList.remove('hidden');
+    document.getElementById('confirm').textContent = 'Request number: DO-2026-0042';
+  };
+</script>
+</body>
+</html>

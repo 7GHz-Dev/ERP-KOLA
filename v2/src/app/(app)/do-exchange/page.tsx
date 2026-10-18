@@ -14,6 +14,8 @@ import { QueueFilter } from '@/components/VesselFilter';
 import { DoBundleSelection, DoBundleCheckbox } from '@/components/DoBundleSelection';
 import { DoAttachments } from '@/components/DoAttachments';
 import { doAttachmentsFor, doRequestTasksFor } from '@/lib/queries/do-files';
+import { WebTemplateButton } from '@/components/WebTemplateButton';
+import { shiplineMatches, templateButtonsFor, webTasksFor } from '@/lib/web-template-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +28,7 @@ const SEARCH_KEYS = ['blNo', 'consignee', 'refNo', 'arrivedOn'];
 export default async function DoExchangePage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUserReady(['ANN']);
+  const user = await requireUserReady(['ANN']);
   const params = readParams(await searchParams, SEARCH_KEYS);
   const { one, search, carry } = params;
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'wait';
@@ -50,10 +52,13 @@ export default async function DoExchangePage({
     doQueueArrivalDates(sent ? 'sent' : 'wait'),
   ]);
   // สลิปกับเอกสารมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
-  const [attachments, doRequests, letterForm] = await Promise.all([
+  const [attachments, doRequests, letterForm, templates, webTasks] = await Promise.all([
     doAttachmentsFor(rows.map((r) => r.id)),
     doRequestTasksFor(rows.filter((r) => isCmaGroupLine(r.shipline)).map((r) => r.id)),
     loadDoLetterForm(),
+    // ปุ่มจาก Template กรอกเว็บ ที่ผู้ดูแลตั้งให้ขึ้นที่หน้านี้
+    sent ? Promise.resolve([]) : templateButtonsFor('do-exchange', user.role),
+    sent ? Promise.resolve(new Map()) : webTasksFor(rows.map((r) => r.id)),
   ]);
   // ที่อยู่ออกใบเสร็จตั้งต้น — ชื่อและที่อยู่บริษัทเดียวกับหัวจดหมายแลก D/O ทั้งสองใบ
   const billing: BillingChoice[] = LETTER_COMPANIES.map((co) => {
@@ -185,6 +190,21 @@ export default async function DoExchangePage({
                   billing={billing}
                 />
               ) : null}
+              {templates.filter((t) => shiplineMatches(t.definition, r.shipline)).map((t) => {
+                const need = t.definition.button.requireFile;
+                return (
+                  <WebTemplateButton
+                    key={t.id}
+                    jobId={r.id}
+                    templateId={t.id}
+                    label={t.definition.button.label}
+                    inputs={t.definition.inputs}
+                    ready={!need || Boolean((r.currentFiles as Record<string, unknown> | undefined)?.[need])}
+                    task={webTasks.get(`${r.id}:${t.id}`) ?? null}
+                    billing={billing}
+                  />
+                );
+              })}
               <SendDoExchangedButton jobId={r.id} ready={Boolean(r.currentFiles?.DO_MERGED)} />
             </div>
           ),

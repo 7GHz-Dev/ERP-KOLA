@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { automationTasks } from '@/db/schema';
 import { downloadFile } from '@/lib/storage';
 import { completeTask, CUSTOMS_TASK_TYPES, failTask } from '@/lib/automation';
+import { downloadTaskFile, saveRecording } from '@/lib/web-template-store';
 
 /**
  * REST สำหรับโปรแกรม Python
@@ -68,18 +69,31 @@ async function downloadInput(args: any) {
   };
 }
 
+/** ไฟล์ที่ worker ส่งกลับมา (ผลลัพธ์ หรือภาพหน้าจอ) */
+function fileArg(args: any) {
+  return args?.file?.base64
+    ? {
+        name: String(args.file.name ?? 'result'),
+        mimeType: String(args.file.mimeType ?? 'application/octet-stream'),
+        body: Buffer.from(String(args.file.base64), 'base64'),
+      }
+    : undefined;
+}
+
 const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
   claimNext,
   downloadInputFile: downloadInput,
 
+  // Template กรอกเว็บ — ไฟล์ของงานตามหมวดที่ Template แนบ และขั้นตอนที่บันทึกมา
+  async downloadTaskFile(args: any) {
+    return downloadTaskFile(String(args?.taskId ?? ''), String(args?.category ?? ''));
+  },
+  async saveRecording(args: any) {
+    return saveRecording(String(args?.taskId ?? ''), { startUrl: args?.startUrl, steps: args?.steps, code: args?.code });
+  },
+
   async completeTask(args: any) {
-    const file = args?.file?.base64
-      ? {
-          name: String(args.file.name ?? 'result'),
-          mimeType: String(args.file.mimeType ?? 'application/octet-stream'),
-          body: Buffer.from(String(args.file.base64), 'base64'),
-        }
-      : undefined;
+    const file = fileArg(args);
     await completeTask({
       taskId: String(args?.taskId ?? ''),
       actorId: WORKER_ACTOR,
@@ -91,7 +105,7 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
   },
 
   async failTask(args: any) {
-    await failTask(String(args?.taskId ?? ''), WORKER_ACTOR, String(args?.error ?? 'ไม่ระบุสาเหตุ'));
+    await failTask(String(args?.taskId ?? ''), WORKER_ACTOR, String(args?.error ?? 'ไม่ระบุสาเหตุ'), fileArg(args));
     return { ok: true };
   },
 

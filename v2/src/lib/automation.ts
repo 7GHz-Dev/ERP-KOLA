@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { automationTasks, customsEntries, files, jobs } from '@/db/schema';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
+import { WEB_PROOF_CATEGORY, WEB_TASK, type WebTemplateDefinition } from '@/lib/web-template';
 import { logActivity, newId, recordStatus } from './actions/common';
 
 /**
@@ -55,6 +56,38 @@ async function storeResultFile(
     sizeBytes: file.body.length, isCurrent: true, uploadedBy: actorId,
   });
   return key;
+}
+
+/**
+ * ภาพหน้าจอของงานกรอกเว็บที่ไม่ใช่หลักฐานส่งจริง — ภาพตอนพังกับภาพทดลองรัน
+ * เก็บผูกกับงานในคิว ไม่เข้าไปเป็นไฟล์ของ Job เพราะไม่ใช่เอกสารของงานนั้น
+ * เปิดดูได้ที่ /api/web-template/shot/<taskId>
+ */
+async function storeTaskShot(taskId: string, jobId: string | null, file: { name: string; mimeType: string; body: Buffer }) {
+  const key = buildKey(jobId ?? 'web-template', 'WEB_SHOT', taskId, file.name);
+  await ensureBucket();
+  await uploadFile(key, file.body, file.mimeType);
+  return key;
+}
+
+/** ส่งแลก D/O แล้ว — รายการย้ายไปแท็บส่งแลกแล้วเหมือนกดปุ่มเอง ซ้ำได้โดยไม่เขียนทับเวลาเดิม */
+async function markDoExchanged(jobId: string, by: string, note: string) {
+  const [job] = await db.select({ status: jobs.status, doExchangedAt: jobs.doExchangedAt })
+    .from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job || job.doExchangedAt) return;
+  const now = new Date();
+  await db.update(jobs).set({
+    doExchangedAt: now, doExchangedBy: by, updatedBy: by, updatedAt: now,
+  }).where(eq(jobs.id, jobId));
+  await recordStatus(jobId, job.status, 'DO_EXCHANGED', note, by);
+}
+
+function taskPayload(task: { payload: string | null }): Record<string, any> {
+  try {
+    return JSON.parse(task.payload ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
 }
 
 /** งานเดิมที่ยังไม่จบของ job เดียวกัน ให้ใช้ตัวเดิม กันกดรัวแล้วคิวบาน */
@@ -126,20 +159,33 @@ export async function completeTask(input: {
       patch.resultFileName = input.file.name;
     }
 
-    let requestedBy = input.actorId;
-    try {
-      requestedBy = String(JSON.parse(task.payload ?? '{}').requestedBy ?? '') || input.actorId;
-    } catch { /* payload เสีย ใช้ผู้ปิดงานแทน */ }
+    const requestedBy = String(taskPayload(task).requestedBy ?? '') || input.actorId;
 
-    // ยื่นผ่านเว็บสำเร็จ = ส่งแลก D/O แล้ว รายการย้ายไปแท็บส่งแลกแล้วเหมือนกดปุ่มเอง
-    const [job] = await db.select({ status: jobs.status, doExchangedAt: jobs.doExchangedAt })
-      .from(jobs).where(eq(jobs.id, task.jobId)).limit(1);
-    if (job && !job.doExchangedAt) {
-      await db.update(jobs).set({
-        doExchangedAt: now, doExchangedBy: requestedBy, updatedBy: requestedBy, updatedAt: now,
-      }).where(eq(jobs.id, task.jobId));
-      await recordStatus(task.jobId, job.status, 'DO_EXCHANGED',
-        `ยื่นขอ D/O ผ่านเว็บ CMA CGM แล้ว${refNo ? ` · เลขคำขอ ${refNo}` : ''}`, requestedBy);
+    // ยื่นผ่านเว็บสำเร็จ = ส่งแลก D/O แล้ว
+    await markDoExchanged(task.jobId, requestedBy,
+      `ยื่นขอ D/O ผ่านเว็บ CMA CGM แล้ว${refNo ? ` · เลขคำขอ ${refNo}` : ''}`);
+  } else if (task.type === WEB_TASK.RUN) {
+    const payload = taskPayload(task);
+    const refNo = (input.refNo ?? '').trim();
+    if (refNo) patch.resultRefNo = refNo;
+
+    if (payload.dryRun) {
+      // ทดลองรัน — ไม่ได้ส่งจริง ภาพจึงไม่ใช่หลักฐานของงาน และไม่ขยับสถานะงาน
+      if (input.file) {
+        patch.resultStorageKey = await storeTaskShot(task.id, task.jobId, input.file);
+        patch.resultFileName = input.file.name;
+      }
+    } else {
+      if (input.file) {
+        patch.resultStorageKey = await storeResultFile(task.jobId, WEB_PROOF_CATEGORY, input.actorId, input.file);
+        patch.resultFileName = input.file.name;
+      }
+      const def = payload.definition as WebTemplateDefinition | undefined;
+      const requestedBy = String(payload.requestedBy ?? '') || input.actorId;
+      if (def?.button?.markDoExchanged) {
+        await markDoExchanged(task.jobId, requestedBy,
+          `ส่งผ่านเว็บด้วย Template ${payload.templateName ?? ''}${refNo ? ` · เลขอ้างอิง ${refNo}` : ''}`.trim());
+      }
     }
   } else {
     const entryNo = (input.entryNo ?? '').trim();
@@ -176,9 +222,22 @@ export async function completeTask(input: {
     { type: task.type, refNo: input.refNo, entryNo: input.entryNo });
 }
 
-export async function failTask(taskId: string, actorId: string, message: string) {
-  await db.update(automationTasks).set({
+export async function failTask(
+  taskId: string, actorId: string, message: string,
+  file?: { name: string; mimeType: string; body: Buffer },
+) {
+  const patch: Record<string, unknown> = {
     status: 'ERROR', error: message.slice(0, 1000), completedAt: new Date(), updatedAt: new Date(),
-  }).where(eq(automationTasks.id, taskId));
+  };
+  // ภาพตอนพังของงานกรอกเว็บ — ช่วยดูว่าค้างที่หน้าไหนโดยไม่ต้องไปเปิดเครื่องที่รัน worker
+  if (file) {
+    const [task] = await db.select({ type: automationTasks.type, jobId: automationTasks.jobId })
+      .from(automationTasks).where(eq(automationTasks.id, taskId)).limit(1);
+    if (task && (task.type === WEB_TASK.RUN || task.type === WEB_TASK.RECORD)) {
+      patch.resultStorageKey = await storeTaskShot(taskId, task.jobId, file);
+      patch.resultFileName = file.name;
+    }
+  }
+  await db.update(automationTasks).set(patch).where(eq(automationTasks.id, taskId));
   await logActivity(actorId, 'FAIL_TASK', 'TASK', taskId, { message });
 }

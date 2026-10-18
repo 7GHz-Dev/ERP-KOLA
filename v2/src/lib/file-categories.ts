@@ -36,6 +36,7 @@ export const FILE_LABELS: Record<string, string> = {
   DO_OTHER: 'เอกสารแลก DO อื่น ๆ',
   DO_MERGED: 'ชุดแลก DO รวม',
   DO_REQUEST_PROOF: 'หลักฐานยื่นขอ D/O เว็บ CMA',
+  WEB_PROOF: 'หลักฐานส่งผ่านเว็บ (Template)',
   OTHER: 'อื่น ๆ',
 };
 
@@ -50,5 +51,5 @@ export const FILE_ORDER = [
   'DO_LETTER', 'DO_LETTER_UPLOADED',
   'DO_SLIP', 'DO_SLIP_DEPOSIT', 'DO_SLIP_DEM', 'DO_SLIP_DET', 'DO_SLIP_LATE',
   'DO_INV_DEPOSIT', 'DO_INV_DEM', 'DO_INV_DET', 'DO_INV_LATE', 'DO_OTHER',
-  'DO_MERGED', 'DO_REQUEST_PROOF', 'DO_BATCH_MERGED', 'OTHER',
+  'DO_MERGED', 'DO_REQUEST_PROOF', 'WEB_PROOF', 'DO_BATCH_MERGED', 'OTHER',
 ];

@@ -37,7 +37,9 @@
     "test:line": "tsx --tsconfig tsconfig.json tests/line-notify.ts",
     "test:auth": "tsx --tsconfig tsconfig.json tests/auth-policy.ts",
     "test:letter": "tsx --tsconfig tsconfig.json tests/do-letter-evergreen.ts",
-    "worker:do": "tsx --tsconfig tsconfig.json scripts/do-request-worker.ts"
+    "worker:do": "tsx --tsconfig tsconfig.json scripts/do-request-worker.ts",
+    "worker:web": "tsx --tsconfig tsconfig.json scripts/web-template-worker.ts",
+    "test:web-template": "tsx --tsconfig tsconfig.json tests/web-template.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",

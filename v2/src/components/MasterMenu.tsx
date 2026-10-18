@@ -8,6 +8,7 @@ export const USERS_MENU_KEY = 'users';
 export const JOBS_MENU_KEY = 'jobs';
 export const PARSE_TEMPLATE_MENU_KEY = 'parseTemplate';
 export const MONITOR_MENU_KEY = 'monitor';
+export const WEB_TEMPLATE_MENU_KEY = 'webTemplate';
 
 /*
  * เมนูซ้ายของหมวด Master Data ใช้ร่วมกันทุกหน้าในหมวดนี้
@@ -67,6 +68,13 @@ export function MasterMenu({
         aria-current={current === PARSE_TEMPLATE_MENU_KEY ? 'page' : undefined}
       >
         ตั้งค่าการอ่าน AN / BL
+      </Link>
+      <Link
+        href="/master/web-templates"
+        prefetch={false}
+        aria-current={current === WEB_TEMPLATE_MENU_KEY ? 'page' : undefined}
+      >
+        Template กรอกเว็บ
       </Link>
       <Link
         href="/master/users"
