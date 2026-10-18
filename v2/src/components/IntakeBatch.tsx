@@ -7,6 +7,8 @@ import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-temp
 import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
+import { findDuplicateBls } from '@/lib/actions/intake';
+import { dedupeContainers, isBlDuplicateExempt, normalizeBlNo } from '@/lib/intake-checks';
 
 /**
  * รับงานทีละหลายใบ — เลือก PDF หลายไฟล์พร้อมกัน หนึ่งไฟล์เป็นหนึ่งงาน
@@ -56,6 +58,31 @@ export function IntakeBatch({
   action: (formData: FormData) => Promise<string | void>;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
+  /*
+   * เลข BL ที่ซ้ำ — คีย์เป็นเลข BL แบบปรับรูปแล้ว ค่าเป็นข้อความว่าซ้ำกับอะไร
+   * ซ้ำได้ทั้งกับงานที่มีอยู่ในระบบ และกับไฟล์อื่นในชุดที่กำลังรับอยู่นี้
+   */
+  const [dupBls, setDupBls] = useState<Map<string, string>>(new Map());
+
+  /** ตรวจเลข BL ซ้ำของทุกแถว — SEALS ซ้ำได้ตามปกติ ไม่นับ */
+  async function refreshDuplicates(list: Array<{ blNo: string; carrier: string; saved?: boolean }>) {
+    const pending = list.filter((r) => r.blNo.trim() && !r.saved && !isBlDuplicateExempt(r.carrier));
+    const out = new Map<string, string>();
+    const counts = new Map<string, number>();
+    for (const r of pending) counts.set(normalizeBlNo(r.blNo), (counts.get(normalizeBlNo(r.blNo)) ?? 0) + 1);
+    for (const [bl, n] of counts) if (n > 1) out.set(bl, 'ไฟล์อื่นในชุดนี้');
+    try {
+      const found = pending.length ? await findDuplicateBls(pending.map((r) => r.blNo), '') : [];
+      for (const d of found) {
+        const bl = normalizeBlNo(d.blNo);
+        out.set(bl, [out.get(bl), `งาน ${d.jobNo}`].filter(Boolean).join(' · '));
+      }
+    } catch { /* ตรวจไม่ได้ก็ไม่ขวางการรับงาน เซิร์ฟเวอร์ยังตรวจซ้ำตอนบันทึก */ }
+    setDupBls(out);
+    return out;
+  }
+  const dupOf = (r: Row) =>
+    isBlDuplicateExempt(r.parsed?.carrier) ? undefined : dupBls.get(normalizeBlNo(r.blNo));
   const [busy, setBusy] = useState(false);
   /*
    * ไฟล์ที่กำลังเปิดดู — ใช้ blob URL ของไฟล์ในเครื่อง ยังไม่ได้อัปขึ้นเซิร์ฟเวอร์
@@ -69,6 +96,7 @@ export function IntakeBatch({
     if (!picked.length) return;
 
     setRows(picked.map((file) => ({ file, status: 'reading', message: 'กำลังอ่าน…', blNo: '' })));
+    const readBls: Array<{ blNo: string; carrier: string }> = [];
 
     /*
      * อ่านทีละไฟล์ ไม่ยิงพร้อมกันทั้งหมด
@@ -84,6 +112,13 @@ export function IntakeBatch({
           parseArrivalText(read.text), matchTemplate(templates, read.text), read.pieces,
         );
         const shipper = matchShipper(parsed.shipperName, options.shippers);
+        // เอกสารบางใบพิมพ์รายการตู้ซ้ำสองที่ ตัดตู้ที่ซ้ำออกให้เหลือแถวเดียวพร้อมซีลของแถวแรก
+        const { kept, removed } = dedupeContainers(
+          parsed.containers.map((c, n) => ({ c, seal: parsed.seals[n] ?? '' })), (x) => x.c,
+        );
+        parsed.containers = kept.map((x) => x.c);
+        parsed.seals = kept.map((x) => x.seal);
+        readBls.push({ blNo: parsed.blNo, carrier: parsed.carrier });
         setRows((cur) => cur.map((r, n) => n !== i ? r : {
           ...r,
           status: 'ok',
@@ -91,6 +126,7 @@ export function IntakeBatch({
             parsed.templateName && `แบบร่าง ${parsed.templateName}`,
             parsed.carrier && `สายเรือ ${parsed.carrier}`,
             parsed.containers.length && `ตู้ ${parsed.containers.length}`,
+            removed.length && `ตัดเลขตู้ซ้ำ ${removed.length}`,
             parsed.shipperName && !shipper && `อ่านชื่อได้ "${parsed.shipperName}" แต่ไม่มีใน Master`,
           ].filter(Boolean).join(' · ') || 'อ่านได้',
           blNo: parsed.blNo,
@@ -106,6 +142,8 @@ export function IntakeBatch({
         }));
       }
     }
+    // อ่านครบแล้วตรวจเลข BL ซ้ำทีเดียว ให้เห็นในตารางก่อนกดบันทึก
+    void refreshDuplicates(readBls);
   }
 
   /*
@@ -123,6 +161,20 @@ export function IntakeBatch({
     setRows((cur) => cur.map((r, n) => (n === i ? { ...r, ...next } : r)));
 
   async function saveAll() {
+    /*
+     * เลข BL ซ้ำ — ตรวจใหม่ด้วยค่าล่าสุด (อาจแก้เลขในตารางไปแล้ว) แล้วถามยืนยันครั้งเดียวทั้งชุด
+     * ยกเลิกก็ไม่บันทึกใบไหนเลย ให้กลับไปแก้หรือเอาใบที่ซ้ำออกก่อน
+     */
+    const latest = await refreshDuplicates(rows.map((r) => ({
+      blNo: r.blNo, carrier: r.parsed?.carrier ?? '', saved: Boolean(r.savedAs),
+    })));
+    const dupRows = rows.filter((r) => r.status === 'ok' && !r.savedAs && isReady(r)
+      && !isBlDuplicateExempt(r.parsed?.carrier) && latest.has(normalizeBlNo(r.blNo)));
+    if (dupRows.length) {
+      const list = dupRows.map((r) => `${r.blNo.trim()} — ซ้ำกับ ${latest.get(normalizeBlNo(r.blNo))}`).join('\n');
+      if (!window.confirm(`เลข BL ซ้ำ ${dupRows.length} ใบ:\n${list}\n\nต้องการบันทึกทั้งหมดต่อหรือไม่`)) return;
+    }
+
     setBusy(true);
     /*
      * บันทึกทีละใบตามลำดับ ไม่ยิงพร้อมกัน
@@ -152,6 +204,8 @@ export function IntakeBatch({
       if (defaults.consigneeId) fd.set('consigneeId', defaults.consigneeId);
       if (defaults.notifyId) fd.set('notifyPartyId', defaults.notifyId);
       if (defaults.portId) fd.set('portId', defaults.portId);
+      // ผู้ใช้ยืนยันเลข BL ซ้ำไปแล้วข้างบน
+      if (dupRows.includes(row)) fd.set('allowDuplicateBl', '1');
       // ใช้ค่าที่ผู้ใช้แก้แล้ว ไม่ใช่ค่าที่อ่านได้ดิบ ๆ
       fd.set('blRows', JSON.stringify([{
         blNo: row.blNo.trim(),
@@ -227,13 +281,17 @@ export function IntakeBatch({
                     <td>
                       {r.savedAs ? r.blNo : (
                         <input
-                          className="batch-input"
+                          className={`batch-input${dupOf(r) ? ' is-dup' : ''}`}
                           value={r.blNo}
                           placeholder="กรอกเลข BL"
                           disabled={busy}
                           onChange={(e) => patch(i, { blNo: e.target.value })}
+                          onBlur={() => void refreshDuplicates(rows.map((x) => ({
+                            blNo: x.blNo, carrier: x.parsed?.carrier ?? '', saved: Boolean(x.savedAs),
+                          })))}
                         />
                       )}
+                      {!r.savedAs && dupOf(r) ? <small className="dup-note">⚠️ BL ซ้ำกับ {dupOf(r)}</small> : null}
                     </td>
                     <td>
                       {r.savedAs ? (r.shipperName ?? '-') : (

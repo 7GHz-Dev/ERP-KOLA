@@ -1672,6 +1672,10 @@ table.data tbody tr.batch-saved { opacity: .62; }
 
 /* คำอธิบายใต้ช่องกรอก เช่นบอกว่าระบบเปลี่ยนประเภทงานให้เพราะอะไร */
 .field-note { display: block; margin-top: 3px; font-size: 11px; color: var(--blue); }
+/* เลข BL / เลขตู้ซ้ำในหน้ารับงาน */
+input.is-dup { border-color: var(--red); background: var(--red-soft); }
+.dup-note { display: block; margin: 4px 0; font-size: 12px; color: #9a6400; }
+.dup-note.bad { color: var(--red); }
 
 /* ช่อง SHIPLINE ในหน้าจัดการแลก DO */
 table.data td.col-wrap.col-shipline, table.data th.col-shipline { width: 150px; min-width: 130px; }

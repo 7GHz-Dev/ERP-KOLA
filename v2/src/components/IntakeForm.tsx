@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import type { Option } from '@/lib/queries/master';
 import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
 import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
@@ -8,6 +8,11 @@ import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect, SearchText } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
+import { findDuplicateBls } from '@/lib/actions/intake';
+import {
+  dedupeContainers, duplicateBlMessage, duplicateContainers, normalizeContainerNo,
+  type DuplicateBl,
+} from '@/lib/intake-checks';
 
 /**
  * ฟอร์มรับงาน
@@ -87,6 +92,11 @@ export function IntakeForm({
    */
   const [originPort, setOriginPort] = useState('');
   const [saved, setSaved] = useState('');
+  // ข้อผิดพลาดที่ตรวจเจอบนหน้าจอก่อนส่ง (เลขตู้ซ้ำ) — ไม่ต้องส่งขึ้นเซิร์ฟเวอร์ให้เสียเวลา
+  const [formError, setFormError] = useState('');
+  // เลข BL ที่ซ้ำกับงานที่มีอยู่ — ขึ้นเตือนใต้ช่องทันทีที่กรอกเสร็จ
+  const [blDuplicates, setBlDuplicates] = useState<DuplicateBl[]>([]);
+  const formRef = useRef<HTMLFormElement>(null);
   // เปลี่ยน key แล้ว React สร้างฟอร์มใหม่ทั้งชุด ช่องทุกช่องกลับไปเป็นค่าตั้งต้น
   const [formKey, setFormKey] = useState(0);
   const [containerRows, setContainerRows] = useState<ContainerRow[]>([
@@ -175,13 +185,17 @@ export function IntakeForm({
           shipperName: shipper?.name ?? rows[0].shipperName,
         }, ...rows.slice(1)]);
       }
-      if (result.containers.length) {
-        setContainerRows(result.containers.map((c, i) => ({
+      // เอกสารบางใบพิมพ์รายการตู้ซ้ำสองที่ ตัดตู้ที่ซ้ำออกให้เหลือแถวเดียว
+      const { kept: readContainers, removed: dupRemoved } = dedupeContainers(
+        result.containers.map((c, i) => ({
           containerNo: c,
           containerType: defaults.containerType,
           sealNo: result.seals[i] ?? '',
-        })));
-      }
+        })),
+        (r) => r.containerNo,
+      );
+      if (readContainers.length) setContainerRows(readContainers);
+      if (result.blNo) void checkBlDuplicates([result.blNo], result.carrier ?? '');
 
       // ซีลที่อ่านได้จริง — บางใบมีตู้ครบแต่ไม่มีเลขซีลในเอกสาร
       const sealCount = result.seals.filter((v) => v).length;
@@ -193,7 +207,8 @@ export function IntakeForm({
         : '';
       setReadStatus(found
         ? `อ่านได้ ${found} รายการ${byTemplate}${result.carrier ? ` · สายเรือ ${result.carrier}` : ''}` +
-          `${result.containers.length ? ` · ตู้ ${result.containers.length} ตู้` : ''}` +
+          `${readContainers.length ? ` · ตู้ ${readContainers.length} ตู้` : ''}` +
+          `${dupRemoved.length ? ` (ตัดเลขตู้ที่ซ้ำออก ${dupRemoved.length} แถว)` : ''}` +
           `${sealCount ? ` · ซีล ${sealCount} เลข` : ''}` +
           `${shipper ? ` · Shipper ${shipper.name}` : ''} — กรุณาตรวจทานก่อนบันทึก`
         : 'อ่านไฟล์ได้แต่ไม่พบข้อมูลที่รู้จัก กรุณากรอกเอง');
@@ -286,9 +301,28 @@ export function IntakeForm({
     }
   }
 
+  /** สายเรือที่กรอกอยู่ — ช่องนี้ไม่ได้ถือค่าใน state จึงอ่านจากฟอร์มตรง ๆ */
+  const currentShipline = () =>
+    (formRef.current?.elements.namedItem('shipline') as HTMLInputElement | null)?.value ?? '';
+
+  /** ถามเซิร์ฟเวอร์ว่าเลข BL ซ้ำกับงานไหน แล้วขึ้นเตือนใต้ช่อง (SEALS ไม่เตือน) */
+  async function checkBlDuplicates(blNos: string[], shipline = currentShipline()) {
+    const list = blNos.map((b) => b.trim()).filter(Boolean);
+    if (!list.length) { setBlDuplicates([]); return []; }
+    try {
+      const found = await findDuplicateBls(list, shipline);
+      setBlDuplicates(found);
+      return found;
+    } catch {
+      return [];
+    }
+  }
+
   /** ล้างทุกอย่างให้พร้อมคีย์ใบถัดไป โดยไม่ต้องเปลี่ยนหน้า */
   function resetForNext(jobNo: string) {
     setSaved(jobNo);
+    setFormError('');
+    setBlDuplicates([]);
     setBlRows([{ blNo: '', shipperId: '', shipperName: '' }]);
     setContainerRows([{ containerNo: '', containerType: defaults.containerType, sealNo: '' }]);
     setPersonId('');
@@ -308,22 +342,52 @@ export function IntakeForm({
     setFormKey((n) => n + 1);
   }
 
+  const dupContainerSet = new Set(duplicateContainers(containerRows.map((r) => r.containerNo)));
+
   return (
     <>
     <form
       key={formKey}
+      ref={formRef}
       action={(formData) => {
         formData.set('blRows', JSON.stringify(blRows));
         formData.set('containerRows', JSON.stringify(containerRows));
         // ตัดหน้าแล้วให้ส่งตัวที่ตัดแล้วขึ้นไปแทนต้นฉบับที่ยังอยู่ในช่องเลือกไฟล์
         if (trimmedFile) formData.set('file', trimmedFile);
+
+        // ตู้เดียวกันอยู่สองแถวในงานเดียวไม่ได้ — หยุดก่อนส่ง แถวที่ซ้ำขึ้นสีแดงให้แล้ว
+        const dup = duplicateContainers(containerRows.map((r) => r.containerNo));
+        if (dup.length) {
+          setFormError(`เลขตู้ซ้ำกัน: ${dup.join(', ')} — ลบแถวที่ซ้ำก่อนบันทึก`);
+          return;
+        }
+        setFormError('');
+
         startTransition(async () => {
+          /*
+           * เลข BL ซ้ำกับงานที่มีอยู่ — เตือนแล้วให้เลือกเอง เพราะบางครั้งตั้งใจรับซ้ำจริง
+           * ยืนยันแล้วจึงส่ง allowDuplicateBl ให้เซิร์ฟเวอร์ปล่อยผ่าน
+           */
+          const found = await checkBlDuplicates(blRows.map((r) => r.blNo), String(formData.get('shipline') ?? ''));
+          if (found.length) {
+            const ok = window.confirm(
+              `เลข BL นี้มีในระบบแล้ว: ${duplicateBlMessage(found)}\n\nต้องการบันทึกเป็นงานใหม่อีกงานหรือไม่`,
+            );
+            if (!ok) return;
+            formData.set('allowDuplicateBl', '1');
+          }
           const jobNo = await action(formData);
           if (jobNo) resetForNext(jobNo);
         });
       }}
       className="intake"
     >
+      {formError ? (
+        <div className="alert-bar bad" role="alert">
+          <span>{formError}</span>
+          <button type="button" onClick={() => setFormError('')} aria-label="ปิดข้อความ">✕</button>
+        </div>
+      ) : null}
       {saved ? (
         <div className="alert-bar good" role="status">
           <span>SENT TO DRAFT: สร้างงาน {saved} แล้ว · ฟอร์มพร้อมคีย์ใบถัดไป</span>
@@ -404,14 +468,22 @@ export function IntakeForm({
                 <input
                   placeholder="BILL OF LADING NO."
                   value={row.blNo}
+                  className={blDuplicates.some((d) => d.blNo.replace(/\s+/g, '').toUpperCase()
+                    === row.blNo.replace(/\s+/g, '').toUpperCase()) ? 'is-dup' : undefined}
                   onChange={(e) =>
                     setBlRows((rows) => rows.map((r, j) => (j === i ? { ...r, blNo: e.target.value } : r)))}
+                  onBlur={() => void checkBlDuplicates(blRows.map((r) => r.blNo))}
                 />
                 <button type="button" className="icon-button" title="ลบแถว"
                   onClick={() => setBlRows((rows) => (rows.length > 1 ? rows.filter((_, j) => j !== i) : rows))}>×</button>
               </div>
             ))}
           </div>
+          {blDuplicates.length ? (
+            <small className="dup-note">
+              ⚠️ เลข BL ซ้ำกับงานที่มีอยู่: {duplicateBlMessage(blDuplicates)} · บันทึกได้ แต่ระบบจะถามยืนยันอีกครั้ง
+            </small>
+          ) : null}
           <div className="repeat-actions">
             <button type="button" className="button tiny"
               onClick={() => setBlRows((rows) => [...rows, { blNo: '', shipperId: '', shipperName: '' }])}>
@@ -439,6 +511,8 @@ export function IntakeForm({
                 <input
                   placeholder="CONTAINER NO."
                   value={row.containerNo}
+                  // ตู้ที่ซ้ำกับแถวอื่นขึ้นกรอบแดงทันที ไม่ต้องรอกดบันทึก
+                  className={dupContainerSet.has(normalizeContainerNo(row.containerNo)) ? 'is-dup' : undefined}
                   onChange={(e) =>
                     setContainerRows((rows) => rows.map((r, j) => (j === i ? { ...r, containerNo: e.target.value } : r)))}
                 />
@@ -460,6 +534,9 @@ export function IntakeForm({
               </div>
             ))}
           </div>
+          {dupContainerSet.size ? (
+            <small className="dup-note bad">เลขตู้ซ้ำกัน: {[...dupContainerSet].join(', ')} — ตู้หนึ่งอยู่ได้แถวเดียว</small>
+          ) : null}
           <button type="button" className="button tiny"
             onClick={() => setContainerRows((rows) => [...rows, { containerNo: '', containerType: defaults.containerType, sealNo: '' }])}>
             + เพิ่มตู้

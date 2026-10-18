@@ -2,13 +2,17 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { bls, containers, files, jobSequences, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { nextContainerNos } from '@/lib/container-no';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
+import {
+  duplicateBlMessage, duplicateContainers, isBlDuplicateExempt, normalizeBlNo,
+  type DuplicateBl,
+} from '@/lib/intake-checks';
 
 /**
  * รับงานเข้าระบบจาก Arrival Notice หรือ BL
@@ -83,6 +87,46 @@ async function applyUsedCarRule(
   return (await masterIdByCode('jobTypes', want)) ?? jobTypeId;
 }
 
+/**
+ * เลข BL ที่มีอยู่แล้วในงานที่ยังไม่ถูกเก็บเข้าคลัง
+ * ดูทั้งตาราง bls และ jobs.bl_no เพราะ FAH แก้เลข BL ที่หน้า Invoice DO ได้ทั้งสองที่
+ */
+async function existingBls(blNos: string[]): Promise<DuplicateBl[]> {
+  const wanted = [...new Set(blNos.map(normalizeBlNo).filter(Boolean))];
+  if (!wanted.length) return [];
+  const norm = (column: typeof bls.blNo | typeof jobs.blNo) =>
+    sql`upper(regexp_replace(coalesce(${column}, ''), '[[:space:]]', '', 'g'))`;
+
+  const [fromBls, fromJobs] = await Promise.all([
+    db.select({ blNo: bls.blNo, jobNo: jobs.jobNo })
+      .from(bls).innerJoin(jobs, eq(jobs.id, bls.jobId))
+      .where(and(eq(jobs.isArchived, false), inArray(norm(bls.blNo), wanted))),
+    db.select({ blNo: jobs.blNo, jobNo: jobs.jobNo })
+      .from(jobs)
+      .where(and(eq(jobs.isArchived, false), inArray(norm(jobs.blNo), wanted))),
+  ]);
+
+  const seen = new Set<string>();
+  const out: DuplicateBl[] = [];
+  for (const r of [...fromBls, ...fromJobs]) {
+    const k = `${normalizeBlNo(r.blNo ?? '')}|${r.jobNo}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ blNo: r.blNo ?? '', jobNo: r.jobNo });
+  }
+  return out;
+}
+
+/**
+ * หน้ารับงานถามก่อนบันทึกว่าเลข BL ที่กรอกซ้ำกับงานไหนบ้าง จะได้ขึ้นเตือนให้ยืนยัน
+ * สายเรือที่ BL ซ้ำได้ตามปกติ (SEALS) ไม่ต้องเตือน
+ */
+export async function findDuplicateBls(blNos: string[], shipline: string): Promise<DuplicateBl[]> {
+  await requireActiveSession(['PAINT']);
+  if (isBlDuplicateExempt(shipline)) return [];
+  return existingBls(Array.isArray(blNos) ? blNos.map(String).slice(0, 50) : []);
+}
+
 async function createJobFromIntakeImpl(formData: FormData) {
   const user = await requireActiveSession(['PAINT']);
 
@@ -103,6 +147,25 @@ async function createJobFromIntakeImpl(formData: FormData) {
   containerRows = containerRows.filter((r) => r?.containerNo?.trim());
   if (!blRows.length) throw new Error('กรุณาระบุ BL No. อย่างน้อย 1 รายการ');
   if (blRows.some((r) => !r.shipperId)) throw new Error('กรุณาเลือก Shipper ให้ครบทุก BL');
+
+  // ตู้เดียวกันอยู่สองแถวในงานเดียวไม่ได้ — ตรวจฝั่งเซิร์ฟเวอร์ด้วยเพราะฟอร์มถูกยิงตรงได้
+  const dupContainers = duplicateContainers(containerRows.map((r) => r.containerNo));
+  if (dupContainers.length) throw new Error(`เลขตู้ซ้ำกัน: ${dupContainers.join(', ')}`);
+
+  const shipline = text(formData.get('shipline'), 180);
+  const dupInForm = new Set(blRows.map((r) => normalizeBlNo(r.blNo))).size !== blRows.length;
+  if (dupInForm && !isBlDuplicateExempt(shipline)) throw new Error('กรอกเลข BL ซ้ำกันในงานเดียวกัน');
+
+  /*
+   * เลข BL ซ้ำกับงานที่มีอยู่ — หน้าจอเตือนและให้ยืนยันก่อนแล้ว จึงส่ง allowDuplicateBl มา
+   * ไม่ได้ยืนยัน (เช่นฟอร์มเก่าที่เปิดค้างไว้) ให้หยุดพร้อมบอกว่าซ้ำกับงานไหน
+   */
+  if (!isBlDuplicateExempt(shipline) && text(formData.get('allowDuplicateBl'), 4) !== '1') {
+    const found = await existingBls(blRows.map((r) => r.blNo));
+    if (found.length) {
+      throw new Error(`เลข BL ซ้ำกับงานที่มีอยู่: ${duplicateBlMessage(found)} — กดบันทึกอีกครั้งแล้วยืนยันถ้าตั้งใจรับซ้ำ`);
+    }
+  }
 
   const blob = formData.get('file');
   if (!(blob instanceof File) || blob.size === 0) {
@@ -152,7 +215,7 @@ async function createJobFromIntakeImpl(formData: FormData) {
       unitAmount: String(number(formData.get('unitAmount'))),
       packageType: text(formData.get('packageType'), 40),
       grossWeight: String(number(formData.get('grossWeight'))),
-      shipline: text(formData.get('shipline'), 180),
+      shipline,
       demDays: number(formData.get('demDays')),
       detDays: number(formData.get('detDays')),
       createdBy: user.id,
@@ -216,7 +279,6 @@ async function createJobFromIntakeImpl(formData: FormData) {
   return jobNo;
 }
 
-/** เพิ่ม Shipper ใหม่จากหน้ารับงาน โดยไม่ต้องออกไปหน้า Master Data */
 /**
  * หัวข้อที่ PAINT เพิ่มเองได้จากหน้ารับงานและแผงแก้ BL โดยไม่ต้องเป็น ADMIN
  * สองหัวข้อนี้เจอรายชื่อใหม่บ่อยตอนคีย์ใบแรกของลูกค้าใหม่
