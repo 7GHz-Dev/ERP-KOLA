@@ -16,6 +16,8 @@ import { DoAttachments } from '@/components/DoAttachments';
 import { doAttachmentsFor, doRequestTasksFor } from '@/lib/queries/do-files';
 import { WebTemplateButton } from '@/components/WebTemplateButton';
 import { shiplineMatches, templateButtonsFor, webTasksFor } from '@/lib/web-template-store';
+import { WorkerLauncher } from '@/components/WorkerLauncher';
+import { onlineWorkers } from '@/lib/worker-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,13 +54,14 @@ export default async function DoExchangePage({
     doQueueArrivalDates(sent ? 'sent' : 'wait'),
   ]);
   // สลิปกับเอกสารมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
-  const [attachments, doRequests, letterForm, templates, webTasks] = await Promise.all([
+  const [attachments, doRequests, letterForm, templates, webTasks, workers] = await Promise.all([
     doAttachmentsFor(rows.map((r) => r.id)),
     doRequestTasksFor(rows.filter((r) => isCmaGroupLine(r.shipline)).map((r) => r.id)),
     loadDoLetterForm(),
     // ปุ่มจาก Template กรอกเว็บ ที่ผู้ดูแลตั้งให้ขึ้นที่หน้านี้
     sent ? Promise.resolve([]) : templateButtonsFor('do-exchange', user.role),
     sent ? Promise.resolve(new Map()) : webTasksFor(rows.map((r) => r.id)),
+    onlineWorkers(),
   ]);
   // ที่อยู่ออกใบเสร็จตั้งต้น — ชื่อและที่อยู่บริษัทเดียวกับหัวจดหมายแลก D/O ทั้งสองใบ
   const billing: BillingChoice[] = LETTER_COMPANIES.map((co) => {
@@ -214,12 +217,16 @@ export default async function DoExchangePage({
 
   return (
     <>
-      <div className="page-head">
-        <h1>จัดการแลก DO</h1>
-        <p>
-          งานที่ส่ง Partner แล้วจะเข้ามาที่นี่ · สายเรือใช้ SHIPLINE ของงาน ·
-          ออกจดหมาย · อัปโหลด Slip · รวมเป็นชุดเดียว แล้วกดส่งแลก DO
-        </p>
+      <div className="page-head with-action">
+        <div>
+          <h1>จัดการแลก DO</h1>
+          <p>
+            งานที่ส่ง Partner แล้วจะเข้ามาที่นี่ · สายเรือใช้ SHIPLINE ของงาน ·
+            ออกจดหมาย · อัปโหลด Slip · รวมเป็นชุดเดียว แล้วกดส่งแลก DO
+          </p>
+        </div>
+        {/* worker กรอกเว็บ — ปุ่มจาก Template กรอกเว็บต้องมี worker เปิดอยู่จึงจะทำงาน */}
+        <WorkerLauncher initial={workers} />
       </div>
       <Tabs basePath="/do-exchange" items={TABS} active={tab} carry={carry} />
 

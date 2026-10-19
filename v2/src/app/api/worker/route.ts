@@ -5,6 +5,7 @@ import { automationTasks } from '@/db/schema';
 import { downloadFile } from '@/lib/storage';
 import { completeTask, CUSTOMS_TASK_TYPES, failTask } from '@/lib/automation';
 import { downloadTaskFile, saveRecording } from '@/lib/web-template-store';
+import { recordHeartbeat } from '@/lib/worker-status';
 
 /**
  * REST สำหรับโปรแกรม Python
@@ -87,6 +88,11 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
   // Template กรอกเว็บ — ไฟล์ของงานตามหมวดที่ Template แนบ และขั้นตอนที่บันทึกมา
   async downloadTaskFile(args: any) {
     return downloadTaskFile(String(args?.taskId ?? ''), String(args?.category ?? ''));
+  },
+  // worker ยังเปิดอยู่ — หน้าแลก DO ใช้บอกสถานะ
+  async heartbeat(args: any) {
+    await recordHeartbeat(String(args?.worker ?? ''), { busy: args?.busy, mode: args?.mode, platform: args?.platform });
+    return { ok: true };
   },
   async saveRecording(args: any) {
     return saveRecording(String(args?.taskId ?? ''), { startUrl: args?.startUrl, steps: args?.steps, code: args?.code });

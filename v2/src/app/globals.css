@@ -2088,3 +2088,19 @@ label.mini:has(.search-select) { overflow: visible; }
 .wt-import { margin-top: 10px; font-size: 12px; }
 .wt-import summary { cursor: pointer; color: var(--blue); }
 .wt-import-form { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+
+/* ปุ่มเปิด worker กรอกเว็บ (หน้าจัดการแลก DO) */
+.worker-launcher { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 360px; }
+.worker-launcher-note { flex-basis: 100%; text-align: right; font-size: 11px; color: var(--amber); }
+.worker-launcher-help { flex-basis: 100%; font-size: 12px; text-align: right; }
+.worker-launcher-help summary { cursor: pointer; color: var(--blue); }
+.worker-launcher-help > div {
+  text-align: left; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--surface); line-height: 1.5;
+}
+.worker-launcher-help p { margin: 0 0 6px; }
+.worker-launcher-help code { font-size: 11px; word-break: break-all; }
+@media (max-width: 640px) {
+  .worker-launcher { justify-content: flex-start; max-width: none; }
+  .worker-launcher-note, .worker-launcher-help { text-align: left; }
+}

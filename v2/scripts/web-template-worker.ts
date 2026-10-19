@@ -56,6 +56,9 @@ type RecordTask = {
   };
 };
 
+/** งานที่ทำอยู่ — ส่งไปกับสัญญาณสถานะ */
+let busy: string | null = null;
+
 const log = (...args: unknown[]) => console.log(new Date().toLocaleTimeString('th-TH'), ...args);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -194,6 +197,13 @@ async function main() {
   if (!KEY) throw new Error('ยังไม่ได้ตั้ง WORKER_API_KEY ใน .env.local');
   await api('queueStatus');
 
+  // บอก ERP ว่ายังเปิดอยู่ — หน้าแลก DO ใช้แสดงสถานะ (ส่งแยกจากรอบรับงาน เพราะงานหนึ่งอาจนานหลายนาที)
+  const beat = () => api('heartbeat', {
+    worker: WORKER, busy, mode: AUTO_SUBMIT ? 'auto' : 'review', platform: process.platform,
+  }).catch(() => {});
+  void beat();
+  const heartbeat = setInterval(beat, 20_000);
+
   await mainContext();
   log(`worker พร้อม · ${ERP_URL} · โหมด ${AUTO_SUBMIT ? 'กดปุ่มส่งเอง' : 'รอคนตรวจแล้วกดส่ง'}`);
 
@@ -215,6 +225,8 @@ async function main() {
     }
 
     if (task) {
+      busy = task.type === WEB_TASK.RECORD ? 'บันทึกขั้นตอน' : `BL ${(task as RunTask).data.vars?.job?.blNo ?? '-'}`;
+      void beat();
       try {
         if (task.type === WEB_TASK.RECORD) {
           log(`รับงานบันทึก Template "${task.data.templateName ?? task.data.templateId}"`);
@@ -233,6 +245,8 @@ async function main() {
           ...(shot ? { file: { name: 'error.png', mimeType: 'image/png', base64: shot.toString('base64') } } : {}),
         }).catch((e) => log('บันทึกผลพังไม่ได้:', e));
       }
+      busy = null;
+      void beat();
       if (ONCE) break;
       continue;
     }
@@ -240,6 +254,7 @@ async function main() {
     await sleep(POLL_MS);
   }
 
+  clearInterval(heartbeat);
   await closeMain();
 }
 
