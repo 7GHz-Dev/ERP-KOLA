@@ -8,6 +8,7 @@ import { requireActiveSession } from '@/lib/auth';
 import { notifyNewJobs } from '@/lib/line-notify';
 import { formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
+import { hasBlBrackets } from '@/lib/bl-format';
 import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
@@ -262,6 +263,13 @@ async function saveDoHandoffImpl(formData: FormData) {
    */
   if (sendToPartner && !originPort) {
     throw new Error('กรุณาระบุ Port of Loading ก่อนส่งให้ Partner');
+  }
+  /*
+   * สายที่แก้เลข BL ได้ (ออกเลขจริงหลังเรือเข้า) ต้องมีเลขในวงเล็บก่อนส่ง เช่น "KNT2600123 (MEDU1234567)"
+   * ใช้ค่าที่ส่งมาในฟอร์มนี้ก่อน เพราะ FAH มักแก้เลขแล้วกดส่งในครั้งเดียว
+   */
+  if (sendToPartner && allowBlEdit && !hasBlBrackets(blNo || job.blNo)) {
+    throw new Error('สายเรือนี้ต้องใส่เลข BL ที่มีวงเล็บ ( ) ก่อนส่ง Partner เช่น KNT2600123 (MEDU1234567)');
   }
 
   const [existing] = await db.select().from(doHandoffs).where(eq(doHandoffs.jobId, jobId)).limit(1);

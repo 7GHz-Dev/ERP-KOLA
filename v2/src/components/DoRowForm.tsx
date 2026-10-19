@@ -1,6 +1,7 @@
 import { saveDoHandoff } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
+import { hasBlBrackets } from '@/lib/bl-format';
 
 /**
  * แถวจัดการ Invoice DO — แก้ได้ในตารางเลย ไม่ต้องเปิดแผง
@@ -43,7 +44,9 @@ export function DoRowForm({
    * ยังกดส่งไม่ได้จนกว่าจะบันทึก เพราะค่าเริ่มต้นเป็นแค่ค่าที่เห็นบนจอ ยังไม่ได้ลงฐานข้อมูล
    * ท่าต้นทางก็ต้องมีก่อนส่ง เพราะ Partner ใช้ตั้งเรื่องแลก DO — ฝั่งเซิร์ฟเวอร์ตรวจอีกชั้น
    */
-  const ready = Boolean(eta && partnerName && originPort);
+  // สายที่แก้เลข BL ได้ ต้องบันทึกเลขที่มีวงเล็บ ( ) ก่อนจึงจะส่งได้
+  const blOk = !canEditBl || hasBlBrackets(blNo);
+  const ready = Boolean(eta && partnerName && originPort) && blOk;
 
   const options = (list: Choice[], placeholder: string) => (
     <>
@@ -97,8 +100,8 @@ export function DoRowForm({
       */}
       {canEditBl ? (
         <label className="do-cell do-cell-bl">
-          <span>BL No. (แก้ได้)</span>
-          <input key={`bl-${blNo ?? ''}`} name="blNo" defaultValue={blNo ?? ''} />
+          <span>BL No. (แก้ได้ · ต้องมี ( ) ก่อนส่ง)</span>
+          <input key={`bl-${blNo ?? ''}`} name="blNo" defaultValue={blNo ?? ''} placeholder="เช่น KNT2600123 (MEDU1234567)" />
         </label>
       ) : null}
 
@@ -153,7 +156,9 @@ export function DoRowForm({
             detail="ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน"
           />
         ) : (
-          <span className="badge pending">บันทึก ETA · Port of Loading · Partner ก่อน</span>
+          <span className="badge pending">
+            {blOk ? 'บันทึก ETA · Port of Loading · Partner ก่อน' : 'บันทึกเลข BL ที่มี ( ) ก่อนส่ง'}
+          </span>
         )}
       </div>
     </form>
