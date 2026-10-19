@@ -206,7 +206,43 @@ export type CodegenImport = {
   steps: Step[];
   /** บรรทัดที่ไม่ได้แปลง พร้อมเหตุผล */
   skipped: string[];
+  /** ขั้นที่แปลงได้แต่ต้องแก้เอง (เลขขั้นเริ่ม 1) เช่น locator ป้ายว่าง */
+  warnings: string[];
 };
+
+/**
+ * locator ที่ชี้อะไรไม่ได้ — codegen เขียน getByLabel('') หรือ getByRole('combobox', { name: '' })
+ * เมื่อช่องบนเว็บไม่มีชื่อให้อ่าน (เจอบ่อยกับ combobox ของ Salesforce) ตอนเล่นจะหาไม่เจอเสมอ
+ */
+export function isBlankLocator(text: string | undefined): boolean {
+  if (!text) return false;
+  let calls: Call[];
+  try { calls = parseLocator(text); } catch { return false; }
+  return calls.some((c) => {
+    if (!c.method.startsWith('getBy')) return false;
+    const [first, opts] = c.args;
+    if (typeof first === 'string' && !first.trim() && c.method !== 'getByRole') return true;
+    const name = opts && typeof opts === 'object' && !Array.isArray(opts) && !isRegex(opts)
+      ? (opts as Record<string, JsValue>).name : undefined;
+    return c.method === 'getByRole' && typeof name === 'string' && !name.trim();
+  });
+}
+
+/**
+ * id ที่เว็บสุ่มใหม่ทุกครั้งที่โหลดหน้า — Salesforce/Lightning ตั้ง id แบบ input-38, file-selector-label-55
+ * codegen เลือก id พวกนี้เพราะตอนบันทึกมันชี้ได้ตัวเดียว แต่รอบหน้าเลขเปลี่ยนแล้วหาไม่เจอ
+ */
+export function hasVolatileId(text: string | undefined): boolean {
+  if (!text) return false;
+  let calls: Call[];
+  try { calls = parseLocator(text); } catch { return false; }
+  return calls.some((c) => c.method === 'locator' && typeof c.args[0] === 'string'
+    && /#[A-Za-z][\w-]*?-\d{2,}\b/.test(c.args[0]));
+}
+
+export const VOLATILE_ID_NOTE = '⚠️ id นี้เว็บสุ่มใหม่ทุกครั้งที่โหลดหน้า — ควรเปลี่ยนเป็น getByRole/getByLabel';
+
+export const BLANK_LOCATOR_NOTE = '⚠️ codegen อ่านชื่อช่องนี้ไม่ได้ (locator ว่าง) — ต้องแก้ขั้นนี้เอง';
 
 const str = (v: JsValue | undefined) => (typeof v === 'string' ? v : '');
 
@@ -223,17 +259,22 @@ const PASSWORD_RE = /pass(word)?|pwd|รหัสผ่าน|รหัส/i;
 export function parseCodegen(code: string): CodegenImport {
   const steps: Step[] = [];
   const skipped: string[] = [];
+  const warnings: string[] = [];
   let startUrl: string | undefined;
 
-  // รวมบรรทัดที่คำสั่งยาวต่อกันหลายบรรทัด (เช่น selectOption([...]) ที่ขึ้นบรรทัดใหม่) ให้เป็นคำสั่งเดียว
-  const statements = code.replace(/\r/g, '').split(/;\s*\n|\n(?=\s*(?:await|const|let|page|\}|\/\/))/)
+  /*
+   * แยกเป็นคำสั่ง — codegen จบทุกคำสั่งด้วย ; ท้ายบรรทัด
+   * คำสั่งที่ยาวหลายบรรทัด (เช่น chromium.launch({ ... }) หรือ selectOption([...])) จึงรวมเป็นคำสั่งเดียว
+   */
+  const statements = code.replace(/\r/g, '').split(/;\s*\n|\n(?=\s*(?:await|const|let|\/\/))/)
     .map((s) => s.replace(/\s*\n\s*/g, ' ').trim().replace(/;$/, ''))
     .filter(Boolean);
 
   for (const raw of statements) {
     const line = raw.replace(/^(const|let)\s+[\w$]+\s*=\s*/, '');
-    if (!line.startsWith('await ') || /^await\s+(browser|context)\b/.test(line)
-      || /^await\s+[\w$]+Promise$/.test(line) || /^await\s+[\w$]+\.close\(\)$/.test(line)) {
+    // ขั้นตอนจริงขึ้นต้นด้วยตัวแปรหน้า (page, page1, ...) หรือ expect เท่านั้น ที่เหลือเป็นโครงไฟล์
+    // (chromium.launch, browser.newContext, context.newPage, page.close, page1Promise)
+    if (!/^await\s+(page\d*\.|expect\s*\()/.test(line) || /^await\s+page\d*\.close\(\)$/.test(line)) {
       // โครงไฟล์ของ codegen (require, launch, newPage, close) ไม่ใช่ขั้นตอน — ไม่ต้องแจ้ง
       if (/getBy|locator\(|\.goto\(|expect\(/.test(line)) skipped.push(`${raw} — ไม่รู้จักรูปแบบนี้`);
       continue;
@@ -242,6 +283,16 @@ export function parseCodegen(code: string): CodegenImport {
       const step = parseStatement(line.slice(6).trim());
       if (!step) { skipped.push(`${raw} — ไม่ได้แปลงคำสั่งนี้`); continue; }
       if (step === 'password') { skipped.push(`${raw} — ช่องรหัสผ่าน ไม่เก็บค่า`); continue; }
+// codegen เขียนแนบไฟล์ซ้ำสองบรรทัดติดกันบ่อย (ตอนเลือกไฟล์กับตอนช่องเปลี่ยนค่า) — เก็บครั้งเดียว
+      const prev = steps[steps.length - 1];
+      if (step.type === 'upload' && prev?.type === 'upload' && prev.target.locator === step.target.locator) continue;
+      if ('target' in step && isBlankLocator(step.target.locator)) {
+        step.note = BLANK_LOCATOR_NOTE;
+        warnings.push(`ขั้นที่ ${steps.length + 1}: ${step.target.locator} — อ่านชื่อช่องไม่ได้`);
+      } else if ('target' in step && hasVolatileId(step.target.locator)) {
+        step.note = VOLATILE_ID_NOTE;
+        warnings.push(`ขั้นที่ ${steps.length + 1}: ${step.target.locator} — id สุ่มใหม่ทุกครั้ง`);
+      }
       if (step.type === 'goto') {
         // หน้าแรกคือ startUrl ของ Template ไม่ต้องเป็นขั้น · เปิดหน้าเดิมซ้ำก่อนเริ่มทำอะไร (แท็บใหม่ตอนเริ่มบันทึก) ก็ไม่ต้อง
         if (!steps.length && (!startUrl || startUrl === step.url)) { startUrl = step.url; continue; }
@@ -256,7 +307,7 @@ export function parseCodegen(code: string): CodegenImport {
   if (last?.type === 'waitFor' && /getByRole\('button'|getByRole\("button"/.test(last.target.locator ?? '')) {
     steps[steps.length - 1] = { type: 'submit', target: last.target };
   }
-  return { startUrl, steps, skipped };
+  return { startUrl, steps, skipped, warnings };
 }
 
 function parseStatement(src: string): Step | 'password' | null {

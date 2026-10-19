@@ -22,13 +22,13 @@ import {
 import { runTemplate } from '../scripts/web-template-runner';
 import { RecorderHub } from '../scripts/web-recorder-session';
 import { recordWithCodegen } from '../scripts/codegen-recorder';
-import { parseCodegen, parseLocator } from '../src/lib/playwright-code';
+import { hasVolatileId, isBlankLocator, parseCodegen, parseLocator } from '../src/lib/playwright-code';
 
 const MOCK = readFileSync(join(__dirname, 'fixtures', 'web-template-mock.html'));
 
 const vars = {
   job: { blNo: 'AMP0558885', jobNo: 'KL-001' },
-  input: { paymentRef: 'TXN-77881', billing: 'KOLA SHIPPING CO.,LTD.\n123 Bangkok' },
+  input: { slipno: 'TXN-77881', billing: 'KOLA SHIPPING CO.,LTD.\n123 Bangkok' },
 };
 
 type MockState = { svc: string; agency: string; bl: string[]; files: string[][]; payref: string; extra: string; submitted: boolean };
@@ -37,7 +37,9 @@ const state = (page: Page) => page.evaluate(() => (window as unknown as { __stat
 async function main() {
   /* ---- 1. ตัวตรวจและตัวแปร ---- */
   assert.ok(definitionSchema.safeParse(CMA_EXAMPLE).success, 'ตัวอย่าง CMA ต้องผ่านตัวตรวจ');
-  assert.equal(fillVars('BL {{job.blNo}} / {{ input.paymentRef }} / {{job.none}}', vars), 'BL AMP0558885 / TXN-77881 / ');
+  assert.ok(!definitionSchema.safeParse({ ...CMA_EXAMPLE, inputs: [{ key: 'slipno', label: 'x' }] }).success,
+    'slipno เป็นตัวแปรของระบบ ประกาศซ้ำไม่ได้');
+  assert.equal(fillVars('BL {{job.blNo}} / {{ input.slipno }} / {{job.none}}', vars), 'BL AMP0558885 / TXN-77881 / ');
   assert.equal(templatize('ref AMP0558885 x', { job: { blNo: 'AMP0558885' }, input: {} }), 'ref {{job.blNo}} x');
   assert.equal(templatize('ab', { job: { blNo: 'ab' }, input: {} }), 'ab', 'ค่าสั้นเกินไปไม่แทน');
   assert.ok(!stepSchema.safeParse({ type: 'click', target: {} }).success, 'ขั้นที่ไม่บอกว่าช่องไหนต้องไม่ผ่าน');
@@ -100,6 +102,41 @@ async function main() {
     assert.throws(() => parseLocator("getByRole('button').evaluate('alert(1)')"), /ไม่รองรับ/);
     assert.throws(() => parseLocator('getByText(window.secret)'), /ค่าคงที่/);
     assert.throws(() => parseLocator('getByText(`${x}`)'), /template string/);
+    // โครงไฟล์ของ codegen หลายบรรทัดต้องไม่ขึ้นเป็น "ข้าม" · locator ว่างต้องถูกเตือน
+    const real = parseCodegen(`const { chromium } = require('playwright');
+
+(async () => {
+  const browser = await chromium.launch({
+    channel: 'chrome',
+    headless: false
+  });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('https://mycustomerservice.cma-cgm.com/s/importdorequest');
+  await page.getByLabel('', { exact: true }).click();
+  await page.getByRole('combobox', { name: '' }).click();
+  await page.getByText('New Delivery Order').click();
+
+  // ---------------------
+  await context.close();
+  await browser.close();
+})();`);
+    assert.deepEqual(real.skipped, [], real.skipped.join('\n'));
+    assert.equal(real.steps.length, 3);
+    assert.deepEqual(real.warnings.map((w) => w.slice(0, 9)), ['ขั้นที่ 1', 'ขั้นที่ 2']);
+    assert.ok(isBlankLocator("getByLabel('', { exact: true })"));
+    assert.ok(!isBlankLocator("getByLabel('Service Type')"));
+    assert.ok(!isBlankLocator("getByRole('button')"), 'role ไม่มีชื่อไม่ใช่ locator ว่าง');
+    assert.ok(hasVolatileId("locator('#input-38')"));
+    assert.ok(hasVolatileId("locator('#file-selector-label-55').getByText('Or drop files')"));
+    assert.ok(!hasVolatileId("locator('#agency')") && !hasVolatileId("locator('input[type=\"file\"]').nth(1)"));
+    const sf = parseCodegen(`
+  await page.locator('#input-38').fill('AMP1');
+  await page.locator('#input-file-55').setInputFiles('a.pdf');
+  await page.locator('#input-file-55').setInputFiles('a.pdf');
+  await page.getByRole('button', { name: 'Done' }).click();`);
+    assert.deepEqual(sf.steps.map((x) => x.type), ['fill', 'upload', 'click'], 'แนบไฟล์ซ้ำติดกันเก็บครั้งเดียว');
+    assert.deepEqual(sf.warnings.map((w) => w.slice(0, 9)), ['ขั้นที่ 1', 'ขั้นที่ 2']);
     console.log('✓ อ่านโค้ด codegen');
   }
 
@@ -156,6 +193,45 @@ async function main() {
       assert.equal(s.submitted, true);
       await context.close();
       console.log('✓ ช่องหาด้วย XPath ได้');
+    }
+
+    /* ---- locator ว่างต้องพังทันทีพร้อมบอกวิธีแก้ ไม่รอจนหมดเวลา ---- */
+    {
+      const context = await browser.newContext();
+      const started = Date.now();
+      await assert.rejects(
+        runTemplate(context, { ...def, steps: [{ type: 'click', target: { locator: "getByLabel('', { exact: true })" } }] },
+          { mode: 'auto', vars, files: {} }),
+        /ขั้นที่ 1 .*locator ว่าง/,
+      );
+      assert.ok(Date.now() - started < 15_000, 'ต้องไม่รอจนหมดเวลา 30 วินาที');
+      await context.close();
+      console.log('✓ locator ว่างแจ้งทันที');
+    }
+
+    /* ---- หยุดให้คนทำ แล้วคนเปลี่ยนหน้า (เช่นล็อกอิน) ระหว่างรอ ---- */
+    {
+      const context = await browser.newContext();
+      const run = runTemplate(context, {
+        ...def,
+        steps: [
+          { type: 'pause', message: 'login' },
+          { type: 'click', target: { role: 'button', name: 'Add' } },
+        ],
+      }, { mode: 'auto', vars, files: {} });
+      const page = await (async () => {
+        for (;;) {
+          const p = context.pages()[0];
+          if (p && await p.locator('#__kola_banner').count().catch(() => 0)) return p;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      })();
+      await page.reload();
+      // แถบต้องกลับมาบนหน้าใหม่ แล้วกดทำต่อได้
+      await page.locator('#__kola_banner').getByRole('button', { name: 'ทำต่อ' }).click({ timeout: 10_000 });
+      await run;
+      await context.close();
+      console.log('✓ หยุดให้คนทำ ทนการเปลี่ยนหน้า');
     }
 
     /* ---- 3. ทดลองรัน — หยุดก่อนส่ง ---- */

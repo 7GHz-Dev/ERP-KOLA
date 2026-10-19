@@ -115,24 +115,27 @@ export type WebTaskState = {
   id: string; status: string; error: string | null; resultRefNo: string | null; hasShot: boolean;
 };
 
-/** งานล่าสุด (ไม่นับทดลองรัน) ของแต่ละคู่ งาน×Template — key คือ `${jobId}:${templateId}` */
+/**
+ * งานล่าสุด (ไม่นับทดลองรัน) ของแต่ละงาน ไม่ว่า Template ไหน — ปุ่ม "ส่งแลกผ่าน web" มีปุ่มเดียวต่อแถว
+ * label คือชื่อปุ่มของ Template ที่ใช้ตอนกด
+ */
 export async function webTasksFor(jobIds: string[]) {
-  const map = new Map<string, WebTaskState>();
+  const map = new Map<string, WebTaskState & { label: string }>();
   if (!jobIds.length) return map;
   const rows = await db.select({
     id: automationTasks.id, jobId: automationTasks.jobId, status: automationTasks.status,
     error: automationTasks.error, resultRefNo: automationTasks.resultRefNo,
-    resultStorageKey: automationTasks.resultStorageKey, templateId: templateIdOf, dryRun: dryRunOf,
+    resultStorageKey: automationTasks.resultStorageKey, dryRun: dryRunOf,
+    label: sql<string | null>`case when ${automationTasks.type} = ${WEB_TASK.RUN}
+      then coalesce(${automationTasks.payload}::jsonb #>> '{definition,button,label}', ${automationTasks.payload}::jsonb ->> 'templateName') end`,
   }).from(automationTasks)
     .where(and(inArray(automationTasks.jobId, jobIds), eq(automationTasks.type, WEB_TASK.RUN)))
     .orderBy(desc(automationTasks.createdAt));
   for (const r of rows) {
-    if (r.dryRun || !r.jobId) continue;
-    const key = `${r.jobId}:${r.templateId}`;
-    if (map.has(key)) continue;
-    map.set(key, {
+    if (r.dryRun || !r.jobId || map.has(r.jobId)) continue;
+    map.set(r.jobId, {
       id: r.id, status: r.status, error: r.error, resultRefNo: r.resultRefNo,
-      hasShot: r.status === 'ERROR' && Boolean(r.resultStorageKey),
+      hasShot: r.status === 'ERROR' && Boolean(r.resultStorageKey), label: r.label ?? 'web',
     });
   }
   return map;
@@ -206,11 +209,13 @@ export function toSteps(input: { steps?: unknown; code?: unknown }, sample: { jo
   let raw: unknown[] = Array.isArray(input.steps) ? input.steps : [];
   let startUrl: string | undefined;
   let skipped: string[] = [];
+  let warnings: string[] = [];
   if (typeof input.code === 'string' && input.code.trim()) {
     const parsed = parseCodegen(input.code.slice(0, 200_000));
     raw = parsed.steps;
     startUrl = parsed.startUrl;
     skipped = parsed.skipped;
+    warnings = parsed.warnings;
   }
   const steps: Step[] = [];
   let dropped = 0;
@@ -227,7 +232,7 @@ export function toSteps(input: { steps?: unknown; code?: unknown }, sample: { jo
     }
     steps.push(step);
   }
-  return { steps, startUrl, dropped, skipped };
+  return { steps, startUrl, dropped, skipped, warnings };
 }
 
 /** เก็บขั้นตอนชุดใหม่แทนชุดเดิมของ Template */
@@ -253,6 +258,7 @@ export async function saveRecording(taskId: string, input: { startUrl?: unknown;
   await replaceSteps(String(payload.templateId ?? ''), result.steps, startUrl);
 
   const notes = [
+    result.warnings.length ? `ต้องแก้ ${result.warnings.length} ขั้น (locator ว่าง)` : '',
     result.dropped ? `ทิ้ง ${result.dropped} ขั้นที่อ่านไม่ได้` : '',
     result.skipped.length ? `ข้าม ${result.skipped.length} บรรทัด: ${result.skipped.join(' | ')}` : '',
   ].filter(Boolean).join(' · ');

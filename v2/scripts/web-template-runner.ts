@@ -11,7 +11,9 @@ import type { BrowserContext, FileChooser, Frame, Locator, Page } from 'playwrig
 import {
   describeStep, fillVars, type JobVars, type Step, type Target, type WebTemplateDefinition,
 } from '../src/lib/web-template';
-import { isRegex, mapLocatorStrings, parseLocator, type Call, type JsValue } from '../src/lib/playwright-code';
+import {
+  isBlankLocator, isRegex, mapLocatorStrings, parseLocator, type Call, type JsValue,
+} from '../src/lib/playwright-code';
 
 export type RunMode = 'review' | 'auto' | 'dry';
 
@@ -84,7 +86,7 @@ function buildLocator(root: Page | Frame, calls: Call[]): Locator {
 function candidates(root: Page | Frame, t: Target, v: (s: string) => string): Locator[] {
   const out: Locator[] = [];
   type Role = Parameters<Page['getByRole']>[0];
-  if (t.locator) {
+  if (t.locator && !isBlankLocator(t.locator)) {
     // ใส่ค่าตัวแปรหลังแยกส่วนแล้ว ค่าที่มีเครื่องหมายคำพูดจึงไม่ทำให้ locator พัง
     try { out.push(buildLocator(root, mapLocatorStrings(parseLocator(t.locator), v))); } catch { /* ใช้ทางสำรอง */ }
   }
@@ -138,6 +140,10 @@ async function resolve(
 async function mustResolve(
   page: Page, target: Target, timeoutMs: number, attachedOnly = false, v?: (s: string) => string,
 ) {
+  const onlyBlank = isBlankLocator(target.locator)
+    && !target.role && !target.label && !target.placeholder && !target.text && !target.css;
+  // locator ว่างไม่มีทางหาเจอ — บอกทันที ไม่ต้องรอจนหมดเวลา
+  if (onlyBlank) throw new Error('locator ว่าง (codegen อ่านชื่อช่องไม่ได้) — แก้ขั้นนี้ในหน้า Template');
   const found = await resolve(page, target, timeoutMs, attachedOnly, v);
   if (!found) throw new Error('หาช่องบนหน้าเว็บไม่เจอ');
   return found;
@@ -351,13 +357,23 @@ async function runStep(
 
     case 'pause': {
       opts.log?.(`⏸  ${step.message} — กด "ทำต่อ" บนแถบด้านบนของหน้าเมื่อเสร็จ`);
-      await banner(page, step.message, true);
-      await page.waitForFunction(
-        () => (window as unknown as { __kolaContinue?: boolean }).__kolaContinue === true,
-        undefined,
-        { timeout: opts.reviewWaitMs ?? 20 * 60_000, polling: 500 },
-      ).catch(() => { throw new Error('ไม่ได้กดทำต่อภายในเวลาที่กำหนด'); });
-      return;
+      /*
+       * ระหว่างรอ คนมักล็อกอินหรือกดไปหน้าอื่น — หน้าใหม่ไม่มีแถบและตัวแปรเดิม
+       * จึงถามทีละครั้ง ถ้าแถบหายก็แสดงใหม่บนหน้าปัจจุบัน และจับแท็บใหม่ที่เว็บเปิดด้วย
+       */
+      const until = Date.now() + (opts.reviewWaitMs ?? 20 * 60_000);
+      while (Date.now() < until) {
+        const current = page.context().pages().filter((p) => !p.isClosed()).pop() ?? page;
+        if (current.isClosed()) throw new Error('ปิดหน้าต่างระหว่างรอ');
+        const state = await current.evaluate(() => {
+          const w = window as unknown as { __kolaContinue?: boolean };
+          return w.__kolaContinue === true ? 'done' : document.getElementById('__kola_banner') ? 'wait' : 'missing';
+        }).catch(() => 'loading');
+        if (state === 'done') return;
+        if (state === 'missing') await banner(current, step.message, true);
+        await sleep(700);
+      }
+      throw new Error('ไม่ได้กดทำต่อภายในเวลาที่กำหนด');
     }
 
     case 'submit': {

@@ -10,7 +10,8 @@ import { loadWebTemplate, templateTasks } from '@/lib/web-template-store';
 import {
   cancelWebTask, deleteWebTemplate, importWebTemplateCode, recordWebTemplate, testWebTemplate,
 } from '@/lib/actions/web-template';
-import { usedVars, WEB_TASK } from '@/lib/web-template';
+import { isBuiltinInput, usedVars, WEB_TASK } from '@/lib/web-template';
+import { hasVolatileId, isBlankLocator } from '@/lib/playwright-code';
 import { FILE_LABELS, FILE_ORDER } from '@/lib/file-categories';
 import { ASSIGNABLE_ROLES } from '@/lib/org';
 import { formatDateTime } from '@/lib/format';
@@ -41,8 +42,19 @@ export default async function WebTemplateEditPage({ params }: { params: Promise<
   const fileCategories = FILE_ORDER.map((k) => [k, FILE_LABELS[k] ?? k] as [string, string]);
   // ตัวแปร {{input.x}} ที่ขั้นตอนใช้แต่ยังไม่ได้ประกาศเป็นช่องที่ถาม — กดปุ่มแล้วจะได้ค่าว่าง
   const missing = def
-    ? usedVars(def).filter((v) => v.startsWith('input.') && !def.inputs.some((i) => `input.${i.key}` === v))
+    ? usedVars(def).filter((v) => v.startsWith('input.') && !isBuiltinInput(v.slice(6))
+      && !def.inputs.some((i) => `input.${i.key}` === v))
     : [];
+  // ขั้นที่ codegen ได้ locator ว่าง — ตอนเล่นจะหาไม่เจอแน่นอน ต้องแก้ก่อนใช้
+  const blank = (def?.steps ?? []).flatMap((step, i) => (
+    'target' in step && isBlankLocator(step.target.locator)
+      && !step.target.role && !step.target.label && !step.target.placeholder && !step.target.text && !step.target.css
+      ? [i + 1] : []
+  ));
+  // id ที่เว็บสุ่มใหม่ทุกรอบ (เช่น #input-38 ของ Salesforce) — รอบนี้อาจผ่าน รอบหน้าหาไม่เจอ
+  const volatile = (def?.steps ?? []).flatMap((step, i) => (
+    'target' in step && hasVolatileId(step.target.locator) ? [i + 1] : []
+  ));
 
   return (
     <>
@@ -56,6 +68,24 @@ export default async function WebTemplateEditPage({ params }: { params: Promise<
         <MasterMenu current={WEB_TEMPLATE_MENU_KEY} counts={counts} />
 
         <div className="doc-form">
+          {blank.length ? (
+            <div className="alert-bar bad" role="alert">
+              <span>
+                ขั้นที่ {blank.join(', ')} — codegen อ่านชื่อช่องไม่ได้ (locator ว่าง) ตอนเล่นจะหาไม่เจอ ·
+                เปิด “วิธีหาช่องบนหน้า” ของขั้นนั้น แล้วใส่ locator ใหม่ เช่นใช้ Pick locator ใน codegen ชี้ช่องนั้น
+                หรือใส่ role + ชื่อ (เช่น combobox + Service Type)
+              </span>
+            </div>
+          ) : null}
+          {volatile.length ? (
+            <div className="alert-bar bad" role="alert">
+              <span>
+                ขั้นที่ {volatile.join(', ')} — ใช้ id ที่เว็บสุ่มใหม่ทุกครั้งที่โหลดหน้า (เช่น #input-38) รอบหน้าจะหาไม่เจอ ·
+                เปลี่ยน locator เป็นแบบชื่อช่อง เช่น getByRole(&apos;textbox&apos;, {'{'} name: &apos;BL Reference&apos; {'}'})
+                หรือช่องแนบไฟล์ใช้ CSS input[type=&quot;file&quot;] + ลำดับที่
+              </span>
+            </div>
+          ) : null}
           {missing.length ? (
             <div className="alert-bar bad" role="alert">
               <span>ขั้นตอนใช้ตัวแปรที่ยังไม่ได้เพิ่มเป็นช่องที่ถาม: {missing.join(', ')}</span>
@@ -123,6 +153,10 @@ export default async function WebTemplateEditPage({ params }: { params: Promise<
                   <label className="field">
                     <span>BL งานที่ใช้ทดลอง</span>
                     <input name="sampleBl" required />
+                  </label>
+                  <label className="field">
+                    <span>เลขอ้างอิงในสลิป (slipno)</span>
+                    <input name="input.slipno" required />
                   </label>
                   {def.inputs.map((input) => (
                     <label key={input.key} className="field grow">

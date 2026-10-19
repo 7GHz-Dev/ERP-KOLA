@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { saveWebTemplate } from '@/lib/actions/web-template';
 import {
-  BUTTON_PAGES, definitionSchema, describeTarget, firstIssue, INPUT_ASSISTS, JOB_VARS, STEP_TYPES,
+  BUILTIN_INPUTS, BUTTON_PAGES, definitionSchema, describeTarget, firstIssue, INPUT_ASSISTS, JOB_VARS, STEP_TYPES,
   type Step, type StepType, type Target, type TemplateInput, type WebTemplateDefinition,
 } from '@/lib/web-template';
 
@@ -92,6 +92,7 @@ export function WebTemplateEditor({
   };
 
   const varOptions = [
+    ...BUILTIN_INPUTS.map((v) => ({ token: `{{input.${v.key}}}`, label: `ระบบ: ${v.label}` })),
     ...JOB_VARS.map((v) => ({ token: `{{job.${v.key}}}`, label: `งาน: ${v.label}` })),
     ...(def?.inputs ?? []).map((i) => ({ token: `{{input.${i.key}}}`, label: `ถาม: ${i.label}` })),
   ];
@@ -206,7 +207,9 @@ export function WebTemplateEditor({
           <fieldset className="doc-form-group">
             <legend>ช่องที่ถามตอนกดปุ่ม</legend>
             <p className="meta wt-help">
-              ค่าที่ระบบไม่รู้เอง เช่นเลขอ้างอิงในสลิป · ใช้ในขั้นตอนด้วย <code>{'{{input.ชื่อตัวแปร}}'}</code>
+              ค่าที่ระบบไม่รู้เอง · ใช้ในขั้นตอนด้วย <code>{'{{input.ชื่อตัวแปร}}'}</code> ·
+              มีให้อยู่แล้วไม่ต้องเพิ่ม: <code>{'{{input.slipno}}'}</code> เลขอ้างอิงในสลิป (ปุ่มถามทุกครั้ง)
+              และ <code>{'{{input.billing}}'}</code> ที่อยู่ออกใบเสร็จ KOLA
             </p>
             {def.inputs.map((input, i) => (
               <div key={i} className="wt-input-row">

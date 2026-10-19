@@ -13,6 +13,7 @@ import {
 import {
   currentJobFile, findJobByBl, jobVars, loadWebTemplate, openTemplateTask, replaceSteps, shiplineMatches, toSteps,
 } from '@/lib/web-template-store';
+import { KOLA_BILLING } from '@/lib/billing';
 import { logActivity, newId, required, runAction, text } from './common';
 
 /**
@@ -137,15 +138,22 @@ async function importCodeImpl(formData: FormData) {
 
   const note = [
     `นำเข้า ${result.steps.length} ขั้น`,
+    result.warnings.length ? `⚠️ ต้องแก้ ${result.warnings.length} ขั้นที่ codegen อ่านชื่อช่องไม่ได้ (ดูแถบเตือนด้านบน)` : '',
     result.dropped ? `ทิ้ง ${result.dropped} ขั้นที่อ่านไม่ได้` : '',
     result.skipped.length ? `ข้าม ${result.skipped.length} บรรทัด: ${result.skipped.slice(0, 3).join(' | ')}` : '',
   ].filter(Boolean).join(' · ');
   redirect(`${PATH}/${template.id}?ok=${encodeURIComponent(note.slice(0, 600))}`);
 }
 
-/** ค่าที่ถามตอนกดปุ่ม — ชื่อช่องในฟอร์มคือ input.<key> */
+/**
+ * ค่าที่ถามตอนกดปุ่ม — ชื่อช่องในฟอร์มคือ input.<key>
+ * รวมตัวแปรที่ระบบมีให้ด้วย: slipno (ถามทุกครั้ง) · billing (ที่อยู่ใบเสร็จ KOLA)
+ */
 function readInputs(def: WebTemplateDefinition, formData: FormData) {
-  const input: Record<string, string> = {};
+  const input: Record<string, string> = {
+    slipno: required(formData.get('input.slipno'), 'เลขอ้างอิงในสลิป', 200),
+    billing: KOLA_BILLING.text,
+  };
   for (const field of def.inputs) {
     input[field.key] = required(formData.get(`input.${field.key}`), field.label, 4000);
   }

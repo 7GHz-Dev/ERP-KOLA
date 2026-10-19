@@ -54,6 +54,18 @@ export const JOB_VARS = [
 export type JobVarKey = (typeof JOB_VARS)[number]['key'];
 export type JobVars = Partial<Record<JobVarKey, string>>;
 
+/**
+ * ตัวแปรที่ทุก Template ใช้ได้โดยไม่ต้องประกาศเป็นช่องที่ถาม
+ *   slipno   เลขอ้างอิงในสลิปโอนเงิน — ปุ่ม "ส่งแลกผ่าน web" ถามทุกครั้ง (อ่านจากสลิปหรือกรอกเอง)
+ *   billing  ที่อยู่ออกใบเสร็จของ KOLA (src/lib/billing.ts)
+ */
+export const BUILTIN_INPUTS = [
+  { key: 'slipno', label: 'เลขอ้างอิงในสลิป' },
+  { key: 'billing', label: 'ที่อยู่ออกใบเสร็จ KOLA' },
+] as const;
+
+export const isBuiltinInput = (key: string) => BUILTIN_INPUTS.some((b) => b.key === key);
+
 /** ตัวช่วยของช่องที่ถามตอนกดปุ่ม */
 export const INPUT_ASSISTS = [
   { key: '', label: '-' },
@@ -191,6 +203,9 @@ export const definitionSchema = z.object({
     }
   }
   const keys = def.inputs.map((i) => i.key);
+  for (const key of keys) {
+    if (isBuiltinInput(key)) ctx.addIssue({ code: 'custom', message: `${key} เป็นตัวแปรที่ระบบมีให้อยู่แล้ว ไม่ต้องเพิ่มเป็นช่องที่ถาม` });
+  }
   if (new Set(keys).size !== keys.length) ctx.addIssue({ code: 'custom', message: 'ชื่อตัวแปรของช่องที่ถามซ้ำกัน' });
   if (def.steps.filter((s) => s.type === 'submit').length > 1) {
     ctx.addIssue({ code: 'custom', message: 'มีปุ่มส่ง (ขั้นสุดท้าย) ได้ขั้นเดียว' });
@@ -319,10 +334,8 @@ export const CMA_EXAMPLE: WebTemplateDefinition = {
     requireFile: 'DO_MERGED',
     markDoExchanged: true,
   },
-  inputs: [
-    { key: 'paymentRef', label: 'หมายเลขอ้างอิงในสลิป (Payment reference number)', assist: 'slipRef' },
-    { key: 'billing', label: 'ที่อยู่ออกใบเสร็จ (Additional information)', multiline: true, assist: 'billing' },
-  ],
+  // เลขสลิปกับที่อยู่ใบเสร็จเป็นตัวแปรที่ระบบมีให้ (slipno · billing) ไม่ต้องถามเพิ่ม
+  inputs: [],
   steps: [
     { type: 'select', target: { label: 'Service Type' }, value: 'New Delivery Order' },
     { type: 'select', target: { label: 'Agency Location' }, value: 'Thailand' },
@@ -335,7 +348,7 @@ export const CMA_EXAMPLE: WebTemplateDefinition = {
     { type: 'click', target: { role: 'button', name: 'Done' }, optional: true, timeout: 90 },
     { type: 'upload', target: { css: 'input[type="file"]', nth: 1 }, file: 'DO_MERGED', note: 'Supporting Document(s)' },
     { type: 'click', target: { role: 'button', name: 'Done' }, optional: true, timeout: 90 },
-    { type: 'fill', target: { role: 'textbox', name: 'Payment reference number' }, value: '{{input.paymentRef}}' },
+    { type: 'fill', target: { role: 'textbox', name: 'Payment reference number' }, value: '{{input.slipno}}' },
     { type: 'fill', target: { role: 'textbox', name: 'Additional information' }, value: '{{input.billing}}' },
     { type: 'submit', target: { role: 'button', name: 'Submit' } },
   ],

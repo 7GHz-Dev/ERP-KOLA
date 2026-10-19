@@ -28,16 +28,21 @@ on run
 end run
 
 on startWorker()
-  -- [r] กันไม่ให้ pgrep เจอคำสั่งของตัวเอง
-  set running to do shell script "pgrep -f 'web-template-worke[r]' >/dev/null && echo yes || echo no"
-  if running is "yes" then
-    display notification "worker เปิดอยู่แล้ว" with title "KOLA Worker"
-    return
-  end if
-  tell application "Terminal"
-    activate
-    do script "cd " & quoted form of "$V2" & " && npm run worker:web"
-  end tell
+  try
+    -- [r] กันไม่ให้ pgrep เจอคำสั่งของตัวเอง · ห้ามตั้งชื่อตัวแปรว่า running (AppleScript จองไว้)
+    set workerState to do shell script "pgrep -f 'web-template-worke[r]' >/dev/null && echo on || echo off"
+    if workerState is "on" then
+      display notification "worker เปิดอยู่แล้ว" with title "KOLA Worker"
+      return
+    end if
+    tell application "Terminal"
+      activate
+      do script "cd " & quoted form of "$V2" & " && npm run worker:web"
+    end tell
+  on error errMsg number errNum
+    -- อย่าพังเงียบ ๆ — บอกให้เห็นว่าติดอะไร (เช่นยังไม่อนุญาตให้ควบคุม Terminal)
+    display dialog "เปิด worker ไม่สำเร็จ: " & errMsg & " (" & errNum & ")" & return & return & "ถ้าเป็นเรื่องสิทธิ์: System Settings → Privacy & Security → Automation → KOLA Worker → เปิด Terminal" buttons {"ตกลง"} default button 1 with title "KOLA Worker" with icon caution
+  end try
 end startWorker
 APPLESCRIPT
 
