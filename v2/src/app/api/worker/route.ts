@@ -91,8 +91,12 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
   },
   // worker ยังเปิดอยู่ — หน้าแลก DO ใช้บอกสถานะ
   async heartbeat(args: any) {
-    await recordHeartbeat(String(args?.worker ?? ''), { busy: args?.busy, mode: args?.mode, platform: args?.platform });
-    return { ok: true };
+    const settings = await recordHeartbeat(String(args?.worker ?? ''), {
+      busy: args?.busy, mode: args?.mode, platform: args?.platform, headless: args?.headless,
+      log: args?.log, shot: args?.shot, offline: Boolean(args?.offline),
+    });
+    // ตอบค่าตั้งที่ ANN สั่งจากหน้าเว็บกลับไป (ทำงานเบื้องหลัง · ปิด worker)
+    return { settings };
   },
   async saveRecording(args: any) {
     return saveRecording(String(args?.taskId ?? ''), { startUrl: args?.startUrl, steps: args?.steps, code: args?.code });

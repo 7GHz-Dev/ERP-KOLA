@@ -58,8 +58,18 @@ type RecordTask = {
 
 /** งานที่ทำอยู่ — ส่งไปกับสัญญาณสถานะ */
 let busy: string | null = null;
+/** ค่าตั้งจากหน้าแลก DO — ทำงานเบื้องหลัง (Chrome ไม่มีหน้าต่าง กดส่งเอง) */
+let background = process.env.WEB_WORKER_HEADLESS === '1';
+const startedAt = Date.now();
 
-const log = (...args: unknown[]) => console.log(new Date().toLocaleTimeString('th-TH'), ...args);
+/** log ล่าสุด — ส่งขึ้นไปให้ดูบนหน้าแลก DO เพราะตอนทำงานเบื้องหลังไม่มีหน้าต่าง Terminal ให้ดู */
+const recent: string[] = [];
+const log = (...args: unknown[]) => {
+  const time = new Date().toLocaleTimeString('th-TH');
+  console.log(time, ...args);
+  recent.push(`${time} ${args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ')}`);
+  if (recent.length > 80) recent.splice(0, recent.length - 80);
+};
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function api<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -127,13 +137,16 @@ async function record(task: RecordTask) {
 /* ---------------- Chrome ตัวหลัก ---------------- */
 
 let main_: BrowserContext | null = null;
+/** Chrome ตัวหลักที่เปิดอยู่เป็นแบบไม่มีหน้าต่างไหม */
+let headlessNow = background;
 
 async function mainContext() {
   if (main_) return main_;
   mkdirSync(PROFILE, { recursive: true });
+  headlessNow = background;
   const context = await chromium.launchPersistentContext(PROFILE, {
     channel: 'chrome',
-    headless: process.env.WEB_WORKER_HEADLESS === '1',
+    headless: headlessNow,
     viewport: null,
     acceptDownloads: false,
   });
@@ -166,10 +179,11 @@ async function run(context: BrowserContext, task: RunTask) {
     files[category] = path;
   }
 
-  const mode = dryRun ? 'dry' : AUTO_SUBMIT ? 'auto' : 'review';
+  // เบื้องหลังไม่มีใครตรวจหน้าจอ จึงกดปุ่มส่งให้เอง
+  const mode = dryRun ? 'dry' : AUTO_SUBMIT || headlessNow ? 'auto' : 'review';
   let result;
   try {
-    result = await runTemplate(context, definition, { mode, vars, files, log });
+    result = await runTemplate(context, definition, { mode, vars, files, log, headless: headlessNow });
   } catch (error) {
     // ภาพตอนพังส่งขึ้น ERP ด้วย จะได้ดูได้ว่าค้างที่หน้าไหนโดยไม่ต้องมาเปิดเครื่องนี้
     const pages = context.pages().filter((p) => !p.isClosed());
@@ -197,20 +211,50 @@ async function main() {
   if (!KEY) throw new Error('ยังไม่ได้ตั้ง WORKER_API_KEY ใน .env.local');
   await api('queueStatus');
 
-  // บอก ERP ว่ายังเปิดอยู่ — หน้าแลก DO ใช้แสดงสถานะ (ส่งแยกจากรอบรับงาน เพราะงานหนึ่งอาจนานหลายนาที)
-  const beat = () => api('heartbeat', {
-    worker: WORKER, busy, mode: AUTO_SUBMIT ? 'auto' : 'review', platform: process.platform,
-  }).catch(() => {});
-  void beat();
-  const heartbeat = setInterval(beat, 20_000);
+  /*
+   * บอก ERP ว่ายังเปิดอยู่ พร้อม log ล่าสุด และภาพหน้าจอสดตอนกำลังทำงาน — หน้าแลก DO ใช้แสดงสถานะ
+   * ส่งแยกจากรอบรับงาน เพราะงานหนึ่งอาจนานหลายนาที · ระหว่างทำงานส่งถี่ขึ้นให้ภาพขยับทัน
+   * คำตอบคือค่าตั้งที่ ANN สั่งจากหน้าเว็บ (ทำงานเบื้องหลัง · ปิด worker)
+   */
+  let stop = false;
+  const beat = async () => {
+    let shot: string | undefined;
+    if (busy && main_) {
+      const page = main_.pages().filter((p) => !p.isClosed()).pop();
+      const buf = page ? await page.screenshot({ type: 'jpeg', quality: 55 }).catch(() => null) : null;
+      if (buf) shot = buf.toString('base64');
+    }
+    const res = await api<{ settings?: { background?: boolean; stopAt?: string | null } }>('heartbeat', {
+      worker: WORKER, busy, mode: AUTO_SUBMIT || headlessNow ? 'auto' : 'review', platform: process.platform,
+      headless: headlessNow, log: recent, shot,
+    }).catch(() => null);
+    const settings = res?.settings;
+    if (!settings) return;
+    if (Boolean(settings.background) !== background) {
+      background = Boolean(settings.background);
+      log(background ? '🌙 สลับเป็นทำงานเบื้องหลัง (ไม่มีหน้าต่าง · กดส่งเอง)' : '🪟 สลับเป็นแสดงหน้าต่าง');
+    }
+    // เปลี่ยนโหมดได้ตอนว่างเท่านั้น — ปิด Chrome ตัวหลักแล้วเปิดใหม่ในโหมดใหม่ตอนรับงานถัดไป
+    if (!busy && main_ && headlessNow !== background) await closeMain();
+    if (settings.stopAt && Date.parse(settings.stopAt) > startedAt && !stop) {
+      stop = true;
+      log('⏹  สั่งปิดจากหน้าเว็บ — ปิดหลังจบงานที่ทำอยู่');
+    }
+  };
+  let beating = true;
+  void (async () => {
+    while (beating) {
+      await beat();
+      await sleep(busy ? 5_000 : 15_000);
+    }
+  })();
 
   await mainContext();
-  log(`worker พร้อม · ${ERP_URL} · โหมด ${AUTO_SUBMIT ? 'กดปุ่มส่งเอง' : 'รอคนตรวจแล้วกดส่ง'}`);
+  log(`worker พร้อม · ${ERP_URL} · ${headlessNow ? 'ทำงานเบื้องหลัง (กดส่งเอง)' : AUTO_SUBMIT ? 'แสดงหน้าต่าง · กดส่งเอง' : 'แสดงหน้าต่าง · รอคนตรวจแล้วกดส่ง'}`);
 
   // error ที่หลุดจาก timer ภายใน Playwright (เช่นตัวบันทึกเขียนไฟล์ตามมาทีหลัง) ไม่ควรทำให้ worker ทั้งตัวตาย
   process.on('uncaughtException', (error) => log('⚠️  error ภายใน:', error instanceof Error ? error.message : error));
 
-  let stop = false;
   process.on('SIGINT', () => { stop = true; log('กำลังหยุดหลังจบงานที่ทำอยู่…'); });
 
   while (!stop) {
@@ -226,7 +270,6 @@ async function main() {
 
     if (task) {
       busy = task.type === WEB_TASK.RECORD ? 'บันทึกขั้นตอน' : `BL ${(task as RunTask).data.vars?.job?.blNo ?? '-'}`;
-      void beat();
       try {
         if (task.type === WEB_TASK.RECORD) {
           log(`รับงานบันทึก Template "${task.data.templateName ?? task.data.templateId}"`);
@@ -246,16 +289,19 @@ async function main() {
         }).catch((e) => log('บันทึกผลพังไม่ได้:', e));
       }
       busy = null;
-      void beat();
       if (ONCE) break;
       continue;
     }
     if (ONCE) { log('คิวว่าง'); break; }
-    await sleep(POLL_MS);
+    // รอรอบถัดไปทีละช่วงสั้น ๆ จะได้ปิดตัวทันทีเมื่อถูกสั่งปิด
+    for (let waited = 0; waited < POLL_MS && !stop; waited += 1_000) await sleep(1_000);
   }
 
-  clearInterval(heartbeat);
+  beating = false;
   await closeMain();
+  log('ปิด worker แล้ว');
+  await api('heartbeat', { worker: WORKER, busy: null, log: recent, offline: true }).catch(() => {});
+  process.exit(0);
 }
 
 main().catch((error) => {

@@ -3,7 +3,8 @@
 # ติดตั้งตัวเปิด worker กรอกเว็บบน Mac — ให้ปุ่ม "เปิด worker" ที่หน้าจัดการแลก DO ใช้ได้
 #
 # สร้างแอป ~/Applications/KOLA Worker.app ที่รับลิงก์ kola-worker://start
-# กดปุ่มบนเว็บแล้วแอปนี้เปิด Terminal รัน npm run worker:web ในโฟลเดอร์ v2 นี้
+# กดปุ่มบนเว็บแล้วแอปนี้รัน npm run worker:web ในโฟลเดอร์ v2 นี้แบบไม่มีหน้าต่าง Terminal
+# ดูการทำงานได้ที่ปุ่ม "ดูการทำงาน" บนหน้าแลก DO หรือไฟล์ ~/Library/Logs/KOLA/web-worker.log
 # ถ้า worker เปิดอยู่แล้วจะไม่เปิดซ้ำ (โปรไฟล์ Chrome เปิดได้ทีละตัว)
 #
 # วิธีใช้ (ในโฟลเดอร์ v2):  bash scripts/install/mac-worker-launcher.sh
@@ -14,6 +15,9 @@ V2="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="$HOME/Applications/KOLA Worker.app"
 
 command -v npm >/dev/null || { echo "ไม่พบ npm — ติดตั้ง Node.js ก่อน"; exit 1; }
+# แอปที่เปิดจากลิงก์ไม่ได้โหลด PATH ของ shell — จำที่อยู่ของ node ไว้ตอนติดตั้ง
+NODE_DIR="$(dirname "$(command -v node)")"
+LOG_DIR="$HOME/Library/Logs/KOLA"
 [ -d "$V2/node_modules" ] || { echo "ยังไม่ได้ npm install — กำลังติดตั้ง"; (cd "$V2" && npm install); }
 grep -q '^WORKER_API_KEY=.' "$V2/.env.local" 2>/dev/null || echo "⚠️  ยังไม่มี WORKER_API_KEY ใน $V2/.env.local — worker จะต่อ ERP ไม่ได้จนกว่าจะใส่"
 
@@ -35,13 +39,12 @@ on startWorker()
       display notification "worker เปิดอยู่แล้ว" with title "KOLA Worker"
       return
     end if
-    tell application "Terminal"
-      activate
-      do script "cd " & quoted form of "$V2" & " && npm run worker:web"
-    end tell
+    -- เปิดเบื้องหลัง ไม่มีหน้าต่าง Terminal · ดูการทำงานบนหน้าแลก DO หรือไฟล์ log
+    do shell script "export PATH=" & quoted form of "$NODE_DIR" & ":\$PATH; mkdir -p " & quoted form of "$LOG_DIR" & "; cd " & quoted form of "$V2" & " && nohup npm run worker:web >> " & quoted form of "$LOG_DIR/web-worker.log" & " 2>&1 < /dev/null &"
+    display notification "กำลังเปิด worker — ดูสถานะที่หน้าแลก DO" with title "KOLA Worker"
   on error errMsg number errNum
     -- อย่าพังเงียบ ๆ — บอกให้เห็นว่าติดอะไร (เช่นยังไม่อนุญาตให้ควบคุม Terminal)
-    display dialog "เปิด worker ไม่สำเร็จ: " & errMsg & " (" & errNum & ")" & return & return & "ถ้าเป็นเรื่องสิทธิ์: System Settings → Privacy & Security → Automation → KOLA Worker → เปิด Terminal" buttons {"ตกลง"} default button 1 with title "KOLA Worker" with icon caution
+    display dialog "เปิด worker ไม่สำเร็จ: " & errMsg & " (" & errNum & ")" & return & return & "ดู log ได้ที่ $LOG_DIR/web-worker.log" buttons {"ตกลง"} default button 1 with title "KOLA Worker" with icon caution
   end try
 end startWorker
 APPLESCRIPT
@@ -66,5 +69,6 @@ codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
 
 echo "✅ ติดตั้งแล้ว: $APP"
-echo "   ปุ่ม 'เปิด worker' ที่หน้าจัดการแลก DO จะเปิด npm run worker:web ใน $V2"
+echo "   ปุ่ม 'เปิด worker' ที่หน้าจัดการแลก DO จะเปิด npm run worker:web ใน $V2 แบบไม่มีหน้าต่าง"
+echo "   log: $LOG_DIR/web-worker.log"
 echo "   ครั้งแรกเบราว์เซอร์จะถามว่าจะเปิด KOLA Worker ไหม — ติ๊กอนุญาตเสมอแล้วกดเปิด"

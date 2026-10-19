@@ -15,7 +15,7 @@ import { doAttachmentsFor } from '@/lib/queries/do-files';
 import { WebSendButton } from '@/components/WebSendButton';
 import { shiplineMatches, templateButtonsFor, webTasksFor } from '@/lib/web-template-store';
 import { WorkerLauncher } from '@/components/WorkerLauncher';
-import { onlineWorkers } from '@/lib/worker-status';
+import { getWorkerSettings, onlineWorkers } from '@/lib/worker-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,12 +52,13 @@ export default async function DoExchangePage({
     doQueueArrivalDates(sent ? 'sent' : 'wait'),
   ]);
   // สลิปกับเอกสารมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
-  const [attachments, templates, webTasks, workers] = await Promise.all([
+  const [attachments, templates, webTasks, workers, workerSettings] = await Promise.all([
     doAttachmentsFor(rows.map((r) => r.id)),
     // ปุ่มจาก Template กรอกเว็บ ที่ผู้ดูแลตั้งให้ขึ้นที่หน้านี้
     sent ? Promise.resolve([]) : templateButtonsFor('do-exchange', user.role),
     sent ? Promise.resolve(new Map()) : webTasksFor(rows.map((r) => r.id)),
     onlineWorkers(),
+    getWorkerSettings(),
   ]);
 
   const columns: Column[] = [
@@ -211,7 +212,7 @@ export default async function DoExchangePage({
           </p>
         </div>
         {/* worker กรอกเว็บ — ปุ่มจาก Template กรอกเว็บต้องมี worker เปิดอยู่จึงจะทำงาน */}
-        <WorkerLauncher initial={workers} />
+        <WorkerLauncher initial={workers} initialSettings={workerSettings} />
       </div>
       <Tabs basePath="/do-exchange" items={TABS} active={tab} carry={carry} />
 

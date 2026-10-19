@@ -1,7 +1,8 @@
 ﻿# ติดตั้งตัวเปิด worker กรอกเว็บบน Windows — ให้ปุ่ม "เปิด worker" ที่หน้าจัดการแลก DO ใช้ได้
 #
 # ลงทะเบียนลิงก์ kola-worker:// ให้ผู้ใช้คนนี้ (ไม่ต้องใช้สิทธิ์ Administrator)
-# กดปุ่มบนเว็บแล้วจะเปิดหน้าต่าง cmd รัน npm run worker:web ในโฟลเดอร์ v2 นี้
+# กดปุ่มบนเว็บแล้วจะรัน npm run worker:web ในโฟลเดอร์ v2 นี้แบบไม่มีหน้าต่าง
+# ดูการทำงานได้ที่ปุ่ม "ดูการทำงาน" บนหน้าแลก DO หรือไฟล์ %LOCALAPPDATA%\KOLA\web-worker.log
 # ถ้า worker เปิดอยู่แล้วจะไม่เปิดซ้ำ (โปรไฟล์ Chrome เปิดได้ทีละตัว)
 #
 # วิธีใช้: ดับเบิลคลิก windows-worker-launcher.cmd ในโฟลเดอร์เดียวกันนี้
@@ -34,7 +35,8 @@ if ($running) {
   [System.Windows.MessageBox]::Show('worker เปิดอยู่แล้ว', 'KOLA Worker') | Out-Null
   exit
 }
-Start-Process cmd.exe -ArgumentList '/k', 'chcp 65001 >nul && title KOLA worker && cd /d "__V2__" && npm run worker:web'
+$log = Join-Path $env:LOCALAPPDATA 'KOLA\web-worker.log'
+Start-Process cmd.exe -WindowStyle Hidden -ArgumentList '/c', ('chcp 65001 >nul && cd /d "__V2__" && npm run worker:web >> "' + $log + '" 2>&1')
 '@
 $body.Replace('__V2__', $v2) | Set-Content -Encoding UTF8 -Path $launcher
 
@@ -46,5 +48,6 @@ New-Item -Force -Path "$key\shell\open\command" | Out-Null
 Set-ItemProperty -Path "$key\shell\open\command" -Name '(Default)' `
   -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`" `"%1`""
 
-Write-Host "ติดตั้งแล้ว — ปุ่ม 'เปิด worker' ที่หน้าจัดการแลก DO จะเปิด npm run worker:web ใน $v2" -ForegroundColor Green
+Write-Host "ติดตั้งแล้ว — ปุ่ม 'เปิด worker' ที่หน้าจัดการแลก DO จะเปิด npm run worker:web ใน $v2 แบบไม่มีหน้าต่าง" -ForegroundColor Green
+Write-Host "log: $dir\web-worker.log"
 Write-Host 'ครั้งแรกเบราว์เซอร์จะถามว่าจะเปิด KOLA Worker ไหม — ติ๊กอนุญาตเสมอแล้วกดเปิด'

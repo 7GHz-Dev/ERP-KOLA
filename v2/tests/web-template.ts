@@ -234,6 +234,21 @@ async function main() {
       console.log('✓ หยุดให้คนทำ ทนการเปลี่ยนหน้า');
     }
 
+    /* ---- ทำงานเบื้องหลัง: ขั้นที่ต้องให้คนทำต้องแจ้งทันที ไม่รอ ---- */
+    {
+      const context = await browser.newContext();
+      await assert.rejects(
+        runTemplate(context, { ...def, steps: [{ type: 'pause', message: 'OTP' }] }, { mode: 'auto', vars, files: {}, headless: true }),
+        /ขั้นที่ 1 .*สลับเป็น "แสดงหน้าต่าง"/,
+      );
+      await assert.rejects(
+        runTemplate(context, { ...def, loggedInText: 'ข้อความที่ไม่มีบนหน้า', steps: [] }, { mode: 'auto', vars, files: {}, headless: true }),
+        /ยังไม่ได้ล็อกอิน/,
+      );
+      await context.close();
+      console.log('✓ เบื้องหลังแจ้งขั้นที่ต้องให้คนทำ');
+    }
+
     /* ---- 3. ทดลองรัน — หยุดก่อนส่ง ---- */
     {
       const context = await browser.newContext();

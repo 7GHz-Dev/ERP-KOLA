@@ -26,6 +26,8 @@ export type RunOptions = {
   /** เวลารอคนตรวจแล้วกดส่งเอง / รอคนล็อกอิน / รอคนกดทำต่อ */
   reviewWaitMs?: number;
   loginWaitMs?: number;
+  /** Chrome ไม่มีหน้าต่าง — ขั้นที่ต้องให้คนทำ (ล็อกอิน · หยุดให้คนทำ) ทำไม่ได้ ต้องแจ้งแทนการรอ */
+  headless?: boolean;
 };
 
 export type RunResult = {
@@ -191,6 +193,9 @@ async function openStart(page: Page, def: WebTemplateDefinition, opts: RunOption
   const marker = page.getByText(def.loggedInText).first();
   if (await marker.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true, () => false)) return;
 
+  if (opts.headless) {
+    throw new Error('ยังไม่ได้ล็อกอินเว็บนี้ — สลับเป็น "แสดงหน้าต่าง" ที่หน้าแลก DO แล้วล็อกอินหนึ่งครั้ง');
+  }
   opts.log?.('⚠️  ยังไม่ได้ล็อกอิน — กรุณาล็อกอินในหน้าต่าง Chrome ที่เปิดขึ้นมา');
   const origin = new URL(def.startUrl).origin;
   const until = Date.now() + (opts.loginWaitMs ?? 10 * 60_000);
@@ -356,6 +361,7 @@ async function runStep(
     }
 
     case 'pause': {
+      if (opts.headless) throw new Error('ขั้นนี้ต้องให้คนทำ — สลับเป็น "แสดงหน้าต่าง" ที่หน้าแลก DO แล้วส่งใหม่');
       opts.log?.(`⏸  ${step.message} — กด "ทำต่อ" บนแถบด้านบนของหน้าเมื่อเสร็จ`);
       /*
        * ระหว่างรอ คนมักล็อกอินหรือกดไปหน้าอื่น — หน้าใหม่ไม่มีแถบและตัวแปรเดิม

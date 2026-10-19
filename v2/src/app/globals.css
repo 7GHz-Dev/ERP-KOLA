@@ -2090,7 +2090,7 @@ label.mini:has(.search-select) { overflow: visible; }
 .wt-import-form { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 
 /* ปุ่มเปิด worker กรอกเว็บ (หน้าจัดการแลก DO) */
-.worker-launcher { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 360px; }
+.worker-launcher { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 460px; }
 .worker-launcher-note { flex-basis: 100%; text-align: right; font-size: 11px; color: var(--amber); }
 .worker-launcher-help { flex-basis: 100%; font-size: 12px; text-align: right; }
 .worker-launcher-help summary { cursor: pointer; color: var(--blue); }
@@ -2103,4 +2103,21 @@ label.mini:has(.search-select) { overflow: visible; }
 @media (max-width: 640px) {
   .worker-launcher { justify-content: flex-start; max-width: none; }
   .worker-launcher-note, .worker-launcher-help { text-align: left; }
+}
+.worker-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.worker-mode form { display: contents; }
+.worker-mode .button { border: 0; border-radius: 0; background: var(--surface); }
+.worker-mode .button.on { background: var(--navy); color: #fff; }
+.worker-launcher-note.muted { color: var(--muted); }
+.worker-watch {
+  flex-basis: 100%; text-align: left; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); padding: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+.worker-watch-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.worker-watch-head small { color: var(--muted); }
+.worker-watch-shot { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--canvas); }
+.worker-watch-empty { margin: 0; padding: 18px; text-align: center; font-size: 12px; color: var(--muted); background: var(--canvas); border-radius: 6px; }
+.worker-watch-log {
+  margin: 0; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font: 11px/1.45 ui-monospace, Menlo, monospace; background: #1f1d1a; color: #e8e4dc; padding: 8px; border-radius: 6px;
 }
