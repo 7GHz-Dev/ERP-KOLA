@@ -6,6 +6,7 @@ import { runTaskSimulation } from '@/lib/actions/automation';
 import { SubmitButton } from '@/components/ActionForms';
 import { Tabs } from '@/components/JobTable';
 import { formatDate } from '@/lib/format';
+import { DRAFT_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,7 @@ export default async function AutomationPage({
       resultFileName: automationTasks.resultFileName,
       error: automationTasks.error,
       attempts: automationTasks.attempts,
+      claimedBy: automationTasks.claimedBy,
       createdAt: automationTasks.createdAt,
       jobNo: jobs.jobNo,
     })
@@ -49,6 +51,9 @@ export default async function AutomationPage({
     .limit(100);
 
   const pending = rows.filter((r) => r.status === 'QUEUED' || r.status === 'PROCESSING').length;
+  // Draft ใบขนทำโดย imp worker ตัวจริง ไม่มีปุ่มจำลองแล้ว — ใบขน (customs) ยังไม่มี worker จึงยังใช้ตัวจำลอง
+  const simulate = tab !== 'draft';
+  const drafters = tab === 'draft' ? await onlineWorkers({ mode: DRAFT_WORKER_MODE }) : [];
 
   return (
     <>
@@ -59,10 +64,20 @@ export default async function AutomationPage({
 
       <Tabs basePath="/automation" items={TABS} active={tab} />
 
-      <div className="notice">
-        ปุ่ม &quot;เริ่มสร้าง&quot; เป็นตัวจำลองไว้ทดสอบทั้งเส้นก่อนโปรแกรม Python จะพร้อม
-        ผลลัพธ์ออกมาในรูปแบบเดียวกับที่ worker ตัวจริงจะส่ง
-      </div>
+      {simulate ? (
+        <div className="notice">
+          ปุ่ม &quot;เริ่มสร้าง&quot; เป็นตัวจำลองไว้ทดสอบทั้งเส้นก่อนโปรแกรม Python จะพร้อม
+          ผลลัพธ์ออกมาในรูปแบบเดียวกับที่ worker ตัวจริงจะส่ง
+        </div>
+      ) : (
+        <div className="notice">
+          งานในแถบนี้ทำโดย imp worker บนเครื่องที่เปิด NETBAY ได้ — สร้างใบขน แนบ CSV และ Save ให้เอง ·{' '}
+          {drafters.length
+            ? <b>worker ออนไลน์ · {drafters[0].busy ?? 'ว่าง รอรับงาน'}</b>
+            : <b>worker ออฟไลน์ — งานจะรอในคิวจนกว่าจะเปิด imp worker</b>}
+          {' '}· ทำซ้ำหรือแก้ไฟล์แล้วสร้างใหม่ ให้กด &quot;สร้าง Draft&quot; ที่หน้างานคงค้าง
+        </div>
+      )}
 
       <div className="table-wrap">
         <table className="data">
@@ -76,17 +91,18 @@ export default async function AutomationPage({
               <th>{tab === 'draft' ? 'Ref No.' : 'เลขใบขน'}</th>
               {tab === 'customs' ? <th>ไฟล์ผล</th> : null}
               <th>ครั้งที่</th>
+              <th>ทำโดย</th>
               <th>ข้อผิดพลาด</th>
               <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td className="empty" colSpan={tab === 'customs' ? 10 : 9}>ยังไม่มีงานในแถบนี้</td></tr>
+              <tr><td className="empty" colSpan={tab === 'customs' ? 11 : 10}>ยังไม่มีงานในแถบนี้</td></tr>
             ) : rows.map((r, i) => {
               let data: { refNo?: string } = {};
               try { data = JSON.parse(r.payload ?? '{}'); } catch { data = {}; }
-              const canStart = r.status === 'QUEUED' || r.status === 'ERROR';
+              const canStart = simulate && (r.status === 'QUEUED' || r.status === 'ERROR');
               return (
                 <tr key={r.id}>
                   <td>{i + 1}</td>
@@ -97,6 +113,7 @@ export default async function AutomationPage({
                   <td><b>{(tab === 'draft' ? r.resultRefNo : r.resultEntryNo) || '-'}</b></td>
                   {tab === 'customs' ? <td>{r.resultFileName ?? '-'}</td> : null}
                   <td>{r.attempts}</td>
+                  <td>{r.claimedBy === 'simulator' ? 'ตัวจำลอง (ไม่ใช่ใบขนจริง)' : (r.claimedBy ?? '-')}</td>
                   <td>{r.error ?? ''}</td>
                   <td>
                     {canStart ? (
