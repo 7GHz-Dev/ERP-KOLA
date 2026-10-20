@@ -1,0 +1,50 @@
+{
+ "ok": false,
+ "file_type": "MSFZ",
+ "invoice_no": "TEST-INV-01",
+ "invoice_date": "07/08/2026",
+ "bl_no": "TESTBL0001",
+ "errors": [
+  "คันที่ 1 (TEST12-000001): use_desc_good2 \"HR15(GASOLINE/1490),2011\" ไม่ตรงกับเลขเครื่อง \"HR16\" — เปิดไฟล์ใน Excel กด Save แล้วอัปโหลดใหม่"
+ ],
+ "warnings": [
+  "คันที่ 3 (WDDTEST0000000003): ไม่พบพิกัดสำหรับ MERCEDES BENZ C200 GASOLINE 1790CC 1500KG"
+ ],
+ "cars": [
+  {
+   "car_no": 2,
+   "brand": "TOYOTA",
+   "model": "CROWN",
+   "chassis": "TEST20-000002",
+   "year": "2008",
+   "cc": 3450,
+   "fuel": "GASOLINE",
+   "weight": "1690",
+   "price": "600000",
+   "tariff": "000087032449",
+   "engine_before": "2GR",
+   "engine": "2GR-xxxxxxx",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  },
+  {
+   "car_no": 3,
+   "brand": "MERCEDES BENZ",
+   "model": "C200",
+   "chassis": "WDDTEST0000000003",
+   "year": "2012",
+   "cc": 1790,
+   "fuel": "GASOLINE",
+   "weight": "1500",
+   "price": "172700.5",
+   "tariff": "XXXX",
+   "engine_before": "M271",
+   "engine": "M271-xxxxxxx",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  }
+ ],
+ "new_count": 2,
+ "rows": [],
+ "reuse_bl": false
+}

@@ -29,6 +29,8 @@ export const CUSTOMS_TASK_TYPES: string[] = [TASK_TYPES.DRAFT, TASK_TYPES.CUSTOM
 
 /** Final Invoice ที่ worker (imp) เติมเลขเครื่องแล้ว ส่งกลับมาพร้อมเลข Ref No. ของ Draft */
 export const DRAFT_RESULT_CATEGORY = 'FINAL_INVOICE_ENGINE';
+/** CSV ที่ worker นำเข้า NETBAY (TIS-620) — เก็บไว้ดูย้อนหลังหรือนำเข้าเองซ้ำ */
+export const DRAFT_CSV_CATEGORY = 'DRAFT_CSV';
 
 /**
  * สายเรือที่ขอ D/O ผ่านเว็บ My Customer Service ได้ — CMA CGM, APL, ANL และ CNC
@@ -117,6 +119,8 @@ export async function completeTask(input: {
   refNo?: string;
   entryNo?: string;
   file?: { name: string; mimeType: string; body: Buffer };
+  /** งาน Draft: CSV ที่ worker นำเข้า NETBAY */
+  csv?: { name: string; mimeType: string; body: Buffer };
 }) {
   const [task] = await db.select().from(automationTasks)
     .where(eq(automationTasks.id, input.taskId)).limit(1);
@@ -143,6 +147,7 @@ export async function completeTask(input: {
       patch.resultStorageKey = await storeResultFile(task.jobId, DRAFT_RESULT_CATEGORY, input.actorId, input.file);
       patch.resultFileName = input.file.name;
     }
+    if (input.csv) await storeResultFile(task.jobId, DRAFT_CSV_CATEGORY, input.actorId, input.csv);
 
     const [entry] = await db.select().from(customsEntries)
       .where(eq(customsEntries.jobId, task.jobId)).orderBy(desc(customsEntries.updatedAt)).limit(1);

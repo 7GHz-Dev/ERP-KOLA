@@ -39,7 +39,12 @@
     "test:letter": "tsx --tsconfig tsconfig.json tests/do-letter-evergreen.ts",
     "worker:do": "tsx --tsconfig tsconfig.json scripts/do-request-worker.ts",
     "worker:web": "tsx --tsconfig tsconfig.json scripts/web-template-worker.ts",
-    "test:web-template": "tsx --tsconfig tsconfig.json tests/web-template.ts"
+    "test:web-template": "tsx --tsconfig tsconfig.json tests/web-template.ts",
+    "worker:draft": "tsx --tsconfig tsconfig.json scripts/draft-worker.ts",
+    "netbay:open": "tsx --tsconfig tsconfig.json scripts/netbay-open.ts",
+    "engine:migrate": "tsx scripts/migrate-engine-numbers.ts",
+    "engine:import": "tsx scripts/import-engine-numbers.ts",
+    "test:draft": "tsx --tsconfig tsconfig.json tests/draft-invoice.ts && tsx --tsconfig tsconfig.json tests/draft-worker.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",
@@ -47,6 +52,7 @@
     "@supabase/supabase-js": "^2.47.10",
     "drizzle-orm": "^0.38.3",
     "exceljs": "^4.4.0",
+    "jszip": "^3.10.1",
     "next": "^15.1.6",
     "pdfjs-dist": "^4.10.38",
     "postgres": "^3.4.5",

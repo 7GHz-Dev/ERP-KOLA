@@ -412,3 +412,30 @@ export const automationTasks = pgTable('automation_tasks', {
   queueIdx: index('automation_queue_idx').on(t.type, t.status, t.createdAt),
   jobIdx: index('automation_job_idx').on(t.jobId),
 }));
+
+/* ---------------- เลขเครื่อง (worker สร้าง Draft ใบขน) ---------------- */
+
+/**
+ * เลขเครื่อง 7 หลักที่ออกไปแล้ว — ย้ายมาจาก engine.db (SQLite) ของโปรแกรม imp
+ * ซึ่งโครงเหมือนตาราง APP_RANDOM_ENG บน SQL Server ของโปรแกรมเก่า
+ *
+ * เลขใหม่ต้องไม่ซ้ำกับ random_eng ใด ๆ ทั้งตาราง (ข้อมูลเก่าบางเลขอาจผูกหลาย chassis จึงไม่ใช้ unique บนเลขอย่างเดียว)
+ * ออกเลขผ่าน issueEngineNumbers() เท่านั้น — ล็อกทั้งตารางใน transaction เดียว worker หลายเครื่องจึงไม่ได้เลขซ้ำกัน
+ * สร้างด้วย scripts/migrate-engine-numbers.ts
+ */
+export const engineNumbers = pgTable('engine_numbers', {
+  id: id(),
+  number: text('random_eng').notNull(),        // เลขสุ่ม 7 หลัก
+  fullEngine: text('full_eng'),                // เลขเครื่องเต็ม เช่น HR15-4810731
+  chassis: text('chassis').notNull(),
+  dateRan: text('date_ran'),                   // 'YYYY-MM-DD HH:MM:SS' เวลาไทย (ข้อมูลเก่าจาก SQL Server เป็นข้อความ)
+  blNo: text('bl_no'),
+  invoiceNo: text('invoice_no'),
+  sourceFile: text('source_file'),
+  jobId: text('job_id'),
+  taskId: text('task_id'),
+  createdAt: createdAt(),
+}, (t) => ({
+  numberChassisKey: uniqueIndex('engine_numbers_number_chassis_key').on(t.number, t.chassis),
+  chassisIdx: index('engine_numbers_chassis_idx').on(t.chassis),
+}));

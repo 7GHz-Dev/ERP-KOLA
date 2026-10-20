@@ -13,6 +13,7 @@ import { hasArrivalFiles, listJobs, QUEUE, type JobRow } from '@/lib/queries/job
 import { pendingTabCounts } from '@/lib/queries/dashboard';
 import { intakeOptions } from '@/lib/queries/master';
 import { DRAFT_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
+import { DraftWorkerBar } from '@/components/DraftWorkerBar';
 
 export const dynamic = 'force-dynamic';
 
@@ -248,7 +249,7 @@ export default async function PendingPage({
     pendingTabCounts(),
     // ตัวเลือก master สำหรับฟอร์มแก้ BL — ดึงรอบเดียวแล้วส่งต่อให้ทุกแถวใช้ร่วมกัน
     intakeOptions(),
-    // imp worker ที่สร้าง Draft ใน NETBAY — บอก PAINT ว่ากดแล้วจะมีคนรับงานไหม
+    // worker ที่สร้าง Draft ใน NETBAY — บอก PAINT ว่ากดแล้วจะมีคนรับงานไหม
     tab === 'draft' ? onlineWorkers({ mode: DRAFT_WORKER_MODE }) : Promise.resolve([]),
   ]);
 
@@ -335,21 +336,8 @@ export default async function PendingPage({
       </div>
       ) : null}
 
-      {tab === 'draft' ? (
-        <div className="filter-bar">
-          <span className="filter-label">สร้าง Draft อัตโนมัติ (imp)</span>
-          {draftWorkers.length ? draftWorkers.map((w) => (
-            <span key={w.name} className="badge approved" title={w.log.at(-1) ?? ''}>
-              ออนไลน์ · {w.busy ?? 'ว่าง'}
-            </span>
-          )) : <span className="badge rejected">ออฟไลน์</span>}
-          <span className="filter-note">
-            {draftWorkers.length
-              ? `กด "สร้าง Draft" แล้ว imp จะตรวจ Final Invoice สุ่มเลขเครื่อง สร้างใบขนใน NETBAY และ Save ให้ · ${draftWorkers[0].log.at(-1) ?? ''}`
-              : 'งานที่กด "สร้าง Draft" จะรอในคิว จนกว่าจะเปิด imp worker (run_worker.bat) บนเครื่อง server'}
-          </span>
-        </div>
-      ) : null}
+      {/* กด "สร้าง Draft" แล้ว worker ตรวจ Final Invoice ออกเลขเครื่อง สร้างใบขนใน NETBAY และ Import CSV ให้ */}
+      {tab === 'draft' ? <DraftWorkerBar initial={draftWorkers} /> : null}
 
       {tab === 'bl' && sub === 'wait' ? (
         <BulkBar

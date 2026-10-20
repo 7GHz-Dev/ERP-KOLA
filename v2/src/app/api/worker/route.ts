@@ -6,6 +6,7 @@ import { downloadFile } from '@/lib/storage';
 import { completeTask, CUSTOMS_TASK_TYPES, failTask } from '@/lib/automation';
 import { downloadTaskFile, saveRecording } from '@/lib/web-template-store';
 import { recordHeartbeat } from '@/lib/worker-status';
+import { engineLookup, issueEngineNumbers } from '@/lib/engine-numbers';
 
 /**
  * REST สำหรับโปรแกรม Python
@@ -71,14 +72,27 @@ async function downloadInput(args: any) {
 }
 
 /** ไฟล์ที่ worker ส่งกลับมา (ผลลัพธ์ หรือภาพหน้าจอ) */
-function fileArg(args: any) {
-  return args?.file?.base64
+function fileArg(args: any, key = 'file') {
+  const f = args?.[key];
+  return f?.base64
     ? {
-        name: String(args.file.name ?? 'result'),
-        mimeType: String(args.file.mimeType ?? 'application/octet-stream'),
-        body: Buffer.from(String(args.file.base64), 'base64'),
+        name: String(f.name ?? 'result'),
+        mimeType: String(f.mimeType ?? 'application/octet-stream'),
+        body: Buffer.from(String(f.base64), 'base64'),
       }
     : undefined;
+}
+
+/** รายการข้อความจาก worker — ตัดให้อยู่ในกรอบ กันส่งของแปลกเข้ามา */
+const strings = (v: unknown, max = 500) =>
+  (Array.isArray(v) ? v : []).map((s) => String(s ?? '').trim().slice(0, 80)).filter(Boolean).slice(0, max);
+
+/** งานในคิวที่ worker ถืออยู่ — ออกเลขเครื่องได้เฉพาะงาน DRAFT_ENTRY ที่กำลังทำ */
+async function draftTask(taskId: string) {
+  const [task] = await db.select().from(automationTasks).where(eq(automationTasks.id, taskId)).limit(1);
+  if (!task || task.type !== 'DRAFT_ENTRY') throw new Error('ไม่พบงาน Draft ใบขนนี้ในคิว');
+  if (task.status !== 'PROCESSING') throw new Error(`งานนี้สถานะ ${task.status} ไม่ได้อยู่ระหว่างทำ`);
+  return task;
 }
 
 const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
@@ -98,6 +112,28 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
     // ตอบค่าตั้งที่ ANN สั่งจากหน้าเว็บกลับไป (ทำงานเบื้องหลัง · ปิด worker)
     return { settings };
   },
+  // เลขเครื่องของงาน Draft ใบขน — ตรวจเลขซ้ำ/ใช้เลขเดิม แล้วออกเลขใหม่ใน transaction เดียว
+  async engineLookup(args: any) {
+    return { rows: await engineLookup(strings(args?.numbers), strings(args?.chassis)) };
+  },
+  async engineIssue(args: any) {
+    const task = await draftTask(String(args?.taskId ?? ''));
+    const s = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
+    const issue = (Array.isArray(args?.issue) ? args.issue : []).slice(0, 500)
+      .map((c: any) => ({ head: s(c?.head, 80), chassis: s(c?.chassis, 80) }));
+    const add = (Array.isArray(args?.add) ? args.add : []).slice(0, 500)
+      .map((c: any) => ({ number: s(c?.number, 20), full: s(c?.full, 80), chassis: s(c?.chassis, 80) }));
+    if ([...issue, ...add].some((c) => !c.chassis) || issue.some((c: { head: string }) => !c.head)
+      || add.some((c: { number: string }) => !/^\d{7}$/.test(c.number))) {
+      throw new Error('ข้อมูลเลขเครื่องไม่ครบ');
+    }
+    const issued = await issueEngineNumbers({
+      taskId: task.id, jobId: task.jobId, blNo: s(args?.blNo), invoiceNo: s(args?.invoiceNo),
+      sourceFile: s(args?.sourceFile, 300), issue, add,
+    });
+    return { issued };
+  },
+
   async saveRecording(args: any) {
     return saveRecording(String(args?.taskId ?? ''), { startUrl: args?.startUrl, steps: args?.steps, code: args?.code });
   },
@@ -110,6 +146,7 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
       refNo: args?.refNo,
       entryNo: args?.entryNo,
       file,
+      csv: fileArg(args, 'csv'),
     });
     return { ok: true };
   },

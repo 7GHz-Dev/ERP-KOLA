@@ -1,0 +1,15 @@
+{
+ "ok": false,
+ "file_type": "",
+ "invoice_no": "",
+ "invoice_date": "",
+ "bl_no": "",
+ "errors": [
+  "ไม่รู้จักชนิดไฟล์ '' ในช่อง P4 (รองรับ: MSFZ, JTC, AICHI, HUAYO, JAN TRADING)"
+ ],
+ "warnings": [],
+ "cars": [],
+ "new_count": 0,
+ "rows": [],
+ "reuse_bl": false
+}

@@ -1,0 +1,345 @@
+/**
+ * คุมหน้าเว็บ NETBAY (KOLA) ด้วย Playwright — ยกมาจาก core/netbay.py ของโปรแกรม imp
+ *
+ *   createDraft()      worker สร้าง Draft ใบขน: login -> New (610) -> กรอกหัวใบขน -> Add Invoice -> Import CSV
+ *                      จบทันทีที่ NETBAY ขึ้น "success please check your invoice" — ไม่กด Save / Send to Customs
+ *   openDeclaration()  ลิงก์ Ref No. บน ERP: login -> Import -> ค้นหา Reference No. -> เปิดใบขนนั้นค้างไว้ให้ตรวจ
+ *
+ * XPath ยกมาจากโปรแกรมเดิม (Selenium) และตรวจกับหน้าจริงแล้ว
+ * ค่าตั้งอยู่ใน .env.local: NETBAY_USER, NETBAY_PASSWORD (และค่าหัวใบขนถ้าต่างจากค่าตั้งต้นด้านล่าง)
+ */
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { chromium, type Browser, type Frame, type FrameLocator, type Locator, type Page } from 'playwright-core';
+import type { Totals } from '../src/lib/draft/csv';
+
+export type NetbaySettings = {
+  url: string; username: string; password: string; declarationType: string;
+  importerSearch: string; importerName: string; vessel: string; voyage: string;
+  originCountry: string; releasePort: string; headless: boolean;
+};
+
+/** ค่าจาก .env.local  ค่าหัวใบขนตั้งต้นเป็นค่าเดิมจากโปรแกรมเก่า */
+export function netbaySettings(env: Record<string, string | undefined> = process.env): NetbaySettings {
+  return {
+    url: (env.NETBAY_URL ?? 'http://192.168.1.123/kola/spn').replace(/\/$/, ''),
+    username: env.NETBAY_USER ?? '',
+    password: env.NETBAY_PASSWORD ?? '',
+    declarationType: env.NETBAY_DECLARATION_TYPE ?? '610',
+    importerSearch: env.NETBAY_IMPORTER_SEARCH ?? 'MAESOT FREE ZONE',
+    importerName: env.NETBAY_IMPORTER_NAME ?? 'บริษัท เเม่สอด ฟรีโซน จำกัด',
+    vessel: env.NETBAY_VESSEL ?? 'OOCL BANGKOK',
+    voyage: env.NETBAY_VOYAGE ?? 'XXXX',
+    originCountry: env.NETBAY_ORIGIN_COUNTRY ?? 'JP',
+    releasePort: env.NETBAY_RELEASE_PORT ?? '2836',     // ช่องแถว 9 ด้านขวาของหัวใบขน
+    headless: env.NETBAY_HEADLESS === '1',
+  };
+}
+
+export class NetbayError extends Error {}
+
+const D = 'xpath=//*[@id="declarationDIV"]/table/tbody/tr';
+const TREE_ROOT = 'xpath=//*[@id="outLineTree"]/font/div/table/tbody/tr[1]/td/div/font/b/span';
+const IMPORT_LINK = 'xpath=//*[@id="smoothmenu1"]/ul/li[3]/ul/li[5]/a';
+const LOGIN_AREA = 'xpath=/html/body/map/area';
+const UPLOAD_BTN = 'xpath=/html/body/table/tbody/tr[4]/td[2]/div/form/table/tbody/tr/td/table/tbody/tr[5]/td[2]/input[2]';
+const REF_NO = '#referenceNo';              // Reference No. ของใบขน เช่น QENX000000019 (มีตั้งแต่กด New)
+const SEARCH_REF = 'input[name="sREF"]';    // หน้ารายการใบขน: ช่อง Reference No.
+const SEARCH_BTN = '#refreshBTN';           // หน้ารายการใบขน: ปุ่ม Search
+export const IMPORT_OK = /success\W*(?:\w+\W+){0,3}?please\s+check\s+your\s+invoice/i;
+export let IMPORT_TIMEOUT_MS = 180_000;     // invoice ใหญ่ใช้เวลา Import นาน
+export const setImportTimeout = (ms: number) => { IMPORT_TIMEOUT_MS = ms; };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const squash = (s: string) => s.split(/\s+/).filter(Boolean).join(' ');
+const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; };
+
+function check(s: NetbaySettings) {
+  if (!s.url || !s.username || !s.password) {
+    throw new NetbayError('ยังไม่ได้ตั้ง NETBAY_USER / NETBAY_PASSWORD ใน .env.local');
+  }
+}
+
+/* ---------------- เบราว์เซอร์ ---------------- */
+
+/** Chromium ที่ Playwright โหลดไว้ (ใช้เมื่อเครื่องไม่มี Google Chrome) */
+function bundledChromium(): string | undefined {
+  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH, join(homedir(), 'Library', 'Caches', 'ms-playwright'),
+    join(homedir(), 'AppData', 'Local', 'ms-playwright'), join(homedir(), '.cache', 'ms-playwright')];
+  const exes = ['chrome-mac/Chromium.app/Contents/MacOS/Chromium', 'chrome-win/chrome.exe', 'chrome-linux/chrome'];
+  for (const root of roots) {
+    if (!root || !existsSync(root)) continue;
+    const dirs = readdirSync(root).filter((d) => /^chromium-\d+$/.test(d)).sort().reverse();
+    for (const d of dirs) for (const e of exes) if (existsSync(join(root, d, e))) return join(root, d, e);
+  }
+  return undefined;
+}
+
+/** Google Chrome ที่ติดตั้งในเครื่อง ไม่มีก็ใช้ Chromium ของ Playwright */
+export function chromePath(): string {
+  const candidates = [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    join(process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    join(process.env.LOCALAPPDATA ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    '/usr/bin/google-chrome',
+  ];
+  const found = candidates.find((p) => p && existsSync(p)) ?? bundledChromium();
+  if (!found) throw new NetbayError('ไม่พบ Google Chrome ในเครื่อง — ติดตั้ง Chrome ก่อน');
+  return found;
+}
+
+async function launch(s: NetbaySettings): Promise<Browser> {
+  const args = [`--unsafely-treat-insecure-origin-as-secure=${s.url}`, ...(s.headless ? [] : ['--start-maximized'])];
+  try {
+    return await chromium.launch({ channel: 'chrome', headless: s.headless, args });
+  } catch {
+    return chromium.launch({ executablePath: chromePath(), headless: s.headless, args });
+  }
+}
+
+/* ---------------- ขั้นตอนบนหน้าเว็บ ---------------- */
+
+/**
+ * ล้างช่อง แล้วพิมพ์ทีละตัว (ให้ event ของหน้าเว็บทำงานเหมือนคนพิมพ์) จนค่าในช่องตรง
+ * click=true ใช้กับช่องที่มี input mask (วันที่ __-__-____): คลิกแล้วกด Home ให้ cursor อยู่ต้นช่อง
+ * ไม่งั้นตัวเลขไปลงตรงจุดที่คลิก (กลางช่อง) ได้ __-__-2010
+ */
+async function typeInto(loc: Locator, value: string | number, click = false) {
+  const text = String(value);
+  for (let i = 0; i < 5; i++) {
+    await loc.fill('');
+    if (click) { await loc.click(); await loc.press('Home'); }
+    await loc.pressSequentially(text);
+    if ((await loc.inputValue()) === text) return;
+  }
+  throw new NetbayError(`กรอกค่า '${text}' ไม่สำเร็จ (ในช่องเป็น '${await loc.inputValue()}')`);
+}
+
+/** login แล้วคืนลิงก์หน้ารายการใบขนขาเข้า */
+export async function login(page: Page, s: NetbaySettings): Promise<string> {
+  await page.goto(`${s.url}/`);
+  await page.locator('#user').fill(s.username);
+  await page.locator('#passwd').fill(s.password);
+  await page.locator(LOGIN_AREA).first().dispatchEvent('click');     // ปุ่ม login เป็น <area> ของ image map
+  const link = page.locator(IMPORT_LINK);
+  try {
+    await link.waitFor({ state: 'attached', timeout: 15_000 });
+  } catch {
+    await page.locator('#passwd').press('Enter');
+    await link.waitFor({ state: 'attached' }).catch(() => {
+      throw new NetbayError('login ไม่สำเร็จ หรือไม่พบเมนูหน้า import — ตรวจ NETBAY_USER / NETBAY_PASSWORD');
+    });
+  }
+  const href = await link.evaluate((a) => (a as HTMLAnchorElement).href);
+  if (!href) throw new NetbayError('ไม่พบลิงก์หน้า import — หน้าเว็บ NETBAY อาจเปลี่ยน');
+  return href;
+}
+
+/** พิมพ์ชื่อบริษัท กดลูกศรลง ดับเบิลคลิกรายการแรก จนช่องผู้นำเข้าขึ้นชื่อที่ถูกต้อง */
+async function pickImporter(f: FrameLocator, s: NetbaySettings) {
+  const box = f.locator(`${D}[2]/td[2]/input`);
+  const name = f.locator('xpath=//*[@id="importerDetail"]/font/input[1]');
+  for (let i = 0; i < 10; i++) {
+    await typeInto(box, s.importerSearch);
+    await box.press('ArrowDown');
+    await f.locator('xpath=//*[@id="tr1"]/td[3]').dblclick();
+    if ((await name.inputValue()) === s.importerName) return;
+  }
+  throw new NetbayError(`เลือกบริษัทผู้นำเข้าไม่สำเร็จ (คาดว่า '${s.importerName}')`);
+}
+
+export type DraftInfo = { refNo?: string; declId?: string; dialogs: string[] };
+
+/** กด New (NETBAY สร้างใบขนทันที) แล้วกรอกหัวใบขน */
+async function newDeclaration(page: Page, importUrl: string, s: NetbaySettings, blNo: string, t: Totals, info: DraftInfo) {
+  await page.goto(importUrl);
+  await page.locator('#newBTN').click();
+  await page.locator(TREE_ROOT).waitFor({ state: 'attached' });
+  const f = page.frameLocator('#detailfrm');
+  info.refNo = await f.locator(REF_NO).inputValue();         // จำไว้ก่อน เผื่อขั้นต่อไปล้ม
+  info.declId = /ImDclCtrl=(\d+)/.exec(page.frame({ name: 'detailfrm' })?.url() ?? '')?.[1] ?? '';
+  if (!info.refNo) throw new NetbayError('ไม่พบ Reference No. ของใบขนที่สร้าง — หน้าเว็บ NETBAY อาจเปลี่ยน');
+
+  await f.locator('xpath=//*[@id="declTypeID"]/font/select').selectOption(s.declarationType);
+  await pickImporter(f, s);
+  await f.locator(`${D}[5]/td[2]/select`).selectOption('1');
+  await f.locator(`${D}[5]/td[4]/select`).selectOption('9');
+  await typeInto(f.locator(`${D}[6]/td[2]/input`), s.vessel);
+  await typeInto(f.locator('#ins_voyage'), s.voyage);
+  await typeInto(f.locator('#ins_arrivalDate'), today(), true);
+  await typeInto(f.locator(`${D}[7]/td[4]/input`), blNo);
+  await typeInto(f.locator(`${D}[8]/td[2]/input`), s.originCountry);
+  await typeInto(f.locator(`${D}[8]/td[4]/input`), s.originCountry);
+  await typeInto(f.locator(`${D}[9]/td[4]/input`), s.releasePort);
+  await typeInto(f.locator(`${D}[10]/td[2]/font[1]/input[1]`), t.package_amount);
+  await typeInto(f.locator(`${D}[10]/td[2]/font[1]/input[2]`), t.package_unit);
+  await typeInto(f.locator(`${D}[12]/td[2]/font/input[1]`), t.gross_weight);
+  await typeInto(f.locator(`${D}[13]/td[2]/font/input[1]`), t.gross_weight);
+  await typeInto(f.locator(`${D}[19]/td[2]/font/input[1]`), t.price);
+  await typeInto(f.locator(`${D}[19]/td[2]/font/input[2]`), t.currency);
+}
+
+/** ข้อความบนหน้าจอทุก frame — frame ที่กำลังโหลดใหม่หรือถูกถอดออกให้ข้ามไป */
+async function frameTexts(page: Page) {
+  const out: string[] = [];
+  for (const fr of page.frames() as Frame[]) {
+    out.push(await fr.evaluate(() => document.body?.innerText ?? '').catch(() => ''));
+  }
+  return out;
+}
+
+/** Add Invoice -> File for import (เลือก CSV) -> Import  แล้วรอจน NETBAY ขึ้น success please check your invoice */
+async function importCsv(page: Page, csvPath: string, dialogs: string[]) {
+  const f = page.frameLocator('#detailfrm');
+  await f.locator('#addInvoice').click();
+  await f.locator('xpath=//*[@id="maptypeDiv2"]/input').setInputFiles(csvPath);
+  // NETBAY เปลี่ยน iframe ทั้งอันหลังกด — ไม่รอ navigation ดูผลจากข้อความแทน
+  await f.locator(UPLOAD_BTN).click({ noWaitAfter: true }).catch((e: Error) => {
+    if (!/detached/.test(e.message)) throw e;
+  });
+  const until = Date.now() + IMPORT_TIMEOUT_MS;
+  while (Date.now() < until) {
+    for (const text of [...dialogs, ...(await frameTexts(page))]) {
+      const m = IMPORT_OK.exec(text);
+      if (m) return squash(m[0]);
+    }
+    await sleep(1_000);
+  }
+  const seen = squash((await frameTexts(page)).filter((t) => t.trim()).join(' | '));
+  throw new NetbayError(`ไม่เห็นข้อความ "success please check your invoice" หลังกด Import ภายใน ${Math.round(IMPORT_TIMEOUT_MS / 1000)} วินาที` +
+    ` — หน้าจอขึ้นว่า: ${seen.slice(0, 300) || '-'}`);
+}
+
+/**
+ * สร้าง Draft ใบขนใน NETBAY แล้วนำเข้า CSV  คืน Reference No.
+ * info ได้ refNo ตั้งแต่กด New — ถ้าล้มกลางทาง ผู้เรียกบอกได้ว่าใบไหนค้างไว้
+ */
+export async function createDraft(opts: {
+  csvPath: string; blNo: string; totals: Totals; settings: NetbaySettings; info: DraftInfo;
+  log: (msg: string) => void; onStep?: (page: Page) => Promise<void>;
+}): Promise<string> {
+  const { settings: s, info, log } = opts;
+  check(s);
+  const step = opts.onStep ?? (async () => {});
+  const browser = await launch(s);
+  try {
+    const context = await browser.newContext({ viewport: s.headless ? undefined : null });
+    context.setDefaultTimeout(30_000);
+    context.on('dialog', (d) => {                       // alert ทุกอันกด OK เหมือนโปรแกรมเดิม
+      const msg = squash(d.message());
+      info.dialogs.push(msg);
+      log(`  NETBAY แจ้ง: ${msg.slice(0, 300)}`);
+      d.accept().catch(() => {});
+    });
+    const page = await context.newPage();
+    log('login NETBAY ...');
+    const importUrl = await login(page, s);
+    log(`สร้างใบขนใหม่ ${s.declarationType} และกรอกหัวใบขน BL ${opts.blNo} ...`);
+    await newDeclaration(page, importUrl, s, opts.blNo, opts.totals, info);
+    log(`  ใบขน Reference No. ${info.refNo}`);
+    await step(page);
+    log('แนบไฟล์ CSV (Add Invoice → Import) ...');
+    log(`  NETBAY: ${await importCsv(page, opts.csvPath, info.dialogs)}`);
+    await step(page);
+    return info.refNo!;
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+/* ---------------- เปิดใบขนจาก Reference No. ---------------- */
+
+/** หน้ารายการใบขน: ค้นหาตาม Reference No.  คืนเลขภายในของใบขน (ImDclCtrl) หรือ null */
+export async function findDeclaration(page: Page, listUrl: string, ref: string) {
+  await page.goto(listUrl);
+  await page.locator(SEARCH_REF).fill(ref);
+  await Promise.all([
+    page.waitForNavigation({ timeout: 30_000 }).catch(() => {}),
+    page.locator(SEARCH_BTN).click(),
+  ]);
+  const hit = page.locator(`img[id^="statusPic"][value="${ref}"]`);
+  if (!(await hit.count())) return null;
+  return ((await hit.first().getAttribute('id')) ?? '').slice('statusPic'.length) || null;
+}
+
+/** แถบแจ้งด้านบนหน้าเว็บ NETBAY (alert ใช้ไม่ได้ เพราะ Playwright ปิด dialog เอง) */
+async function banner(page: Page, message: string) {
+  await page.evaluate((m) => {
+    const d = document.createElement('div');
+    d.textContent = m;
+    d.style.cssText = 'position:sticky;top:0;z-index:9999;padding:12px;background:#b0402b;color:#fff;font:16px sans-serif';
+    (document.body ?? document.documentElement).prepend(d);
+  }, message.slice(0, 500)).catch(() => {});
+}
+
+const freePort = () => new Promise<number>((resolve, reject) => {
+  const srv = createServer();
+  srv.listen(0, '127.0.0.1', () => {
+    const port = (srv.address() as { port: number }).port;
+    srv.close(() => resolve(port));
+  });
+  srv.on('error', reject);
+});
+
+/**
+ * ลิงก์ Ref No. บน ERP-KOLA: เปิด Chrome -> login -> Import -> ค้นหา Reference No. -> เปิดใบขนนั้น
+ *
+ * เปิด Chrome ธรรมดา (โปรไฟล์ชั่วคราว) แล้วต่อเข้าไปคุมเฉพาะตอน login และค้นหา
+ * เสร็จแล้วปล่อย — หน้าต่างเป็น Chrome ปกติ คนตรวจใช้ต่อได้ทุกอย่าง (dialog ยืนยันของ NETBAY ขึ้นตามปกติ)
+ * ลิงก์ตรงไปหน้าใบขนใช้ไม่ได้ เพราะ NETBAY ผูก session ไว้กับเบราว์เซอร์ที่ login (UCODE ใน localStorage)
+ * คืนเลขภายในของใบขน หรือ null ถ้าไม่พบ (หน้ารายการขึ้นแถบแจ้งให้เห็น)
+ */
+export async function openDeclaration(ref: string, s: NetbaySettings, opts: { log?: (m: string) => void; keepOpen?: boolean; profilesDir?: string } = {}) {
+  check(s);
+  const log = opts.log ?? (() => {});
+  const profiles = opts.profilesDir ?? join(tmpdir(), 'kola-netbay');
+  mkdirSync(profiles, { recursive: true });
+  for (const name of readdirSync(profiles)) {          // โปรไฟล์ของรอบก่อน ๆ ที่เกิน 1 วัน
+    const p = join(profiles, name);
+    try { if (statSync(p).mtimeMs < Date.now() - 86_400_000) rmSync(p, { recursive: true, force: true }); } catch { /* ใช้อยู่ */ }
+  }
+  const profile = mkdtempSync(join(profiles, 'p-'));
+  const port = await freePort();
+  const args = [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+    `--unsafely-treat-insecure-origin-as-secure=${s.url}`, ...(s.headless ? ['--headless=new'] : ['--start-maximized']), 'about:blank'];
+  const keep = opts.keepOpen !== false;          // ค้างหน้าต่างไว้หลังสคริปต์จบ — แยก process ออกไป
+  const proc = spawn(chromePath(), args, { stdio: 'ignore', detached: keep });
+  if (keep) proc.unref();
+
+  let browser: Browser | null = null;
+  let page: Page | null = null;
+  try {
+    for (let i = 0; i < 60 && !browser; i++) {
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null);
+      if (!browser) await sleep(250);
+    }
+    if (!browser) throw new NetbayError('เปิด Chrome ไม่สำเร็จ');
+    const context = browser.contexts()[0];
+    context.setDefaultTimeout(30_000);
+    page = context.pages()[0] ?? await context.newPage();
+    log('login NETBAY ...');
+    const listUrl = await login(page, s);
+    log(`ค้นหา Reference No. ${ref} ...`);
+    const id = await findDeclaration(page, listUrl, ref);
+    if (id) {
+      await page.evaluate((x) => (window as unknown as { editID(id: string): void }).editID(x), id);
+      await page.locator('#detailfrm').waitFor({ state: 'attached' });
+      log(`เปิดใบขน ${ref} แล้ว`);
+    } else {
+      await banner(page, `ไม่พบใบขน Reference No. ${ref} ใน NETBAY — ค้นหาเองอีกครั้งในหน้านี้`);
+      log(`ไม่พบใบขน ${ref}`);
+    }
+    return id;
+  } catch (e) {            // เปิดจากลิงก์ไม่มีหน้าต่าง Terminal — บอกเหตุผลบนหน้าจอ Chrome
+    if (page) await banner(page, `เปิดใบขน ${ref} ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+    throw e;
+  } finally {
+    // ต่อแบบ CDP: close() แค่ปล่อยการควบคุม หน้าต่าง Chrome ยังเปิดอยู่
+    if (browser) await browser.close().catch(() => {});
+    if (!keep) proc.kill();
+  }
+}

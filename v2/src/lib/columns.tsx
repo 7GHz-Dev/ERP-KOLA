@@ -71,15 +71,15 @@ export const col = {
   refNo: (): Column => ({
     label: 'Ref No.', searchKey: 'refNo', sortKey: 'draftRefNo',
     /*
-     * กดแล้วเปิดใบขนนี้ใน NETBAY — ลิงก์ kola-netbay:// เรียก imp ในเครื่องคนกด
+     * กดแล้วเปิดใบขนนี้ใน NETBAY — ลิงก์ kola-netbay:// เรียก npm run netbay:open ในเครื่องคนกด
      * ให้เปิด Chrome -> login -> Import -> ค้นหา Ref No. -> เปิดใบขน
      * ลิงก์ตรงไปหน้าใบขนใช้ไม่ได้ เพราะ NETBAY ผูก session ไว้กับเบราว์เซอร์ที่ login (UCODE ใน localStorage)
-     * ต้องติดตั้งตัวเปิดของ imp ก่อน (install/mac-netbay-launcher.sh · install\windows-netbay-launcher.cmd)
+     * ต้องติดตั้งตัวเปิดก่อน (scripts/install/ ตัวเดียวกับปุ่มเปิด worker) และใส่ NETBAY_USER/PASSWORD ใน .env.local
      * และเครื่องต้องอยู่ในเครือข่ายออฟฟิศที่เข้า NETBAY ได้
      */
     render: (r) => (r.draftRefNo ? (
       <a className="badge neutral file-link" href={`kola-netbay://open?ref=${encodeURIComponent(r.draftRefNo)}`}
-        title="เปิดใบขนนี้ใน NETBAY (ต้องติดตั้งตัวเปิดใบขนของ imp ในเครื่อง)">
+        title="เปิดใบขนนี้ใน NETBAY (ต้องติดตั้งตัวเปิดของ ERP-KOLA ในเครื่อง)">
         {r.draftRefNo} ↗
       </a>
     ) : '-'),

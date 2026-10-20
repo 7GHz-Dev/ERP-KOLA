@@ -51,7 +51,7 @@ export default async function AutomationPage({
     .limit(100);
 
   const pending = rows.filter((r) => r.status === 'QUEUED' || r.status === 'PROCESSING').length;
-  // Draft ใบขนทำโดย imp worker ตัวจริง ไม่มีปุ่มจำลองแล้ว — ใบขน (customs) ยังไม่มี worker จึงยังใช้ตัวจำลอง
+  // Draft ใบขนทำโดย worker ตัวจริง (worker:draft) ไม่มีปุ่มจำลองแล้ว — ใบขน (customs) ยังไม่มี worker จึงยังใช้ตัวจำลอง
   const simulate = tab !== 'draft';
   const drafters = tab === 'draft' ? await onlineWorkers({ mode: DRAFT_WORKER_MODE }) : [];
 
@@ -71,10 +71,11 @@ export default async function AutomationPage({
         </div>
       ) : (
         <div className="notice">
-          งานในแถบนี้ทำโดย imp worker บนเครื่องที่เปิด NETBAY ได้ — สร้างใบขน แนบ CSV และ Save ให้เอง ·{' '}
+          งานในแถบนี้ทำโดย worker สร้าง Draft (npm run worker:draft) บนเครื่องที่เปิด NETBAY ได้
+          — ตรวจ Final Invoice ออกเลขเครื่อง สร้างใบขน และ Import CSV ให้ (ไม่กด Save) ·{' '}
           {drafters.length
             ? <b>worker ออนไลน์ · {drafters[0].busy ?? 'ว่าง รอรับงาน'}</b>
-            : <b>worker ออฟไลน์ — งานจะรอในคิวจนกว่าจะเปิด imp worker</b>}
+            : <b>worker ออฟไลน์ — งานจะรอในคิวจนกว่าจะเปิด worker (ปุ่มเปิดอยู่ที่แท็บ Draft ใบขน)</b>}
           {' '}· ทำซ้ำหรือแก้ไฟล์แล้วสร้างใหม่ ให้กด &quot;สร้าง Draft&quot; ที่หน้างานคงค้าง
         </div>
       )}

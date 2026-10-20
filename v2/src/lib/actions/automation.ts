@@ -86,9 +86,9 @@ async function runTaskSimulationImpl(formData: FormData) {
   const [task] = await db.select().from(automationTasks)
     .where(eq(automationTasks.id, taskId)).limit(1);
   if (!task) throw new Error('ไม่พบงานในคิว');
-  // Draft ใบขนมี worker ตัวจริงแล้ว (imp) — ตัวจำลองจะออก Ref No. ปลอมทับงานจริง
+  // Draft ใบขนมี worker ตัวจริงแล้ว (worker:draft) — ตัวจำลองจะออก Ref No. ปลอมทับงานจริง
   if (task.type === TASK_TYPES.DRAFT) {
-    throw new Error('งาน Draft ใบขนทำโดย imp worker แล้ว ใช้ปุ่มจำลองไม่ได้ — ทำซ้ำให้กด "สร้าง Draft" ที่หน้างานคงค้าง');
+    throw new Error('งาน Draft ใบขนทำโดย worker สร้าง Draft แล้ว ใช้ปุ่มจำลองไม่ได้ — ทำซ้ำให้กด "สร้าง Draft" ที่หน้างานคงค้าง');
   }
 
   const [job] = task.jobId

@@ -1,0 +1,154 @@
+{
+ "ok": true,
+ "file_type": "MSFZ",
+ "invoice_no": "TEST-INV-01",
+ "invoice_date": "07/08/2026",
+ "bl_no": "TESTBL0001",
+ "errors": [],
+ "warnings": [
+  "คันที่ 2 (TEST20-000002): chassis นี้เคยได้เลข 2GR-8888888 (2026-10-20) — รอบนี้จะสุ่มเลขใหม่ ถ้าต้องการเลขเดิมให้อัปโหลดไฟล์ Excel ที่ได้จากรอบก่อน",
+  "คันที่ 3 (WDDTEST0000000003): ไม่พบพิกัดสำหรับ MERCEDES BENZ C200 GASOLINE 1790CC 1500KG"
+ ],
+ "cars": [
+  {
+   "car_no": 1,
+   "brand": "NISSAN",
+   "model": "AD VAN",
+   "chassis": "TEST12-000001",
+   "year": "2011",
+   "cc": 1490,
+   "fuel": "GASOLINE",
+   "weight": "1140",
+   "price": "250000",
+   "tariff": "000087032290",
+   "engine_before": "HR15",
+   "engine": "HR15-7777777",
+   "status": "again",
+   "status_text": "ใช้เลขเดิมของ BL นี้"
+  },
+  {
+   "car_no": 2,
+   "brand": "TOYOTA",
+   "model": "CROWN",
+   "chassis": "TEST20-000002",
+   "year": "2008",
+   "cc": 3450,
+   "fuel": "GASOLINE",
+   "weight": "1690",
+   "price": "600000",
+   "tariff": "000087032449",
+   "engine_before": "2GR",
+   "engine": "2GR-xxxxxxx",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  },
+  {
+   "car_no": 3,
+   "brand": "MERCEDES BENZ",
+   "model": "C200",
+   "chassis": "WDDTEST0000000003",
+   "year": "2012",
+   "cc": 1790,
+   "fuel": "GASOLINE",
+   "weight": "1500",
+   "price": "172700.5",
+   "tariff": "XXXX",
+   "engine_before": "M271",
+   "engine": "M271-xxxxxxx",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  }
+ ],
+ "new_count": 2,
+ "rows": [
+  {
+   "number": "7777777",
+   "full": "HR15-7777777",
+   "chassis": "TEST12-000001",
+   "bl": "TESTBL0001",
+   "date": "2026-10-20 12:00:00"
+  },
+  {
+   "number": "8888888",
+   "full": "2GR-8888888",
+   "chassis": "TEST20-000002",
+   "bl": "OTHERBL",
+   "date": "2026-10-20 12:00:00"
+  }
+ ],
+ "reuse_bl": true,
+ "totals": {
+  "package_amount": "3",
+  "package_unit": "UN",
+  "gross_weight": "4330",
+  "price": "1022700.5",
+  "currency": "JPY"
+ },
+ "updates": [
+  [
+   20,
+   10,
+   "HR15-7777777"
+  ],
+  [
+   21,
+   10,
+   "2GR-4810731"
+  ],
+  [
+   22,
+   10,
+   "M271-4818650"
+  ]
+ ],
+ "cars_after": [
+  {
+   "car_no": 1,
+   "brand": "NISSAN",
+   "model": "AD VAN",
+   "chassis": "TEST12-000001",
+   "year": "2011",
+   "cc": 1490,
+   "fuel": "GASOLINE",
+   "weight": "1140",
+   "price": "250000",
+   "tariff": "000087032290",
+   "engine_before": "HR15",
+   "engine": "HR15-7777777",
+   "status": "again",
+   "status_text": "ใช้เลขเดิมของ BL นี้"
+  },
+  {
+   "car_no": 2,
+   "brand": "TOYOTA",
+   "model": "CROWN",
+   "chassis": "TEST20-000002",
+   "year": "2008",
+   "cc": 3450,
+   "fuel": "GASOLINE",
+   "weight": "1690",
+   "price": "600000",
+   "tariff": "000087032449",
+   "engine_before": "2GR",
+   "engine": "2GR-4810731",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  },
+  {
+   "car_no": 3,
+   "brand": "MERCEDES BENZ",
+   "model": "C200",
+   "chassis": "WDDTEST0000000003",
+   "year": "2012",
+   "cc": 1790,
+   "fuel": "GASOLINE",
+   "weight": "1500",
+   "price": "172700.5",
+   "tariff": "XXXX",
+   "engine_before": "M271",
+   "engine": "M271-4818650",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  }
+ ]
+}

@@ -1,0 +1,68 @@
+{
+ "ok": false,
+ "file_type": "MSFZ",
+ "invoice_no": "TEST-INV-01",
+ "invoice_date": "07/08/2026",
+ "bl_no": "TESTBL0001",
+ "errors": [
+  "คันที่ 1 (TEST12-ÖÖ0001): เลข chassis มีตัวอักษรแปลก 'TEST12-ÖÖ0001'"
+ ],
+ "warnings": [
+  "คันที่ 2 (TEST20-000002): ปีผลิต 1975 ผิดปกติ",
+  "คันที่ 3 (WDDTEST0000000003): CC 2015 ผิดปกติ (อาจกรอกปีผิดช่อง)",
+  "คันที่ 3 (WDDTEST0000000003): ไม่พบพิกัดสำหรับ MERCEDES BENZ C200 GASOLINE 2015CC 1500KG"
+ ],
+ "cars": [
+  {
+   "car_no": 1,
+   "brand": "NISSAN",
+   "model": "AD VAN",
+   "chassis": "TEST12-ÖÖ0001",
+   "year": "2011",
+   "cc": 1490,
+   "fuel": "GASOLINE",
+   "weight": "1140",
+   "price": "250000",
+   "tariff": "000087032290",
+   "engine_before": "HR15",
+   "engine": "HR15-xxxxxxx",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  },
+  {
+   "car_no": 2,
+   "brand": "TOYOTA",
+   "model": "CROWN",
+   "chassis": "TEST20-000002",
+   "year": "1975",
+   "cc": 3450,
+   "fuel": "GASOLINE",
+   "weight": "1690",
+   "price": "600000",
+   "tariff": "000087032449",
+   "engine_before": "2GR",
+   "engine": "2GR-xxxxxxx",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  },
+  {
+   "car_no": 3,
+   "brand": "MERCEDES BENZ",
+   "model": "C200",
+   "chassis": "WDDTEST0000000003",
+   "year": "2012",
+   "cc": 2015,
+   "fuel": "GASOLINE",
+   "weight": "1500",
+   "price": "172700.5",
+   "tariff": "XXXX",
+   "engine_before": "M271",
+   "engine": "M271-xxxxxxx",
+   "status": "new",
+   "status_text": "สุ่มใหม่"
+  }
+ ],
+ "new_count": 3,
+ "rows": [],
+ "reuse_bl": false
+}
