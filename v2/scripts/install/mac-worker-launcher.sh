@@ -48,7 +48,9 @@ on startWorker(npmScript, pattern, logName, label)
       return
     end if
     -- เปิดเบื้องหลัง ไม่มีหน้าต่าง Terminal · ดูการทำงานบนหน้าเว็บหรือไฟล์ log
-    do shell script "export PATH=" & quoted form of "$NODE_DIR" & ":\$PATH; mkdir -p " & quoted form of "$LOG_DIR" & "; cd " & quoted form of "$V2" & " && nohup npm run " & npmScript & " >> " & quoted form of ("$LOG_DIR/" & logName) & " 2>&1 < /dev/null &"
+    -- ( … &) ในวงเล็บ: ถ้าส่ง "cd && npm" ไปเบื้องหลังทั้งชุด ชุดนั้นถือ output ของ do shell script ไว้
+    -- แอปจะค้างรอจน worker ปิด แล้วลิงก์ที่กดต่อจากนั้นไปค้างคิวอยู่ที่แอปที่ค้าง
+    do shell script "export PATH=" & quoted form of "$NODE_DIR" & ":\$PATH; mkdir -p " & quoted form of "$LOG_DIR" & "; cd " & quoted form of "$V2" & " && (nohup npm run " & npmScript & " >> " & quoted form of ("$LOG_DIR/" & logName) & " 2>&1 < /dev/null &)"
     display notification "กำลังเปิด " & label & " — ดูสถานะบนหน้าเว็บ" with title "KOLA Worker"
   on error errMsg number errNum
     -- อย่าพังเงียบ ๆ — บอกให้เห็นว่าติดอะไร (เช่นยังไม่อนุญาตให้ควบคุม Terminal)
@@ -59,7 +61,7 @@ end startWorker
 -- ลิงก์ Ref No. บน ERP: เปิด Chrome -> login NETBAY -> ค้นหา Ref No. -> เปิดใบขน
 on openRef(theURL)
   try
-    do shell script "export PATH=" & quoted form of "$NODE_DIR" & ":\$PATH; mkdir -p " & quoted form of "$LOG_DIR" & "; cd " & quoted form of "$V2" & " && nohup npm run netbay:open -- " & quoted form of theURL & " >> " & quoted form of "$LOG_DIR/netbay-open.log" & " 2>&1 < /dev/null &"
+    do shell script "export PATH=" & quoted form of "$NODE_DIR" & ":\$PATH; mkdir -p " & quoted form of "$LOG_DIR" & "; cd " & quoted form of "$V2" & " && (nohup npm run netbay:open -- " & quoted form of theURL & " >> " & quoted form of "$LOG_DIR/netbay-open.log" & " 2>&1 < /dev/null &)"
   on error errMsg number errNum
     display dialog "เปิดใบขนไม่สำเร็จ: " & errMsg & " (" & errNum & ")" & return & return & "ดู log ได้ที่ $LOG_DIR/netbay-open.log" buttons {"ตกลง"} default button 1 with title "KOLA Worker" with icon caution
   end try

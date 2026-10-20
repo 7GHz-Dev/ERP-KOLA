@@ -27,7 +27,7 @@ export function parseRef(arg: string): string {
 
 async function main() {
   const ref = parseRef(process.argv[2] ?? '');
-  const log = (m: string) => console.log(`${new Date().toISOString().replace('T', ' ').slice(0, 19)}  ${m}`);
+  const log = (m: string) => console.log(`${new Date().toLocaleString('sv-SE')}  ${m}`);   // YYYY-MM-DD HH:MM:SS เวลาเครื่อง
   log(`เปิดใบขน ${ref}`);
   await openDeclaration(ref, { ...netbaySettings(), headless: false }, { log });
 }
