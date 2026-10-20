@@ -109,7 +109,6 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
       actorId: WORKER_ACTOR,
       refNo: args?.refNo,
       entryNo: args?.entryNo,
-      url: typeof args?.url === 'string' ? args.url : undefined,
       file,
     });
     return { ok: true };

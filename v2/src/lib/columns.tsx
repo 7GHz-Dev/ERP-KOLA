@@ -70,13 +70,19 @@ export const col = {
   }),
   refNo: (): Column => ({
     label: 'Ref No.', searchKey: 'refNo', sortKey: 'draftRefNo',
-    // มีลิงก์ใบขนใน NETBAY (imp สร้างให้) กดเปิดได้เลย — เปิดได้เฉพาะเครื่องในเครือข่ายออฟฟิศที่เข้า NETBAY ได้
-    render: (r) => (r.draftRefNo && r.draftUrl ? (
-      <a className="badge neutral file-link" href={r.draftUrl} target="_blank" rel="noreferrer"
-        title="เปิดใบขนนี้ใน NETBAY">
+    /*
+     * กดแล้วเปิดใบขนนี้ใน NETBAY — ลิงก์ kola-netbay:// เรียก imp ในเครื่องคนกด
+     * ให้เปิด Chrome -> login -> Import -> ค้นหา Ref No. -> เปิดใบขน
+     * ลิงก์ตรงไปหน้าใบขนใช้ไม่ได้ เพราะ NETBAY ผูก session ไว้กับเบราว์เซอร์ที่ login (UCODE ใน localStorage)
+     * ต้องติดตั้งตัวเปิดของ imp ก่อน (install/mac-netbay-launcher.sh · install\windows-netbay-launcher.cmd)
+     * และเครื่องต้องอยู่ในเครือข่ายออฟฟิศที่เข้า NETBAY ได้
+     */
+    render: (r) => (r.draftRefNo ? (
+      <a className="badge neutral file-link" href={`kola-netbay://open?ref=${encodeURIComponent(r.draftRefNo)}`}
+        title="เปิดใบขนนี้ใน NETBAY (ต้องติดตั้งตัวเปิดใบขนของ imp ในเครื่อง)">
         {r.draftRefNo} ↗
       </a>
-    ) : r.draftRefNo ?? '-'),
+    ) : '-'),
   }),
   declarationNo: (): Column => ({
     label: 'เลขใบขน', searchKey: 'entryNo',
