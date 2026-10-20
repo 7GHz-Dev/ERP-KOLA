@@ -169,6 +169,12 @@ export async function listJobs(filter: JobFilter = {}) {
       packageType: jobs.packageType,
       grossWeight: jobs.grossWeight,
       draftRefNo: jobs.draftRefNo,
+      /*
+       * ลิงก์เปิดใบขนนี้ใน NETBAY — imp ส่งมาพร้อม Ref No. เก็บไว้ในงานคิวของ Draft (ดู automation.ts)
+       * ไม่มีคอลัมน์ของตัวเองในตาราง jobs เพราะโครงฐานข้อมูลแก้ผ่าน db:push ไม่ได้
+       */
+      draftUrl: sql<string | null>`(select t.payload::jsonb ->> 'netbayUrl' from automation_tasks t
+        where t.id = ${jobs.draftTaskId} and t.type = 'DRAFT_ENTRY')`,
       draftStatus: jobs.draftStatus,
       draftRejectReason: jobs.draftRejectReason,
       customsStatus: jobs.customsStatus,

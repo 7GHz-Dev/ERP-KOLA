@@ -116,6 +116,8 @@ export async function completeTask(input: {
   actorId: string;
   refNo?: string;
   entryNo?: string;
+  /** ลิงก์ของผลลัพธ์บนระบบปลายทาง — ใบขนใน NETBAY ของงาน Draft */
+  url?: string;
   file?: { name: string; mimeType: string; body: Buffer };
 }) {
   const [task] = await db.select().from(automationTasks)
@@ -133,6 +135,14 @@ export async function completeTask(input: {
     const refNo = (input.refNo ?? '').trim();
     if (!refNo) throw new Error('งาน DRAFT_ENTRY ต้องส่ง refNo กลับมา');
     patch.resultRefNo = refNo;
+
+    // ลิงก์เปิดใบขนนี้ใน NETBAY — เก็บไว้ในงานคิวนี้ หน้า Ref No. ทำเป็นลิงก์ให้ FAH กดเปิดตรวจได้เลย
+    const url = (input.url ?? '').trim();
+    if (/^https?:\/\//i.test(url)) {
+      let payload: Record<string, unknown> = {};
+      try { payload = JSON.parse(task.payload ?? '{}') ?? {}; } catch { /* payload เดิมเสีย เริ่มใหม่ */ }
+      patch.payload = JSON.stringify({ ...payload, netbayUrl: url.slice(0, 1000) });
+    }
 
     await db.update(jobs).set({
       draftRefNo: refNo, draftStatus: 'CREATED', customsStatus: 'DRAFT', updatedAt: now,

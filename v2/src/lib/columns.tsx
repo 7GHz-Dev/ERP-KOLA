@@ -70,7 +70,13 @@ export const col = {
   }),
   refNo: (): Column => ({
     label: 'Ref No.', searchKey: 'refNo', sortKey: 'draftRefNo',
-    render: (r) => r.draftRefNo ?? '-',
+    // มีลิงก์ใบขนใน NETBAY (imp สร้างให้) กดเปิดได้เลย — เปิดได้เฉพาะเครื่องในเครือข่ายออฟฟิศที่เข้า NETBAY ได้
+    render: (r) => (r.draftRefNo && r.draftUrl ? (
+      <a className="badge neutral file-link" href={r.draftUrl} target="_blank" rel="noreferrer"
+        title="เปิดใบขนนี้ใน NETBAY">
+        {r.draftRefNo} ↗
+      </a>
+    ) : r.draftRefNo ?? '-'),
   }),
   declarationNo: (): Column => ({
     label: 'เลขใบขน', searchKey: 'entryNo',
