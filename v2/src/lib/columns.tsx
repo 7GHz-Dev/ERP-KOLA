@@ -133,6 +133,7 @@ export function draftBadge(row: JobRow) {
   if (row.draftStatus === 'CREATED') return <span className="badge approved">สร้าง Draft แล้ว</span>;
   if (row.draftStatus === 'SUBMITTED') return <span className="badge pending">รอ FAH ตรวจ</span>;
   if (row.draftStatus === 'SENT_TO_HUB') return <span className="badge pending">รอ Hub สร้าง Draft</span>;
+  if (row.draftStatus === 'HUB_ERROR') return <span className="badge rejected">สร้าง Draft ไม่สำเร็จ</span>;
   return <span className="badge pending">รอสร้าง Draft</span>;
 }
 

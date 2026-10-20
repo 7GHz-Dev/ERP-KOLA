@@ -28,6 +28,7 @@ export const DRAFT_STATUSES: Choice[] = [
   { value: '', label: '— ยังไม่มี Draft —' },
   { value: 'CREATED', label: 'สร้างแล้ว (CREATED)' },
   { value: 'SENT_TO_HUB', label: 'ส่งให้ระบบสร้าง (SENT_TO_HUB)' },
+  { value: 'HUB_ERROR', label: 'ระบบสร้างไม่สำเร็จ (HUB_ERROR)' },
   { value: 'SUBMITTED', label: 'ส่งให้ FAH ตรวจ (SUBMITTED)' },
   { value: 'REJECTED', label: 'ถูกตีกลับ (REJECTED)' },
 ];

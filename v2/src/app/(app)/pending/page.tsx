@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { hasArrivalFiles, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { pendingTabCounts } from '@/lib/queries/dashboard';
 import { intakeOptions } from '@/lib/queries/master';
+import { DRAFT_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +100,7 @@ function columnsFor(
         render: (r) => (
           <div className="row-actions">
             {draftBadge(r)}
-            <ShowReason reason={r.draftStatus === 'REJECTED' ? r.draftRejectReason : null} />
+            <ShowReason reason={r.draftStatus === 'REJECTED' || r.draftStatus === 'HUB_ERROR' ? r.draftRejectReason : null} />
             {sub === 'wait' ? (
               <DraftActions
                 jobId={r.id}
@@ -242,11 +243,13 @@ export default async function PendingPage({
     ...(files === 'all' ? [] : [hasArrivalFiles(files === 'yes')]),
   ];
 
-  const [{ rows, total }, counts, options] = await Promise.all([
+  const [{ rows, total }, counts, options, draftWorkers] = await Promise.all([
     listJobs({ where, search, sortBy: sortKey, sortDir: sortWay }),
     pendingTabCounts(),
     // ตัวเลือก master สำหรับฟอร์มแก้ BL — ดึงรอบเดียวแล้วส่งต่อให้ทุกแถวใช้ร่วมกัน
     intakeOptions(),
+    // imp worker ที่สร้าง Draft ใน NETBAY — บอก PAINT ว่ากดแล้วจะมีคนรับงานไหม
+    tab === 'draft' ? onlineWorkers({ mode: DRAFT_WORKER_MODE }) : Promise.resolve([]),
   ]);
 
   // แท็บ 1-3 เตือนจำนวนที่รอกดส่งอนุมัติ แท็บ 4 เตือนจำนวนที่ยังไม่ได้รวมชุด
@@ -330,6 +333,22 @@ export default async function PendingPage({
           </span>
         ) : null}
       </div>
+      ) : null}
+
+      {tab === 'draft' ? (
+        <div className="filter-bar">
+          <span className="filter-label">สร้าง Draft อัตโนมัติ (imp)</span>
+          {draftWorkers.length ? draftWorkers.map((w) => (
+            <span key={w.name} className="badge approved" title={w.log.at(-1) ?? ''}>
+              ออนไลน์ · {w.busy ?? 'ว่าง'}
+            </span>
+          )) : <span className="badge rejected">ออฟไลน์</span>}
+          <span className="filter-note">
+            {draftWorkers.length
+              ? `กด "สร้าง Draft" แล้ว imp จะตรวจ Final Invoice สุ่มเลขเครื่อง สร้างใบขนใน NETBAY และ Save ให้ · ${draftWorkers[0].log.at(-1) ?? ''}`
+              : 'งานที่กด "สร้าง Draft" จะรอในคิว จนกว่าจะเปิด imp worker (run_worker.bat) บนเครื่อง server'}
+          </span>
+        </div>
       ) : null}
 
       {tab === 'bl' && sub === 'wait' ? (

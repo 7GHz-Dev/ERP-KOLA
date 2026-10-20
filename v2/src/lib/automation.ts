@@ -27,6 +27,9 @@ export const TASK_TYPES = {
  */
 export const CUSTOMS_TASK_TYPES: string[] = [TASK_TYPES.DRAFT, TASK_TYPES.CUSTOMS];
 
+/** Final Invoice ที่ worker (imp) เติมเลขเครื่องแล้ว ส่งกลับมาพร้อมเลข Ref No. ของ Draft */
+export const DRAFT_RESULT_CATEGORY = 'FINAL_INVOICE_ENGINE';
+
 /**
  * สายเรือที่ขอ D/O ผ่านเว็บ My Customer Service ได้ — CMA CGM, APL, ANL และ CNC
  * ใช้ชื่อดิบจาก SHIPLINE ของงาน เพราะแบบฟอร์มจดหมายมีแค่ CNC แต่สายอื่นในกลุ่มก็ใช้เว็บเดียวกัน
@@ -135,6 +138,12 @@ export async function completeTask(input: {
       draftRefNo: refNo, draftStatus: 'CREATED', customsStatus: 'DRAFT', updatedAt: now,
     }).where(eq(jobs.id, task.jobId));
 
+    // imp ส่ง Final Invoice ที่เติมเลขเครื่องแล้วกลับมาด้วย — เก็บเป็นหมวดแยก ไม่ทับไฟล์ที่ PAINT อัปโหลด
+    if (input.file) {
+      patch.resultStorageKey = await storeResultFile(task.jobId, DRAFT_RESULT_CATEGORY, input.actorId, input.file);
+      patch.resultFileName = input.file.name;
+    }
+
     const [entry] = await db.select().from(customsEntries)
       .where(eq(customsEntries.jobId, task.jobId)).orderBy(desc(customsEntries.updatedAt)).limit(1);
     if (entry) {
@@ -229,15 +238,21 @@ export async function failTask(
   const patch: Record<string, unknown> = {
     status: 'ERROR', error: message.slice(0, 1000), completedAt: new Date(), updatedAt: new Date(),
   };
+  const [task] = await db.select({ type: automationTasks.type, jobId: automationTasks.jobId })
+    .from(automationTasks).where(eq(automationTasks.id, taskId)).limit(1);
   // ภาพตอนพังของงานกรอกเว็บ — ช่วยดูว่าค้างที่หน้าไหนโดยไม่ต้องไปเปิดเครื่องที่รัน worker
-  if (file) {
-    const [task] = await db.select({ type: automationTasks.type, jobId: automationTasks.jobId })
-      .from(automationTasks).where(eq(automationTasks.id, taskId)).limit(1);
-    if (task && (task.type === WEB_TASK.RUN || task.type === WEB_TASK.RECORD)) {
-      patch.resultStorageKey = await storeTaskShot(taskId, task.jobId, file);
-      patch.resultFileName = file.name;
-    }
+  if (file && task && (task.type === WEB_TASK.RUN || task.type === WEB_TASK.RECORD)) {
+    patch.resultStorageKey = await storeTaskShot(taskId, task.jobId, file);
+    patch.resultFileName = file.name;
   }
   await db.update(automationTasks).set(patch).where(eq(automationTasks.id, taskId));
+
+  // สร้าง Draft ไม่สำเร็จ — คืนงานให้ PAINT เห็นเหตุผล แก้ไฟล์แล้วกดสร้างใหม่ได้
+  // ไม่งั้นงานค้างที่ "รอ Automation สร้าง Draft" ตลอดไป  (เฉพาะงานล่าสุดของ Job นั้น)
+  if (task?.type === TASK_TYPES.DRAFT && task.jobId) {
+    await db.update(jobs)
+      .set({ draftStatus: 'HUB_ERROR', draftRejectReason: message.slice(0, 1000), updatedAt: new Date() })
+      .where(and(eq(jobs.id, task.jobId), eq(jobs.draftTaskId, taskId)));
+  }
   await logActivity(actorId, 'FAIL_TASK', 'TASK', taskId, { message });
 }

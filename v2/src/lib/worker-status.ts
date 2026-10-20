@@ -15,6 +15,11 @@ import { downloadFile, ensureBucket, safeName, uploadFile } from '@/lib/storage'
  */
 
 export const WORKER_HEARTBEAT_TYPE = 'workerHeartbeat';
+/**
+ * mode ของ worker สร้าง Draft ใบขน (imp บน server ที่เปิด NETBAY ได้)
+ * แยกจาก worker กรอกเว็บแลก DO — หน้าแลก DO ไม่นับตัวนี้ และปุ่มปิด worker ของ ANN ไม่มีผลกับมัน
+ */
+export const DRAFT_WORKER_MODE = 'draft';
 export const WORKER_SETTING_TYPE = 'workerSetting';
 const SETTING_CODE = 'web';
 
@@ -99,7 +104,9 @@ export type OnlineWorker = {
   log: string[]; shotAt: string | null; seenAt: string;
 };
 
-export async function onlineWorkers(): Promise<OnlineWorker[]> {
+export async function onlineWorkers(
+  filter: { mode?: string; exceptMode?: string } = {},
+): Promise<OnlineWorker[]> {
   const rows = await db.select({ name: masterRecords.name, value: masterRecords.value, updatedAt: masterRecords.updatedAt })
     .from(masterRecords)
     .where(and(
@@ -120,5 +127,6 @@ export async function onlineWorkers(): Promise<OnlineWorker[]> {
       shotAt: (info.shotAt as string | null) ?? null,
       seenAt: r.updatedAt.toISOString(),
     };
-  });
+  }).filter((w) => (!filter.mode || w.mode === filter.mode)
+    && (!filter.exceptMode || w.mode !== filter.exceptMode));
 }

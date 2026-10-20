@@ -119,6 +119,9 @@ export function JobSummary({
         {job.draftStatus === 'REJECTED' && job.draftRejectReason ? (
           <p className="drawer-note warn">Draft ถูกตีกลับ: {job.draftRejectReason}</p>
         ) : null}
+        {job.draftStatus === 'HUB_ERROR' && job.draftRejectReason ? (
+          <p className="drawer-note warn">สร้าง Draft ไม่สำเร็จ: {job.draftRejectReason}</p>
+        ) : null}
         {job.customerNote ? <p className="drawer-note">หมายเหตุลูกค้า: {job.customerNote}</p> : null}
       </Section>
 

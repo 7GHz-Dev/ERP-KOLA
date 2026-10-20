@@ -15,6 +15,7 @@ export const FILE_LABELS: Record<string, string> = {
   SURRENDER: 'Surrender BL',
   FINAL_INVOICE: 'FN Invoice & Packing list',
   FINAL_INVOICE_PDF: 'FN Invoice (ฉบับ PDF สำหรับรวมชุด)',
+  FINAL_INVOICE_ENGINE: 'FN Invoice (เติมเลขเครื่องแล้ว)',
   DRAFT_ENTRY: 'Draft ใบขน',
   CUSTOMS_ENTRY_DOC: 'ใบขนสินค้า',
   EOFFICE: 'ชุดตรวจปล่อย (E-Office)',
@@ -46,7 +47,8 @@ export function fileLabel(category: string) {
 
 /** ลำดับการแสดง เรียงตามขั้นงานจริง ไม่ใช่ตามตัวอักษร */
 export const FILE_ORDER = [
-  'ARRIVAL_NOTICE', 'BL', 'INVOICE_GOODS', 'FINAL_INVOICE', 'FINAL_INVOICE_PDF', 'INVOICE_DO', 'SURRENDER',
+  'ARRIVAL_NOTICE', 'BL', 'INVOICE_GOODS', 'FINAL_INVOICE', 'FINAL_INVOICE_PDF', 'FINAL_INVOICE_ENGINE',
+  'INVOICE_DO', 'SURRENDER',
   'DRAFT_ENTRY', 'CUSTOMS_ENTRY_DOC', 'EOFFICE', 'EOFFICE_REQUEST', 'EOFFICE_MERGED', 'EOFFICE_SIGNED',
   'DO_LETTER', 'DO_LETTER_UPLOADED',
   'DO_SLIP', 'DO_SLIP_DEPOSIT', 'DO_SLIP_DEM', 'DO_SLIP_DET', 'DO_SLIP_LATE',

@@ -19,7 +19,7 @@ import { FILE_ORDER, fileLabel } from '@/lib/file-categories';
  */
 
 /** หมวดที่ผู้ดูแลเพิ่มเองได้ — ตัดหมวดที่ระบบสร้างให้อัตโนมัติออก */
-const SYSTEM_MADE = ['EOFFICE_MERGED', 'DO_MERGED', 'DO_BATCH_MERGED', 'FINAL_INVOICE_PDF'];
+const SYSTEM_MADE = ['EOFFICE_MERGED', 'DO_MERGED', 'DO_BATCH_MERGED', 'FINAL_INVOICE_PDF', 'FINAL_INVOICE_ENGINE'];
 
 export function AdminFileTools({
   jobId, category, mode, existing = [],

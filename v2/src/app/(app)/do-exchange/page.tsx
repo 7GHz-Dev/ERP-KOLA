@@ -15,7 +15,7 @@ import { doAttachmentsFor } from '@/lib/queries/do-files';
 import { WebSendButton } from '@/components/WebSendButton';
 import { shiplineMatches, templateButtonsFor, webTasksFor } from '@/lib/web-template-store';
 import { WorkerLauncher } from '@/components/WorkerLauncher';
-import { getWorkerSettings, onlineWorkers } from '@/lib/worker-status';
+import { DRAFT_WORKER_MODE, getWorkerSettings, onlineWorkers } from '@/lib/worker-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +57,7 @@ export default async function DoExchangePage({
     // ปุ่มจาก Template กรอกเว็บ ที่ผู้ดูแลตั้งให้ขึ้นที่หน้านี้
     sent ? Promise.resolve([]) : templateButtonsFor('do-exchange', user.role),
     sent ? Promise.resolve(new Map()) : webTasksFor(rows.map((r) => r.id)),
-    onlineWorkers(),
+    onlineWorkers({ exceptMode: DRAFT_WORKER_MODE }),
     getWorkerSettings(),
   ]);
 
