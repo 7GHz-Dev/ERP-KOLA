@@ -88,11 +88,12 @@ export function DraftWorkerBar({ initial }: { initial: OnlineWorker[] }) {
         <details className="worker-launcher-help">
           <summary>ติดตั้งตัวเปิด</summary>
           <div>
-            <p>ติดตั้งครั้งเดียวบนเครื่องในออฟฟิศที่เปิด NETBAY ได้ (ต้องมี Node.js, Google Chrome และโค้ด ERP-KOLA ในเครื่อง)
-              แล้วใส่ <code>NETBAY_USER</code> / <code>NETBAY_PASSWORD</code> และ <code>WORKER_API_KEY</code> ใน <code>v2/.env.local</code></p>
-            <p><b>Mac:</b> เปิด Terminal ในโฟลเดอร์ v2 แล้วรัน <code>bash scripts/install/mac-worker-launcher.sh</code></p>
-            <p><b>Windows:</b> ดับเบิลคลิก <code>v2\scripts\install\windows-worker-launcher.cmd</code></p>
-            <p>ตัวเปิดเดียวกันนี้ทำให้กดเลข Ref No. แล้วเปิดใบขนใน NETBAY ได้ด้วย</p>
+            <p>ติดตั้งครั้งเดียวบนเครื่องในออฟฟิศที่เปิด NETBAY ได้ — เครื่องนั้นจะกดเลข Ref No. เปิดใบขนได้ และเปิด worker ได้</p>
+            <p><b>Windows 10/11 (คลิกเดียว):</b> <a href="/install/windows-setup.cmd" download>ดาวน์โหลด windows-setup.cmd</a>
+              แล้วดับเบิลคลิก — ติดตั้ง Git / Node.js / Chrome ที่ยังไม่มี ดึงโค้ด ถาม user/password NETBAY แล้วลงทะเบียนลิงก์ให้
+              (ถ้า Windows ขึ้นว่า &quot;ป้องกันพีซีของคุณ&quot; กด ข้อมูลเพิ่มเติม → เรียกใช้)</p>
+            <p><b>Mac:</b> มีโค้ด ERP-KOLA กับ Node.js แล้ว ใส่ <code>NETBAY_USER</code> / <code>NETBAY_PASSWORD</code> / <code>WORKER_API_KEY</code>
+              ใน <code>v2/.env.local</code> แล้วรัน <code>bash scripts/install/mac-worker-launcher.sh</code> ในโฟลเดอร์ v2</p>
           </div>
         </details>
       ) : null}

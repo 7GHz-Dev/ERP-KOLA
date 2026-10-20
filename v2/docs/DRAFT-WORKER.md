@@ -18,7 +18,19 @@ PAINT → งานคงค้าง → **3. Draft ใบขน** → กด *
 
 ## ติดตั้งบนเครื่องในออฟฟิศ (ครั้งเดียว)
 
-ต้องมี Node.js, Google Chrome และโค้ด ERP-KOLA · เครื่องต้องเปิด `http://192.168.1.123` ได้
+กด **สร้าง Draft** ได้จากทุกเครื่องโดยไม่ต้องติดตั้งอะไร (ขอแค่มี worker เปิดอยู่สักเครื่อง)
+ที่ต้องติดตั้งคือเครื่องที่จะ **กดเลข Ref No. เปิดใบขน** หรือ **เปิด worker** — เครื่องต้องเปิด `http://192.168.1.123` ได้
+
+### Windows 10/11 — คลิกเดียว
+
+ดาวน์โหลด <https://erp-kola.vercel.app/install/windows-setup.cmd> (หรือจากส่วน "ติดตั้งตัวเปิด" ที่แท็บ Draft ใบขน) แล้วดับเบิลคลิก
+ติดตั้ง Git / Node.js LTS / Google Chrome ที่ยังไม่มี (winget) → ดึงโค้ดไว้ที่ `%USERPROFILE%\ERP-KOLA` → `npm install`
+→ ถาม user/password NETBAY (และ `WORKER_API_KEY` ถ้าจะให้เครื่องนี้ทำ Draft) → ลงทะเบียนลิงก์
+รันซ้ำได้ = อัปเดตโค้ด · ถ้า Windows ขึ้น "ป้องกันพีซีของคุณ" กด ข้อมูลเพิ่มเติม → เรียกใช้
+
+### ติดตั้งเอง (Mac หรือ Windows)
+
+ต้องมี Node.js, Google Chrome และโค้ด ERP-KOLA
 
 ```sh
 cd v2 && npm install

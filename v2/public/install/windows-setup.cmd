@@ -1,0 +1,121 @@
+<# : batch portion - PowerShell script below (double-click to run)
+@echo off
+chcp 65001 >nul
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$f='%~f0'; iex ([IO.File]::ReadAllText($f, [Text.Encoding]::UTF8))"
+echo.
+pause
+exit /b
+#>
+# ติดตั้ง ERP-KOLA บน Windows ในคลิกเดียว — ให้เครื่องนี้กดเลข Ref No. เปิดใบขนใน NETBAY ได้ (และทำ Draft ใบขนได้)
+#
+# ดาวน์โหลดจาก https://erp-kola.vercel.app/install/windows-setup.cmd แล้วดับเบิลคลิก (รันซ้ำได้ = อัปเดต)
+#   1. ตรวจว่าเปิด NETBAY (192.168.1.123) ได้
+#   2. ติดตั้ง Git / Node.js LTS / Google Chrome ด้วย winget ถ้ายังไม่มี
+#   3. ดึงโค้ด ERP-KOLA ไว้ที่ %USERPROFILE%\ERP-KOLA (มีแล้ว = git pull)
+#   4. npm install
+#   5. ถาม user / password NETBAY (และ WORKER_API_KEY ถ้าจะให้เครื่องนี้ทำ Draft) เขียนลง v2\.env.local
+#   6. ลงทะเบียนลิงก์ kola-worker:// และ kola-netbay:// (scripts\install\windows-worker-launcher.ps1)
+# ไม่ต้องใช้สิทธิ์ Administrator ยกเว้นตอนติดตั้ง Node.js / Git ครั้งแรก (Windows จะถาม)
+
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$repo = 'https://github.com/7GHz-Dev/ERP-KOLA.git'
+$root = Join-Path $env:USERPROFILE 'ERP-KOLA'
+$v2 = Join-Path $root 'v2'
+$netbayUrl = 'http://192.168.1.123/kola/spn'
+
+function Step($text) { Write-Host ''; Write-Host "== $text" -ForegroundColor Cyan }
+function Have($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
+function Refresh-Path {
+  # โปรแกรมที่เพิ่งติดตั้งเพิ่ม PATH ในระบบแล้ว แต่หน้าต่างนี้ยังใช้ PATH เก่า
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+}
+function Run($exe) {
+  # โปรแกรมภายนอก (git, npm, winget) เขียนความคืบหน้าออก stderr — อย่าให้ PowerShell ถือเป็น error ดูผลจาก exit code แทน
+  # | Out-Host = แสดงบนจอ ไม่ปนกับค่าที่ฟังก์ชันคืน (คืนแค่ exit code)
+  $ErrorActionPreference = 'Continue'
+  & $exe @args | Out-Host
+  return $LASTEXITCODE
+}
+function Install-App($id, $name) {
+  if (-not (Have 'winget')) { throw "ไม่พบ winget — ติดตั้ง $name เองแล้วดับเบิลคลิกไฟล์นี้ใหม่" }
+  Write-Host "กำลังติดตั้ง $name ... (ถ้ามีหน้าต่างขอสิทธิ์ ให้กด Yes)"
+  Run winget install --id $id -e --silent --accept-source-agreements --accept-package-agreements | Out-Null   # ติดตั้งไม่ได้ ตรวจด้วย Have ด้านล่าง
+  Refresh-Path
+}
+function Read-Secret($prompt) {
+  $s = Read-Host $prompt -AsSecureString
+  [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
+}
+
+try {
+  Write-Host 'ติดตั้ง ERP-KOLA สำหรับเปิดใบขน NETBAY / สร้าง Draft ใบขน' -ForegroundColor Green
+
+  Step '1/6 ตรวจว่าเปิด NETBAY ได้'
+  try {
+    Invoke-WebRequest "$netbayUrl/" -UseBasicParsing -TimeoutSec 8 | Out-Null
+    Write-Host 'เปิด NETBAY ได้' -ForegroundColor Green
+  } catch {
+    Write-Host "⚠️  เปิด $netbayUrl ไม่ได้ — เครื่องต้องอยู่ในเครือข่ายออฟฟิศถึงจะเปิดใบขนได้ (ติดตั้งต่อได้)" -ForegroundColor Yellow
+  }
+
+  Step '2/6 โปรแกรมที่ต้องมี (Git, Node.js, Google Chrome)'
+  if (-not (Have 'git')) { Install-App 'Git.Git' 'Git' }
+  if (-not (Have 'node')) { Install-App 'OpenJS.NodeJS.LTS' 'Node.js LTS' }
+  $chrome = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+              "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+              "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ }
+  if (-not $chrome) { Install-App 'Google.Chrome' 'Google Chrome' }
+  foreach ($c in 'git', 'node', 'npm') {
+    if (-not (Have $c)) { throw "ยังไม่มี $c — ปิดหน้าต่างนี้แล้วดับเบิลคลิกไฟล์ติดตั้งอีกครั้ง" }
+  }
+  Write-Host "$(git --version) · node $(node --version)" -ForegroundColor Green
+
+  Step "3/6 โค้ด ERP-KOLA ($root)"
+  $code = if (Test-Path (Join-Path $root '.git')) { Run git -C $root pull --ff-only } else { Run git clone $repo $root }
+  if ($code) { throw 'ดึงโค้ด ERP-KOLA ไม่สำเร็จ — ตรวจอินเทอร์เน็ตแล้วลองใหม่' }
+
+  Step '4/6 ติดตั้งแพ็กเกจ (npm install — ครั้งแรกใช้เวลาสักครู่)'
+  Push-Location $v2
+  try { $code = Run npm install --no-audit --no-fund } finally { Pop-Location }
+  if ($code) { throw 'npm install ไม่สำเร็จ' }
+
+  Step '5/6 ตั้งค่า NETBAY (v2\.env.local)'
+  $envFile = Join-Path $v2 '.env.local'
+  $lines = @(if (Test-Path $envFile) { [IO.File]::ReadAllLines($envFile) })
+  $current = @{}
+  foreach ($l in $lines) { if ($l -match '^([A-Z_]+)=(.*)$') { $current[$Matches[1]] = $Matches[2] } }
+  $set = @{}
+  $keep = $false
+  if ($current['NETBAY_USER'] -and $current['NETBAY_PASSWORD']) {
+    $keep = (Read-Host "มี user NETBAY ($($current['NETBAY_USER'])) อยู่แล้ว ใช้ค่าเดิมไหม [Y/n]") -notmatch '^[nN]'
+  }
+  if (-not $keep) {
+    do { $user = (Read-Host 'user NETBAY').Trim() } until ($user)
+    do { $pass = Read-Secret 'password NETBAY (พิมพ์แล้วไม่ขึ้นบนจอ)' } until ($pass)
+    $set['NETBAY_USER'] = $user
+    $set['NETBAY_PASSWORD'] = $pass
+  }
+  if (-not $current['NETBAY_URL']) { $set['NETBAY_URL'] = $netbayUrl }
+  $key = Read-Secret 'WORKER_API_KEY — ถ้าจะให้เครื่องนี้ทำ Draft ใบขนด้วย (ไม่ใช้ กด Enter ข้าม)'
+  if ($key.Trim()) { $set['WORKER_API_KEY'] = $key.Trim() }
+  # เขียนทับเฉพาะค่าที่ตั้งใหม่ บรรทัดอื่นคงไว้ · UTF-8 ไม่มี BOM (Node อ่านชื่อตัวแปรแรกเพี้ยนถ้ามี BOM)
+  $out = @($lines | Where-Object { -not ($_ -match '^([A-Z_]+)=' -and $set.ContainsKey($Matches[1])) })
+  foreach ($k in $set.Keys) { $out += "$k=$($set[$k])" }
+  [IO.File]::WriteAllText($envFile, (($out -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false))
+  Write-Host "บันทึกแล้ว: $envFile" -ForegroundColor Green
+
+  Step '6/6 ลงทะเบียนลิงก์ (ปุ่มเปิด worker · เลข Ref No.)'
+  & (Join-Path $v2 'scripts\install\windows-worker-launcher.ps1')
+
+  Write-Host ''
+  Write-Host '✅ ติดตั้งเสร็จ' -ForegroundColor Green
+  Write-Host '   เปิด ERP -> กดเลข Ref No. -> เบราว์เซอร์ถามว่าจะเปิด KOLA Worker ไหม -> ติ๊ก "อนุญาตเสมอ" แล้วกดเปิด'
+  if ($set.ContainsKey('WORKER_API_KEY') -or $current['WORKER_API_KEY']) {
+    Write-Host '   ทำ Draft ใบขน: กด "เปิด worker" ที่ งานคงค้าง -> 3. Draft ใบขน'
+  }
+  Write-Host "   log: $env:LOCALAPPDATA\KOLA\   ·   อัปเดตภายหลัง: ดับเบิลคลิกไฟล์นี้อีกครั้ง"
+} catch {
+  Write-Host ''
+  Write-Host "❌ ติดตั้งไม่สำเร็จ: $($_.Exception.Message)" -ForegroundColor Red
+}
