@@ -42,6 +42,7 @@
     "test:web-template": "tsx --tsconfig tsconfig.json tests/web-template.ts",
     "worker:draft": "tsx --tsconfig tsconfig.json scripts/draft-worker.ts",
     "netbay:open": "tsx --tsconfig tsconfig.json scripts/netbay-open.ts",
+    "netbay:account": "tsx --tsconfig tsconfig.json scripts/netbay-account.ts",
     "engine:migrate": "tsx scripts/migrate-engine-numbers.ts",
     "engine:import": "tsx scripts/import-engine-numbers.ts",
     "test:draft": "tsx --tsconfig tsconfig.json tests/draft-invoice.ts && tsx --tsconfig tsconfig.json tests/draft-worker.ts"

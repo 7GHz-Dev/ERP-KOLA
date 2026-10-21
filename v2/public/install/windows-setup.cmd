@@ -8,12 +8,13 @@ exit /b
 #>
 # ติดตั้ง ERP-KOLA บน Windows ในคลิกเดียว — ให้เครื่องนี้กดเลข Ref No. เปิดใบขนใน NETBAY ได้ (และทำ Draft ใบขนได้)
 #
-# ดาวน์โหลดจาก https://erp-kola.vercel.app/install/windows-setup.cmd แล้วดับเบิลคลิก (รันซ้ำได้ = อัปเดต)
+# ดาวน์โหลดจาก ERP-KOLA (ต้องล็อกอิน) แท็บ Draft ใบขน → "ติดตั้งตัวเปิด" แล้วดับเบิลคลิก (รันซ้ำได้ = อัปเดต)
+# ไฟล์ที่ดาวน์โหลดผ่าน ERP มี WORKER_API_KEY ฝังมาให้แล้ว — อย่าส่งต่อไฟล์นี้ให้คนนอก
 #   1. ตรวจว่าเปิด NETBAY (192.168.1.123) ได้
 #   2. ติดตั้ง Git / Node.js LTS / Google Chrome ด้วย winget ถ้ายังไม่มี
 #   3. ดึงโค้ด ERP-KOLA ไว้ที่ %USERPROFILE%\ERP-KOLA (มีแล้ว = git pull)
 #   4. npm install
-#   5. ถาม user / password NETBAY (และ WORKER_API_KEY ถ้าจะให้เครื่องนี้ทำ Draft) เขียนลง v2\.env.local
+#   5. ใส่ WORKER_API_KEY และขอบัญชี NETBAY ประจำเครื่องจาก ERP (เครื่องละบัญชี กัน login ชนกันแล้วหลุด) ลง v2\.env.local
 #   6. ลงทะเบียนลิงก์ kola-worker:// และ kola-netbay:// (scripts\install\windows-worker-launcher.ps1)
 # ไม่ต้องใช้สิทธิ์ Administrator ยกเว้นตอนติดตั้ง Node.js / Git ครั้งแรก (Windows จะถาม)
 
@@ -23,6 +24,8 @@ $repo = 'https://github.com/7GHz-Dev/ERP-KOLA.git'
 $root = Join-Path $env:USERPROFILE 'ERP-KOLA'
 $v2 = Join-Path $root 'v2'
 $netbayUrl = 'http://192.168.1.123/kola/spn'
+# ERP ใส่คีย์ตรงนี้ตอนดาวน์โหลด (/api/install/windows) — ไฟล์ใน git / ลิงก์สาธารณะยังเป็นข้อความแทนที่อยู่
+$embeddedKey = '__KOLA_WORKER_API_KEY__'
 
 function Step($text) { Write-Host ''; Write-Host "== $text" -ForegroundColor Cyan }
 function Have($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
@@ -83,29 +86,28 @@ try {
   try { $code = Run npm install --no-audit --no-fund } finally { Pop-Location }
   if ($code) { throw 'npm install ไม่สำเร็จ' }
 
-  Step '5/6 ตั้งค่า NETBAY (v2\.env.local)'
+  Step '5/6 ตั้งค่า (v2\.env.local) และบัญชี NETBAY ของเครื่องนี้'
   $envFile = Join-Path $v2 '.env.local'
   $lines = @(if (Test-Path $envFile) { [IO.File]::ReadAllLines($envFile) })
   $current = @{}
   foreach ($l in $lines) { if ($l -match '^([A-Z_]+)=(.*)$') { $current[$Matches[1]] = $Matches[2] } }
   $set = @{}
-  $keep = $false
-  if ($current['NETBAY_USER'] -and $current['NETBAY_PASSWORD']) {
-    $keep = (Read-Host "มี user NETBAY ($($current['NETBAY_USER'])) อยู่แล้ว ใช้ค่าเดิมไหม [Y/n]") -notmatch '^[nN]'
-  }
-  if (-not $keep) {
-    do { $user = (Read-Host 'user NETBAY').Trim() } until ($user)
-    do { $pass = Read-Secret 'password NETBAY (พิมพ์แล้วไม่ขึ้นบนจอ)' } until ($pass)
-    $set['NETBAY_USER'] = $user
-    $set['NETBAY_PASSWORD'] = $pass
+  if ($embeddedKey -notlike '__KOLA*') {
+    $set['WORKER_API_KEY'] = $embeddedKey
+  } elseif (-not $current['WORKER_API_KEY']) {
+    # ไฟล์จากลิงก์สาธารณะไม่มีคีย์ฝังมา — ดาวน์โหลดใหม่จาก ERP (ล็อกอินแล้ว) จะไม่ต้องกรอก
+    do { $key = (Read-Secret 'WORKER_API_KEY (หรือปิดแล้วดาวน์โหลดไฟล์ติดตั้งจากหน้า ERP แทน)').Trim() } until ($key)
+    $set['WORKER_API_KEY'] = $key
   }
   if (-not $current['NETBAY_URL']) { $set['NETBAY_URL'] = $netbayUrl }
-  $key = Read-Secret 'WORKER_API_KEY — ถ้าจะให้เครื่องนี้ทำ Draft ใบขนด้วย (ไม่ใช้ กด Enter ข้าม)'
-  if ($key.Trim()) { $set['WORKER_API_KEY'] = $key.Trim() }
   # เขียนทับเฉพาะค่าที่ตั้งใหม่ บรรทัดอื่นคงไว้ · UTF-8 ไม่มี BOM (Node อ่านชื่อตัวแปรแรกเพี้ยนถ้ามี BOM)
   $out = @($lines | Where-Object { -not ($_ -match '^([A-Z_]+)=' -and $set.ContainsKey($Matches[1])) })
   foreach ($k in $set.Keys) { $out += "$k=$($set[$k])" }
   [IO.File]::WriteAllText($envFile, (($out -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false))
+  # บัญชี NETBAY ประจำเครื่อง (erpkola1, erpkola2, …) — ERP จองให้ เครื่องเดิมได้บัญชีเดิม
+  Push-Location $v2
+  try { $code = Run npm run --silent netbay:account } finally { Pop-Location }
+  if ($code) { throw 'ขอบัญชี NETBAY จาก ERP ไม่สำเร็จ — ดูข้อความด้านบน' }
   Write-Host "บันทึกแล้ว: $envFile" -ForegroundColor Green
 
   Step '6/6 ลงทะเบียนลิงก์ (ปุ่มเปิด worker · เลข Ref No.)'
@@ -114,9 +116,7 @@ try {
   Write-Host ''
   Write-Host '✅ ติดตั้งเสร็จ' -ForegroundColor Green
   Write-Host '   เปิด ERP -> กดเลข Ref No. -> เบราว์เซอร์ถามว่าจะเปิด KOLA Worker ไหม -> ติ๊ก "อนุญาตเสมอ" แล้วกดเปิด'
-  if ($set.ContainsKey('WORKER_API_KEY') -or $current['WORKER_API_KEY']) {
-    Write-Host '   ทำ Draft ใบขน: กด "เปิด worker" ที่ งานคงค้าง -> 3. Draft ใบขน'
-  }
+  Write-Host '   สร้าง Draft: กด "สร้าง Draft" ที่ งานคงค้าง -> 3. Draft ใบขน แล้วเครื่องนี้จะเปิด NETBAY ทำให้เอง'
   Write-Host "   log: $env:LOCALAPPDATA\KOLA\   ·   อัปเดตภายหลัง: ดับเบิลคลิกไฟล์นี้อีกครั้ง"
 } catch {
   Write-Host ''

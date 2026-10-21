@@ -21,13 +21,18 @@ NODE_DIR="$(dirname "$(command -v node)")"
 LOG_DIR="$HOME/Library/Logs/KOLA"
 [ -d "$V2/node_modules" ] || { echo "ยังไม่ได้ npm install — กำลังติดตั้ง"; (cd "$V2" && npm install); }
 grep -q '^WORKER_API_KEY=.' "$V2/.env.local" 2>/dev/null || echo "⚠️  ยังไม่มี WORKER_API_KEY ใน $V2/.env.local — worker จะต่อ ERP ไม่ได้จนกว่าจะใส่"
-grep -q '^NETBAY_PASSWORD=.' "$V2/.env.local" 2>/dev/null || echo "⚠️  ยังไม่มี NETBAY_USER / NETBAY_PASSWORD ใน $V2/.env.local — worker สร้าง Draft และลิงก์ Ref No. จะเข้า NETBAY ไม่ได้"
+# บัญชี NETBAY ประจำเครื่อง (erpkola1, erpkola2, …) — ERP จองให้ เครื่องเดิมได้บัญชีเดิม · เครื่องละบัญชี กัน login ชนกันแล้วหลุด
+if grep -q '^WORKER_API_KEY=.' "$V2/.env.local" 2>/dev/null; then
+  (cd "$V2" && npm run --silent netbay:account) || echo "⚠️  ขอบัญชี NETBAY จาก ERP ไม่สำเร็จ — ดูข้อความด้านบน"
+fi
 
 SCRIPT="$(mktemp -t kola-worker).applescript"
 cat > "$SCRIPT" <<APPLESCRIPT
 on open location theURL
   if theURL starts with "kola-netbay:" then
     openRef(theURL)
+  else if theURL contains "task=" then
+    runTask(theURL)
   else if theURL contains "draft" then
     startWorker("worker:draft", "draft-worke[r]", "draft-worker.log", "worker สร้าง Draft ใบขน")
   else
@@ -57,6 +62,16 @@ on startWorker(npmScript, pattern, logName, label)
     display dialog "เปิด " & label & " ไม่สำเร็จ: " & errMsg & " (" & errNum & ")" & return & return & "ดู log ได้ที่ $LOG_DIR/" & logName buttons {"ตกลง"} default button 1 with title "KOLA Worker" with icon caution
   end try
 end startWorker
+
+-- ปุ่ม "สร้าง Draft": ทำงานนั้นบนเครื่องนี้ · draft-worker.ts ตรวจรูปแบบเลขงานในลิงก์เอง
+on runTask(theURL)
+  try
+    do shell script "export PATH=" & quoted form of "$NODE_DIR" & ":\$PATH; mkdir -p " & quoted form of "$LOG_DIR" & "; cd " & quoted form of "$V2" & " && (nohup npm run worker:draft -- " & quoted form of theURL & " >> " & quoted form of "$LOG_DIR/draft-worker.log" & " 2>&1 < /dev/null &)"
+    display notification "กำลังสร้าง Draft บนเครื่องนี้" with title "KOLA Worker"
+  on error errMsg number errNum
+    display dialog "สร้าง Draft ไม่สำเร็จ: " & errMsg & " (" & errNum & ")" & return & return & "ดู log ได้ที่ $LOG_DIR/draft-worker.log" buttons {"ตกลง"} default button 1 with title "KOLA Worker" with icon caution
+  end try
+end runTask
 
 -- ลิงก์ Ref No. บน ERP: เปิด Chrome -> login NETBAY -> ค้นหา Ref No. -> เปิดใบขน
 on openRef(theURL)

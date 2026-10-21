@@ -6,6 +6,7 @@ import { downloadFile } from '@/lib/storage';
 import { completeTask, CUSTOMS_TASK_TYPES, failTask } from '@/lib/automation';
 import { downloadTaskFile, saveRecording } from '@/lib/web-template-store';
 import { recordHeartbeat } from '@/lib/worker-status';
+import { assignNetbayAccount } from '@/lib/netbay-accounts';
 import { engineLookup, issueEngineNumbers } from '@/lib/engine-numbers';
 
 /**
@@ -37,6 +38,11 @@ async function claimNext(args: any) {
   ];
   // ไม่ระบุชนิด = worker ใบขนรุ่นเดิม ให้เห็นเฉพาะงานใบขน ไม่คว้างานขอ D/O ไปทำผิดตัว
   conditions.push(type ? eq(automationTasks.type, type) : inArray(automationTasks.type, CUSTOMS_TASK_TYPES));
+  /*
+   * งาน Draft ที่กดจากเครื่องไหน ให้เครื่องนั้นทำ (payload.local) — worker กลางไม่หยิบ
+   * เครื่องที่กดเปิด worker เฉพาะงานนั้นผ่านลิงก์ kola-worker://draft?task=… แล้วหยิบด้วย claimTask
+   */
+  conditions.push(sql`coalesce(${automationTasks.payload}, '') not like '%"local":true%'`);
 
   const [task] = await db.select().from(automationTasks)
     .where(and(...conditions)).orderBy(asc(automationTasks.createdAt)).limit(1);
@@ -50,6 +56,36 @@ async function claimNext(args: any) {
   let payload: unknown = {};
   try { payload = JSON.parse(task.payload ?? '{}'); } catch { payload = {}; }
 
+  return {
+    task: {
+      id: task.id, type: task.type, jobId: task.jobId, data: payload,
+      hasInputFile: Boolean(task.inputStorageKey), inputFileName: task.inputFileName,
+      attempts: task.attempts + 1,
+    },
+  };
+}
+
+/** หยิบงานที่ระบุ — worker ที่เครื่องผู้กดเปิดขึ้นมาเพื่องานนี้โดยเฉพาะ (ลิงก์ kola-worker://draft?task=…) */
+async function claimTask(args: any) {
+  const taskId = String(args?.taskId ?? '').trim();
+  const worker = String(args?.worker ?? 'worker').slice(0, 80);
+  const staleBefore = new Date(Date.now() - CLAIM_TIMEOUT_MINUTES * 60_000);
+  const [task] = await db.select().from(automationTasks).where(eq(automationTasks.id, taskId)).limit(1);
+  if (!task) throw new Error('ไม่พบงานในคิว');
+  if (task.status === 'DONE') throw new Error('งานนี้ทำเสร็จไปแล้ว');
+  if (task.status === 'ERROR') throw new Error('งานนี้ถูกยกเลิกหรือไม่สำเร็จไปแล้ว — กดสร้างใหม่ที่ ERP');
+  if (task.status === 'PROCESSING' && task.claimedAt && task.claimedAt > staleBefore) {
+    throw new Error(`งานนี้มี worker ${task.claimedBy ?? ''} ทำอยู่แล้ว`);
+  }
+  const [claimed] = await db.update(automationTasks).set({
+    status: 'PROCESSING', claimedBy: worker, claimedAt: new Date(),
+    attempts: task.attempts + 1, updatedAt: new Date(),
+  }).where(and(eq(automationTasks.id, task.id), eq(automationTasks.status, task.status)))
+    .returning({ id: automationTasks.id });
+  if (!claimed) throw new Error('งานนี้ถูกหยิบไปพร้อมกันพอดี');
+
+  let payload: unknown = {};
+  try { payload = JSON.parse(task.payload ?? '{}'); } catch { payload = {}; }
   return {
     task: {
       id: task.id, type: task.type, jobId: task.jobId, data: payload,
@@ -97,7 +133,13 @@ async function draftTask(taskId: string) {
 
 const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
   claimNext,
+  claimTask,
   downloadInputFile: downloadInput,
+
+  // บัญชี NETBAY ของเครื่องนี้ — ตัวติดตั้งขอตอนติดตั้ง (เครื่องละบัญชี กัน login ชนกันแล้วหลุด)
+  async netbayAccount(args: any) {
+    return assignNetbayAccount(String(args?.machine ?? ''));
+  },
 
   // Template กรอกเว็บ — ไฟล์ของงานตามหมวดที่ Template แนบ และขั้นตอนที่บันทึกมา
   async downloadTaskFile(args: any) {

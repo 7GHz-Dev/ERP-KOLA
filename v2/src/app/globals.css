@@ -2121,3 +2121,6 @@ label.mini:has(.search-select) { overflow: visible; }
   margin: 0; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-word;
   font: 11px/1.45 ui-monospace, Menlo, monospace; background: #1f1d1a; color: #e8e4dc; padding: 8px; border-radius: 6px;
 }
+
+/* สร้าง Draft บนเครื่องที่กด (แท็บ 3. Draft ใบขน) */
+.draft-local { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }

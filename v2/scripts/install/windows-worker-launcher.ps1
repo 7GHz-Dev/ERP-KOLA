@@ -3,6 +3,7 @@
 # ลงทะเบียนลิงก์ให้ผู้ใช้คนนี้ (ไม่ต้องใช้สิทธิ์ Administrator)
 #   kola-worker://start        หน้าจัดการแลก DO  -> npm run worker:web
 #   kola-worker://draft        แท็บ Draft ใบขน     -> npm run worker:draft
+#   kola-worker://draft?task=… ปุ่ม "สร้าง Draft"  -> npm run worker:draft -- --task … (ทำงานนั้นบนเครื่องนี้)
 #   kola-netbay://open?ref=…   เลข Ref No.        -> npm run netbay:open (เปิดใบขนนั้นใน NETBAY)
 # รันในโฟลเดอร์ v2 นี้แบบไม่มีหน้าต่าง · log อยู่ที่ %LOCALAPPDATA%\KOLA\ · worker ที่เปิดอยู่แล้วจะไม่เปิดซ้ำ
 #
@@ -48,6 +49,10 @@ if ($url -like 'kola-netbay:*') {
   # ส่งต่อเฉพาะ Ref No. ที่เป็นตัวอักษร/ตัวเลข — URL มาจากเบราว์เซอร์ ห้ามต่อเป็นคำสั่งตรง ๆ
   if ($url -notmatch '[?&]ref=([A-Za-z0-9][A-Za-z0-9-]{3,39})(&|$)') { Show "ลิงก์ Ref No. ไม่ถูกต้อง: $url"; exit }
   Start-Npm ('netbay:open -- ' + $Matches[1]) 'netbay-open.log'
+} elseif ($url -like '*draft*task=*') {
+  # กด "สร้าง Draft" ที่เครื่องนี้ — ทำเฉพาะงานนั้นบนเครื่องนี้ (เลขงานตรวจรูปแบบก่อน ห้ามต่อ URL เป็นคำสั่งตรง ๆ)
+  if ($url -notmatch '[?&]task=(TASK-[A-F0-9]{8,40})(&|$)') { Show "ลิงก์งาน Draft ไม่ถูกต้อง: $url"; exit }
+  Start-Npm ('worker:draft -- --task ' + $Matches[1]) 'draft-worker.log'
 } elseif ($url -like '*draft*') {
   Start-Worker 'worker:draft' 'draft-worker' 'draft-worker.log' 'worker สร้าง Draft ใบขน'
 } else {

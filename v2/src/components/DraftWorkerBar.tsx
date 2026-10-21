@@ -84,19 +84,19 @@ export function DraftWorkerBar({ initial }: { initial: OnlineWorker[] }) {
         </div>
       ) : null}
 
-      {!worker ? (
-        <details className="worker-launcher-help">
-          <summary>ติดตั้งตัวเปิด</summary>
-          <div>
-            <p>ติดตั้งครั้งเดียวบนเครื่องในออฟฟิศที่เปิด NETBAY ได้ — เครื่องนั้นจะกดเลข Ref No. เปิดใบขนได้ และเปิด worker ได้</p>
-            <p><b>Windows 10/11 (คลิกเดียว):</b> <a href="/install/windows-setup.cmd" download>ดาวน์โหลด windows-setup.cmd</a>
-              แล้วดับเบิลคลิก — ติดตั้ง Git / Node.js / Chrome ที่ยังไม่มี ดึงโค้ด ถาม user/password NETBAY แล้วลงทะเบียนลิงก์ให้
-              (ถ้า Windows ขึ้นว่า &quot;ป้องกันพีซีของคุณ&quot; กด ข้อมูลเพิ่มเติม → เรียกใช้)</p>
-            <p><b>Mac:</b> มีโค้ด ERP-KOLA กับ Node.js แล้ว ใส่ <code>NETBAY_USER</code> / <code>NETBAY_PASSWORD</code> / <code>WORKER_API_KEY</code>
-              ใน <code>v2/.env.local</code> แล้วรัน <code>bash scripts/install/mac-worker-launcher.sh</code> ในโฟลเดอร์ v2</p>
-          </div>
-        </details>
-      ) : null}
+      {/* แสดงเสมอ — "สร้าง Draft" ทำบนเครื่องที่กด เครื่องใหม่ทุกเครื่องต้องติดตั้งก่อน */}
+      <details className="worker-launcher-help">
+        <summary>ติดตั้งบนเครื่องนี้</summary>
+        <div>
+          <p>ติดตั้งครั้งเดียวบนเครื่องในออฟฟิศที่เปิด NETBAY ได้ — เครื่องนั้นกด &quot;สร้าง Draft&quot; แล้วทำเองได้ และกดเลข Ref No. เปิดใบขนได้</p>
+          <p><b>Windows 10/11 (คลิกเดียว):</b> <a href="/api/install/windows" download>ดาวน์โหลด windows-setup.cmd</a>
+            แล้วดับเบิลคลิก — ติดตั้ง Git / Node.js / Chrome ที่ยังไม่มี ดึงโค้ด ใส่คีย์ และจองบัญชี NETBAY ประจำเครื่องให้เอง
+            ไม่ต้องกรอกอะไร (ถ้า Windows ขึ้นว่า &quot;ป้องกันพีซีของคุณ&quot; กด ข้อมูลเพิ่มเติม → เรียกใช้)
+            · ไฟล์นี้มีคีย์ของระบบ อย่าส่งต่อให้คนนอก</p>
+          <p><b>Mac:</b> มีโค้ด ERP-KOLA กับ Node.js แล้ว ใส่ <code>WORKER_API_KEY</code> ใน <code>v2/.env.local</code>
+            แล้วรัน <code>bash scripts/install/mac-worker-launcher.sh</code> ในโฟลเดอร์ v2 (จองบัญชี NETBAY ให้เอง)</p>
+        </div>
+      </details>
     </div>
   );
 }

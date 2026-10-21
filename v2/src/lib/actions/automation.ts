@@ -38,7 +38,8 @@ async function submitDraftTaskImpl(formData: FormData) {
     const id = newId('TASK');
     await db.insert(automationTasks).values({
       id, type: TASK_TYPES.DRAFT, status: 'QUEUED', jobId,
-      payload: JSON.stringify({ jobNo: job.jobNo, blNo: job.blNo }),
+      // local: ให้เครื่องที่กดเป็นคนทำ (ปุ่มเปิดลิงก์ kola-worker://draft?task=…) worker กลางไม่หยิบ
+      payload: JSON.stringify({ jobNo: job.jobNo, blNo: job.blNo, local: true, requestedBy: user.id }),
       inputStorageKey: invoice.storageKey,
       inputFileName: invoice.fileName,
     });

@@ -20,6 +20,8 @@ export type NetbaySettings = {
   url: string; username: string; password: string; declarationType: string;
   importerSearch: string; importerName: string; vessel: string; voyage: string;
   originCountry: string; releasePort: string; headless: boolean;
+  /** ย่อการแสดงผลของหน้าต่าง NETBAY ให้เห็นทั้งหน้าโดยไม่ต้องเลื่อน (1 = ขนาดปกติ) */
+  zoom: number;
 };
 
 /** ค่าจาก .env.local  ค่าหัวใบขนตั้งต้นเป็นค่าเดิมจากโปรแกรมเก่า */
@@ -36,6 +38,7 @@ export function netbaySettings(env: Record<string, string | undefined> = process
     originCountry: env.NETBAY_ORIGIN_COUNTRY ?? 'JP',
     releasePort: env.NETBAY_RELEASE_PORT ?? '2836',     // ช่องแถว 9 ด้านขวาของหัวใบขน
     headless: env.NETBAY_HEADLESS === '1',
+    zoom: Math.min(1.5, Math.max(0.5, Number(env.NETBAY_ZOOM ?? '0.8') || 0.8)),
   };
 }
 
@@ -92,8 +95,11 @@ export function chromePath(): string {
   return found;
 }
 
+/** หน้าต่างใหญ่เต็มจอ และย่อการแสดงผลตาม NETBAY_ZOOM — หน้าของ NETBAY กว้างและยาว ไม่ย่อต้องเลื่อนไปมาเยอะ */
+const windowArgs = (s: NetbaySettings) => (s.headless ? [] : ['--start-maximized', `--force-device-scale-factor=${s.zoom}`]);
+
 async function launch(s: NetbaySettings): Promise<Browser> {
-  const args = [`--unsafely-treat-insecure-origin-as-secure=${s.url}`, ...(s.headless ? [] : ['--start-maximized'])];
+  const args = [`--unsafely-treat-insecure-origin-as-secure=${s.url}`, ...windowArgs(s)];
   try {
     return await chromium.launch({ channel: 'chrome', headless: s.headless, args });
   } catch {
@@ -276,6 +282,36 @@ async function banner(page: Page, message: string) {
   }, message.slice(0, 500)).catch(() => {});
 }
 
+/**
+ * ซ่อน/แสดงหน้าต่าง Chrome ผ่าน CDP — ย่อเก็บระหว่างทำงาน แล้วขยายเต็มจอและดึงขึ้นหน้าสุดตอนพร้อม
+ * ใช้คู่กับ --window-position นอกจอ: บางระบบ (macOS) ไม่ยอมให้หน้าต่างอยู่นอกจอทั้งหมด จึงย่อเก็บด้วย
+ */
+async function windowControl(page: Page) {
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    const { windowId } = await cdp.send('Browser.getWindowForTarget') as { windowId: number };
+    const set = (bounds: Record<string, unknown>) => cdp.send('Browser.setWindowBounds', { windowId, bounds }).catch(() => {});
+    return {
+      hide: () => set({ windowState: 'minimized' }),
+      show: async () => {
+        await set({ windowState: 'normal' });                // ต้องเป็น normal ก่อนจึงย้าย/ขยายได้
+        await sleep(500);                                    // รอหน้าต่างคืนจากที่ย่อเก็บ ไม่งั้นขนาดที่ตั้งไม่มีผล
+        // ขนาดพื้นที่จอจริง — macOS ไม่ขยายเต็มจอจาก windowState: 'maximized' จึงตั้งขนาดเองด้วย
+        const scr = await page.evaluate(() => ({
+          left: (screen as unknown as { availLeft?: number }).availLeft ?? 0,
+          top: (screen as unknown as { availTop?: number }).availTop ?? 0,
+          width: screen.availWidth, height: screen.availHeight,
+        })).catch(() => null);
+        if (scr) await set(scr);
+        await set({ windowState: 'maximized' });
+        await page.bringToFront().catch(() => {});
+      },
+    };
+  } catch {
+    return null;       // ควบคุมหน้าต่างไม่ได้ — ทำงานต่อได้ แค่หน้าต่างไม่ซ่อน/ไม่ขยายเอง
+  }
+}
+
 const freePort = () => new Promise<number>((resolve, reject) => {
   const srv = createServer();
   srv.listen(0, '127.0.0.1', () => {
@@ -304,8 +340,14 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
   }
   const profile = mkdtempSync(join(profiles, 'p-'));
   const port = await freePort();
+  /*
+   * หน้าต่างแบบ popup (--app: ไม่มีแถบ tab/ช่อง URL) วางไว้นอกจอระหว่าง login และค้นหา
+   * แล้วค่อยแสดงเต็มจอตอนเปิดใบขนได้แล้ว (reveal) — คนกดไม่ต้องเห็นขั้นตอนกลางทาง
+   */
   const args = [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
-    `--unsafely-treat-insecure-origin-as-secure=${s.url}`, ...(s.headless ? ['--headless=new'] : ['--start-maximized']), 'about:blank'];
+    `--unsafely-treat-insecure-origin-as-secure=${s.url}`,
+    ...(s.headless ? ['--headless=new', 'about:blank']
+      : ['--window-position=-32000,-32000', '--window-size=1400,900', `--force-device-scale-factor=${s.zoom}`, '--app=about:blank'])];
   const keep = opts.keepOpen !== false;          // ค้างหน้าต่างไว้หลังสคริปต์จบ — แยก process ออกไป
   const proc = spawn(chromePath(), args, { stdio: 'ignore', detached: keep });
   if (keep) proc.unref();
@@ -321,6 +363,8 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
     const context = browser.contexts()[0];
     context.setDefaultTimeout(30_000);
     page = context.pages()[0] ?? await context.newPage();
+    const win = s.headless ? null : await windowControl(page);
+    await win?.hide();
     log('login NETBAY ...');
     const listUrl = await login(page, s);
     log(`ค้นหา Reference No. ${ref} ...`);
@@ -333,9 +377,13 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
       await banner(page, `ไม่พบใบขน Reference No. ${ref} ใน NETBAY — ค้นหาเองอีกครั้งในหน้านี้`);
       log(`ไม่พบใบขน ${ref}`);
     }
+    await win?.show();
     return id;
   } catch (e) {            // เปิดจากลิงก์ไม่มีหน้าต่าง Terminal — บอกเหตุผลบนหน้าจอ Chrome
-    if (page) await banner(page, `เปิดใบขน ${ref} ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+    if (page) {
+      await banner(page, `เปิดใบขน ${ref} ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      await windowControl(page).then((w) => w?.show()).catch(() => {});
+    }
     throw e;
   } finally {
     // ต่อแบบ CDP: close() แค่ปล่อยการควบคุม หน้าต่าง Chrome ยังเปิดอยู่

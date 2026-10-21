@@ -1,3 +1,4 @@
+import { DraftLocalLaunch, SubmitDraftLocal } from '@/components/DraftLocalRun';
 import {
   confirmCustomerInfo, decideApproval, fileCustomsEntry, rejectDraft, releaseJob,
   markDoExchanged, requestApproval, saveDoHandoff, sendEofficeToPartner, submitDraftForReview,
@@ -350,12 +351,16 @@ export function SubmitDraftForReview({ jobId, label }: { jobId: string; label: s
  * แสดงเฉพาะปุ่มที่กดได้จริงในสถานะนั้น ๆ จะได้ไม่ต้องเดาว่าขั้นต่อไปคืออะไร
  */
 export function DraftActions({
-  jobId, draftStatus, hasRefNo, hasInvoice,
+  jobId, draftStatus, hasRefNo, hasInvoice, draftTaskId,
 }: {
   jobId: string; draftStatus: string | null; hasRefNo: boolean; hasInvoice: boolean;
+  /** งานคิวล่าสุดของ Draft — ใช้เปิด worker บนเครื่องที่กด */
+  draftTaskId?: string | null;
 }) {
   if (draftStatus === 'SENT_TO_HUB') {
-    return <span className="badge pending">รอ Automation สร้าง Draft</span>;
+    return draftTaskId
+      ? <DraftLocalLaunch jobId={jobId} taskId={draftTaskId} />
+      : <span className="badge pending">รอ Automation สร้าง Draft</span>;
   }
   if (draftStatus === 'SUBMITTED') {
     return <span className="badge pending">รอ FAH ตรวจ</span>;
@@ -371,7 +376,7 @@ export function DraftActions({
         />
       ) : null}
       {hasInvoice ? (
-        <SubmitDraftTask jobId={jobId} label={hasRefNo ? 'สร้าง Draft ใหม่' : 'สร้าง Draft'} />
+        <SubmitDraftLocal jobId={jobId} label={hasRefNo ? 'สร้าง Draft ใหม่' : 'สร้าง Draft'} />
       ) : (
         <span className="badge pending">ต้องมี Final Invoice ก่อน</span>
       )}

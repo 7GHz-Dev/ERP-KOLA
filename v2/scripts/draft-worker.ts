@@ -8,6 +8,8 @@
  * วิธีรัน (ในโฟลเดอร์ v2):
  *   npm run worker:draft              รอรับงานไปเรื่อย ๆ  (ปิด: Ctrl+C)
  *   npm run worker:draft -- --once    ทำงานที่ค้างในคิว 1 งานแล้วจบ
+ *   npm run worker:draft -- --task TASK-…   ทำเฉพาะงานนั้นแล้วจบ — ปุ่ม "สร้าง Draft" เปิดผ่านลิงก์
+ *                                            kola-worker://draft?task=… ให้เครื่องที่กดเป็นคนทำ
  *   ปุ่ม "เปิด worker" ที่แท็บ Draft ใบขน (ติดตั้งตัวเปิดก่อน: scripts/install/)
  *
  * ตัวแปรใน .env.local: WORKER_API_KEY · ERP_URL (ค่าตั้งต้นเว็บจริง) · NETBAY_USER · NETBAY_PASSWORD
@@ -20,6 +22,7 @@ import { loadDraftData } from '../src/lib/draft/csv';
 import { loadEnv } from '../src/lib/env';
 import { processTask, type Task } from './draft-task';
 import { netbaySettings } from './netbay-kola';
+import { taskFromArgs } from './draft-worker-args';
 
 loadEnv();
 
@@ -27,8 +30,11 @@ const ERP_URL = (process.env.ERP_URL ?? 'https://erp-kola.vercel.app').replace(/
 const KEY = process.env.WORKER_API_KEY ?? '';
 const TASK_TYPE = 'DRAFT_ENTRY';
 const MODE = 'draft';                       // แยกจาก worker กรอกเว็บแลก DO (DRAFT_WORKER_MODE)
-const WORKER = `draft@${hostname()}`;
 const ONCE = process.argv.includes('--once');
+
+const ONLY_TASK = taskFromArgs(process.argv.slice(2));
+// ตัวที่เปิดมาทำงานเดียวใช้ชื่อแยก — ปิดตัวแล้วไม่ทำให้ worker ตัวหลักของเครื่องเดียวกันดูเหมือนออฟไลน์
+const WORKER = ONLY_TASK ? `draft@${hostname()} (งานจากเครื่องนี้)` : `draft@${hostname()}`;
 const POLL_MS = 20_000;
 const BEAT_MS = 15_000;                     // ERP ถือว่าออฟไลน์ถ้าเงียบเกิน 70 วินาที
 const WORK_DIR = process.env.DRAFT_WORKER_DIR ?? join(homedir(), '.kola-draft-worker');
@@ -85,6 +91,15 @@ async function main() {
 
   try {
     await heartbeat();
+    if (ONLY_TASK) {
+      // เครื่องที่กดสร้าง Draft — ทำเฉพาะงานนั้นแล้วปิด ไม่วนรับงานอื่น
+      const { task } = await api<{ task: Task }>('claimTask', { taskId: ONLY_TASK, worker: WORKER });
+      busy = `Draft ใบขน ${task.data.jobNo || task.data.blNo || task.id}`;
+      log(`รับงาน ${task.id} บนเครื่องนี้  (งาน ${task.data.jobNo ?? '-'}  BL ${task.data.blNo ?? '-'})`);
+      await heartbeat();
+      await processTask(task, { api, data, netbay: netbaySettings(), workDir: WORK_DIR, log, onStep: snap });
+      return;
+    }
     while (!stop) {
       let task: Task | null = null;
       try {

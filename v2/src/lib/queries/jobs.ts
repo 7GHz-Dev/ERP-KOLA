@@ -170,6 +170,7 @@ export async function listJobs(filter: JobFilter = {}) {
       grossWeight: jobs.grossWeight,
       draftRefNo: jobs.draftRefNo,
       draftStatus: jobs.draftStatus,
+      draftTaskId: jobs.draftTaskId,
       draftRejectReason: jobs.draftRejectReason,
       customsStatus: jobs.customsStatus,
       surrenderStatus: jobs.surrenderStatus,

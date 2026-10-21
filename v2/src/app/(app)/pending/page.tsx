@@ -108,6 +108,7 @@ function columnsFor(
                 draftStatus={r.draftStatus}
                 hasRefNo={Boolean(r.draftRefNo)}
                 hasInvoice={Boolean(r.currentFiles?.FINAL_INVOICE)}
+                draftTaskId={r.draftTaskId}
               />
             ) : null}
           </div>
