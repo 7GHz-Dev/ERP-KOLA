@@ -22,6 +22,8 @@ export type NetbaySettings = {
   originCountry: string; releasePort: string; headless: boolean;
   /** ย่อการแสดงผลของหน้าต่าง NETBAY ให้เห็นทั้งหน้าโดยไม่ต้องเลื่อน (1 = ขนาดปกติ) */
   zoom: number;
+  /** ความกว้างของหน้าต่าง NETBAY ที่เกาะชิดซ้ายของจอแบบ drawer (สัดส่วนของจอ · 1 = เต็มจอ) */
+  dock: number;
 };
 
 /** ค่าจาก .env.local  ค่าหัวใบขนตั้งต้นเป็นค่าเดิมจากโปรแกรมเก่า */
@@ -39,6 +41,7 @@ export function netbaySettings(env: Record<string, string | undefined> = process
     releasePort: env.NETBAY_RELEASE_PORT ?? '2836',     // ช่องแถว 9 ด้านขวาของหัวใบขน
     headless: env.NETBAY_HEADLESS === '1',
     zoom: Math.min(1.5, Math.max(0.5, Number(env.NETBAY_ZOOM ?? '0.8') || 0.8)),
+    dock: Math.min(1, Math.max(0.3, Number(env.NETBAY_DOCK ?? '0.6') || 0.6)),
   };
 }
 
@@ -95,8 +98,11 @@ export function chromePath(): string {
   return found;
 }
 
-/** หน้าต่างใหญ่เต็มจอ และย่อการแสดงผลตาม NETBAY_ZOOM — หน้าของ NETBAY กว้างและยาว ไม่ย่อต้องเลื่อนไปมาเยอะ */
-const windowArgs = (s: NetbaySettings) => (s.headless ? [] : ['--start-maximized', `--force-device-scale-factor=${s.zoom}`]);
+/**
+ * ย่อการแสดงผลตาม NETBAY_ZOOM — หน้าของ NETBAY กว้างและยาว ไม่ย่อต้องเลื่อนไปมาเยอะ
+ * ตำแหน่งหน้าต่าง (เกาะซ้ายแบบ drawer) ตั้งหลังเปิดด้วย windowControl().show()
+ */
+const windowArgs = (s: NetbaySettings) => (s.headless ? [] : [`--force-device-scale-factor=${s.zoom}`]);
 
 async function launch(s: NetbaySettings): Promise<Browser> {
   const args = [`--unsafely-treat-insecure-origin-as-secure=${s.url}`, ...windowArgs(s)];
@@ -242,6 +248,8 @@ export async function createDraft(opts: {
       d.accept().catch(() => {});
     });
     const page = await context.newPage();
+    // หน้าต่างเกาะซ้ายแบบ drawer — เห็นการทำงานคู่กับหน้า ERP ทางขวา
+    if (!s.headless) await (await windowControl(page, s.dock))?.show();
     log('login NETBAY ...');
     const importUrl = await login(page, s);
     log(`สร้างใบขนใหม่ ${s.declarationType} และกรอกหัวใบขน BL ${opts.blNo} ...`);
@@ -283,10 +291,10 @@ async function banner(page: Page, message: string) {
 }
 
 /**
- * ซ่อน/แสดงหน้าต่าง Chrome ผ่าน CDP — ย่อเก็บระหว่างทำงาน แล้วขยายเต็มจอและดึงขึ้นหน้าสุดตอนพร้อม
+ * ซ่อน/แสดงหน้าต่าง Chrome ผ่าน CDP — ย่อเก็บระหว่างทำงาน แล้วแสดงเกาะซ้ายของจอ (drawer) และดึงขึ้นหน้าสุดตอนพร้อม
  * ใช้คู่กับ --window-position นอกจอ: บางระบบ (macOS) ไม่ยอมให้หน้าต่างอยู่นอกจอทั้งหมด จึงย่อเก็บด้วย
  */
-async function windowControl(page: Page) {
+async function windowControl(page: Page, dock = 1) {
   try {
     const cdp = await page.context().newCDPSession(page);
     const { windowId } = await cdp.send('Browser.getWindowForTarget') as { windowId: number };
@@ -296,14 +304,14 @@ async function windowControl(page: Page) {
       show: async () => {
         await set({ windowState: 'normal' });                // ต้องเป็น normal ก่อนจึงย้าย/ขยายได้
         await sleep(500);                                    // รอหน้าต่างคืนจากที่ย่อเก็บ ไม่งั้นขนาดที่ตั้งไม่มีผล
-        // ขนาดพื้นที่จอจริง — macOS ไม่ขยายเต็มจอจาก windowState: 'maximized' จึงตั้งขนาดเองด้วย
+        // เกาะชิดซ้ายของจอ สูงเต็มจอ กว้างตามสัดส่วน dock — เหลือฝั่งขวาให้เห็นหน้า ERP (dock 1 = เต็มจอ)
         const scr = await page.evaluate(() => ({
           left: (screen as unknown as { availLeft?: number }).availLeft ?? 0,
           top: (screen as unknown as { availTop?: number }).availTop ?? 0,
           width: screen.availWidth, height: screen.availHeight,
         })).catch(() => null);
-        if (scr) await set(scr);
-        await set({ windowState: 'maximized' });
+        if (scr) await set({ ...scr, width: Math.round(scr.width * dock) });
+        if (dock >= 1) await set({ windowState: 'maximized' });
         await page.bringToFront().catch(() => {});
       },
     };
@@ -341,8 +349,8 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
   const profile = mkdtempSync(join(profiles, 'p-'));
   const port = await freePort();
   /*
-   * หน้าต่างแบบ popup (--app: ไม่มีแถบ tab/ช่อง URL) วางไว้นอกจอระหว่าง login และค้นหา
-   * แล้วค่อยแสดงเต็มจอตอนเปิดใบขนได้แล้ว (reveal) — คนกดไม่ต้องเห็นขั้นตอนกลางทาง
+   * หน้าต่างไม่มีแถบ tab/ช่อง URL (--app) วางไว้นอกจอและย่อเก็บระหว่าง login และค้นหา
+   * แล้วค่อยแสดงเกาะซ้ายของจอแบบ drawer ตอนเปิดใบขนได้แล้ว — คนกดไม่ต้องเห็นขั้นตอนกลางทาง
    */
   const args = [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
     `--unsafely-treat-insecure-origin-as-secure=${s.url}`,
@@ -363,7 +371,7 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
     const context = browser.contexts()[0];
     context.setDefaultTimeout(30_000);
     page = context.pages()[0] ?? await context.newPage();
-    const win = s.headless ? null : await windowControl(page);
+    const win = s.headless ? null : await windowControl(page, s.dock);
     await win?.hide();
     log('login NETBAY ...');
     const listUrl = await login(page, s);
@@ -382,7 +390,7 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
   } catch (e) {            // เปิดจากลิงก์ไม่มีหน้าต่าง Terminal — บอกเหตุผลบนหน้าจอ Chrome
     if (page) {
       await banner(page, `เปิดใบขน ${ref} ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
-      await windowControl(page).then((w) => w?.show()).catch(() => {});
+      await windowControl(page, s.dock).then((w) => w?.show()).catch(() => {});
     }
     throw e;
   } finally {
