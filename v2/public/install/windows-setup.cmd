@@ -30,11 +30,14 @@ function Refresh-Path {
   # โปรแกรมที่เพิ่งติดตั้งเพิ่ม PATH ในระบบแล้ว แต่หน้าต่างนี้ยังใช้ PATH เก่า
   $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 }
-function Run($exe) {
+function Run {
   # โปรแกรมภายนอก (git, npm, winget) เขียนความคืบหน้าออก stderr — อย่าให้ PowerShell ถือเป็น error ดูผลจาก exit code แทน
   # | Out-Host = แสดงบนจอ ไม่ปนกับค่าที่ฟังก์ชันคืน (คืนแค่ exit code)
+  # ห้ามประกาศพารามิเตอร์ (เช่น $exe) — PowerShell จะจับ -e / -C ของคำสั่งไปเป็นชื่อพารามิเตอร์นั้น
+  # (winget ... -e --silent เคยกลายเป็นสั่งรันโปรแกรมชื่อ --silent) · รับทุกอย่างผ่าน $args แทน
   $ErrorActionPreference = 'Continue'
-  & $exe @args | Out-Host
+  $exe, $rest = $args
+  & $exe @rest | Out-Host
   return $LASTEXITCODE
 }
 function Install-App($id, $name) {
