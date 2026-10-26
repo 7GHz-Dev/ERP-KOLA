@@ -22,8 +22,6 @@ export type NetbaySettings = {
   originCountry: string; releasePort: string; headless: boolean;
   /** ย่อการแสดงผลของหน้าต่าง NETBAY ให้เห็นทั้งหน้าโดยไม่ต้องเลื่อน (1 = ขนาดปกติ) */
   zoom: number;
-  /** ความกว้างของหน้าต่าง NETBAY ที่เกาะชิดซ้ายของจอแบบ drawer (สัดส่วนของจอ · 1 = เต็มจอ) */
-  dock: number;
 };
 
 /** ค่าจาก .env.local  ค่าหัวใบขนตั้งต้นเป็นค่าเดิมจากโปรแกรมเก่า */
@@ -41,7 +39,6 @@ export function netbaySettings(env: Record<string, string | undefined> = process
     releasePort: env.NETBAY_RELEASE_PORT ?? '2836',     // ช่องแถว 9 ด้านขวาของหัวใบขน
     headless: env.NETBAY_HEADLESS === '1',
     zoom: Math.min(1.5, Math.max(0.5, Number(env.NETBAY_ZOOM ?? '0.8') || 0.8)),
-    dock: Math.min(1, Math.max(0.3, Number(env.NETBAY_DOCK ?? '0.6') || 0.6)),
   };
 }
 
@@ -100,7 +97,7 @@ export function chromePath(): string {
 
 /**
  * ย่อการแสดงผลตาม NETBAY_ZOOM — หน้าของ NETBAY กว้างและยาว ไม่ย่อต้องเลื่อนไปมาเยอะ
- * ตำแหน่งหน้าต่าง (เกาะซ้ายแบบ drawer) ตั้งหลังเปิดด้วย windowControl().show()
+ * ขยายหน้าต่างเต็มจอหลังเปิดด้วย maximize()
  */
 const windowArgs = (s: NetbaySettings) => (s.headless ? [] : [`--force-device-scale-factor=${s.zoom}`]);
 
@@ -248,8 +245,8 @@ export async function createDraft(opts: {
       d.accept().catch(() => {});
     });
     const page = await context.newPage();
-    // หน้าต่างเกาะซ้ายแบบ drawer — เห็นการทำงานคู่กับหน้า ERP ทางขวา
-    if (!s.headless) await (await windowControl(page, s.dock))?.show();
+    // หน้าต่างเต็มจอ — เห็นการทำงานตั้งแต่ login
+    if (!s.headless) await maximize(page);
     log('login NETBAY ...');
     const importUrl = await login(page, s);
     log(`สร้างใบขนใหม่ ${s.declarationType} และกรอกหัวใบขน BL ${opts.blNo} ...`);
@@ -290,34 +287,16 @@ async function banner(page: Page, message: string) {
   }, message.slice(0, 500)).catch(() => {});
 }
 
-/**
- * ซ่อน/แสดงหน้าต่าง Chrome ผ่าน CDP — ย่อเก็บระหว่างทำงาน แล้วแสดงเกาะซ้ายของจอ (drawer) และดึงขึ้นหน้าสุดตอนพร้อม
- * ใช้คู่กับ --window-position นอกจอ: บางระบบ (macOS) ไม่ยอมให้หน้าต่างอยู่นอกจอทั้งหมด จึงย่อเก็บด้วย
- */
-async function windowControl(page: Page, dock = 1) {
+/** ขยายหน้าต่าง Chrome เต็มจอผ่าน CDP และดึงขึ้นหน้าสุด (--start-maximized ไม่มีผลทุกระบบ เช่น macOS) */
+async function maximize(page: Page) {
   try {
     const cdp = await page.context().newCDPSession(page);
     const { windowId } = await cdp.send('Browser.getWindowForTarget') as { windowId: number };
-    const set = (bounds: Record<string, unknown>) => cdp.send('Browser.setWindowBounds', { windowId, bounds }).catch(() => {});
-    return {
-      hide: () => set({ windowState: 'minimized' }),
-      show: async () => {
-        await set({ windowState: 'normal' });                // ต้องเป็น normal ก่อนจึงย้าย/ขยายได้
-        await sleep(500);                                    // รอหน้าต่างคืนจากที่ย่อเก็บ ไม่งั้นขนาดที่ตั้งไม่มีผล
-        // เกาะชิดซ้ายของจอ สูงเต็มจอ กว้างตามสัดส่วน dock — เหลือฝั่งขวาให้เห็นหน้า ERP (dock 1 = เต็มจอ)
-        const scr = await page.evaluate(() => ({
-          left: (screen as unknown as { availLeft?: number }).availLeft ?? 0,
-          top: (screen as unknown as { availTop?: number }).availTop ?? 0,
-          width: screen.availWidth, height: screen.availHeight,
-        })).catch(() => null);
-        if (scr) await set({ ...scr, width: Math.round(scr.width * dock) });
-        if (dock >= 1) await set({ windowState: 'maximized' });
-        await page.bringToFront().catch(() => {});
-      },
-    };
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'maximized' } });
   } catch {
-    return null;       // ควบคุมหน้าต่างไม่ได้ — ทำงานต่อได้ แค่หน้าต่างไม่ซ่อน/ไม่ขยายเอง
+    // ควบคุมหน้าต่างไม่ได้ — ทำงานต่อได้ แค่หน้าต่างไม่ขยายเอง
   }
+  await page.bringToFront().catch(() => {});
 }
 
 const freePort = () => new Promise<number>((resolve, reject) => {
@@ -348,14 +327,11 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
   }
   const profile = mkdtempSync(join(profiles, 'p-'));
   const port = await freePort();
-  /*
-   * หน้าต่างไม่มีแถบ tab/ช่อง URL (--app) วางไว้นอกจอและย่อเก็บระหว่าง login และค้นหา
-   * แล้วค่อยแสดงเกาะซ้ายของจอแบบ drawer ตอนเปิดใบขนได้แล้ว — คนกดไม่ต้องเห็นขั้นตอนกลางทาง
-   */
+  // หน้าต่างเต็มจอ ไม่มีแถบ tab/ช่อง URL (--app) — เห็นการทำงานตั้งแต่ login ค้นหา จนเปิดใบขน
   const args = [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
     `--unsafely-treat-insecure-origin-as-secure=${s.url}`,
     ...(s.headless ? ['--headless=new', 'about:blank']
-      : ['--window-position=-32000,-32000', '--window-size=1400,900', `--force-device-scale-factor=${s.zoom}`, '--app=about:blank'])];
+      : ['--start-maximized', `--force-device-scale-factor=${s.zoom}`, '--app=about:blank'])];
   const keep = opts.keepOpen !== false;          // ค้างหน้าต่างไว้หลังสคริปต์จบ — แยก process ออกไป
   const proc = spawn(chromePath(), args, { stdio: 'ignore', detached: keep });
   if (keep) proc.unref();
@@ -371,8 +347,7 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
     const context = browser.contexts()[0];
     context.setDefaultTimeout(30_000);
     page = context.pages()[0] ?? await context.newPage();
-    const win = s.headless ? null : await windowControl(page, s.dock);
-    await win?.hide();
+    if (!s.headless) await maximize(page);
     log('login NETBAY ...');
     const listUrl = await login(page, s);
     log(`ค้นหา Reference No. ${ref} ...`);
@@ -385,13 +360,9 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
       await banner(page, `ไม่พบใบขน Reference No. ${ref} ใน NETBAY — ค้นหาเองอีกครั้งในหน้านี้`);
       log(`ไม่พบใบขน ${ref}`);
     }
-    await win?.show();
     return id;
   } catch (e) {            // เปิดจากลิงก์ไม่มีหน้าต่าง Terminal — บอกเหตุผลบนหน้าจอ Chrome
-    if (page) {
-      await banner(page, `เปิดใบขน ${ref} ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
-      await windowControl(page, s.dock).then((w) => w?.show()).catch(() => {});
-    }
+    if (page) await banner(page, `เปิดใบขน ${ref} ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
     throw e;
   } finally {
     // ต่อแบบ CDP: close() แค่ปล่อยการควบคุม หน้าต่าง Chrome ยังเปิดอยู่
