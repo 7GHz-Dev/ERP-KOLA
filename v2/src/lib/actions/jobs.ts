@@ -5,7 +5,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, bls, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
-import { notifyNewJobs } from '@/lib/line-notify';
+import { notifyDoQueue } from '@/lib/line-accounts';
 import { formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { hasBlBrackets } from '@/lib/bl-format';
@@ -302,7 +302,7 @@ async function saveDoHandoffImpl(formData: FormData) {
     await recordStatus(jobId, job.status, 'DO_SENT',
       `ส่ง DO ให้ ${partnerName || 'Partner'}`, user.id);
     // แจ้งกลุ่ม LINE เฉพาะตอนกดส่งจริง การกดบันทึกเฉย ๆ ยังไม่เข้าคิวของ ANN/MAY
-    await notifyNewJobs([{
+    await notifyDoQueue([{
       blNo: blNo || job.blNo, jobNo: job.jobNo,
       consigneeName: await consigneeNameOf(job.consigneeId),
       eta: formatDate(eta),
@@ -429,10 +429,10 @@ async function sendEofficeToPartnerImpl(formData: FormData) {
   /*
    * แจ้งกลุ่ม LINE ว่ามีรายการใหม่เข้าคิวแลก DO
    *
-   * อยู่หลังบันทึกทุกอย่างเสร็จแล้ว และ notifyNewJobs() ไม่ throw ไม่ว่าอะไรเกิดขึ้น
+   * อยู่หลังบันทึกทุกอย่างเสร็จแล้ว และ notifyDoQueue() ไม่ throw ไม่ว่าอะไรเกิดขึ้น
    * การส่งไม่สำเร็จจึงไม่ทำให้ผู้ใช้กดส่ง Partner ไม่ได้
    */
-  await notifyNewJobs([{
+  await notifyDoQueue([{
     blNo: job.blNo, jobNo: job.jobNo,
     consigneeName: await consigneeNameOf(job.consigneeId),
     eta: formatDate(job.eta),

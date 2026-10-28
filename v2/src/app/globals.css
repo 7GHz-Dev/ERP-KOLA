@@ -2124,3 +2124,38 @@ label.mini:has(.search-select) { overflow: visible; }
 
 /* สร้าง Draft บนเครื่องที่กด (แท็บ 3. Draft ใบขน) */
 .draft-local { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/*
+ * LINE OA หลายตัวในหน้าการใช้งานและค่าใช้จ่าย
+ * การ์ดละหนึ่ง OA ตัวที่ใช้ส่งอยู่มีขอบเขียว จะได้เห็นทันทีว่าข้อความออกจากตัวไหน
+ */
+.line-oas { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin: 12px 0; }
+.line-oa {
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.line-oa.on { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
+.line-oa .monitor-figures { margin-bottom: 0; gap: 18px; }
+.line-oa .monitor-figures b { font-size: 17px; }
+.line-oa .monitor-bar { margin-bottom: 0; }
+.line-oa-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.line-oa-head small { color: var(--muted); }
+.line-oa-seen { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.line-oa-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-top: auto; }
+.line-oa-actions .button[disabled] { opacity: .45; cursor: not-allowed; }
+.line-oa-group summary { list-style: none; }
+.line-oa-group summary::-webkit-details-marker { display: none; }
+.line-oa-group form { display: flex; gap: 6px; margin-top: 6px; }
+.line-oa-group input { min-width: 0; width: 230px; padding: 4px 7px; font-size: 12px; border: 1px solid var(--line); border-radius: 5px; }
+.line-oa-add > summary { list-style: none; display: inline-block; }
+.line-oa-add > summary::-webkit-details-marker { display: none; }
+.line-oa-form { display: flex; flex-direction: column; gap: 10px; max-width: 620px; margin-top: 10px; }
+.line-oa-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; }
+.line-oa-form label small { font-weight: 400; color: var(--muted); }
+.line-oa-form input, .line-oa-form textarea {
+  font: 12px ui-monospace, Menlo, monospace; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 6px; width: 100%;
+}
+.line-oa-form .button { align-self: flex-start; }
+.line-oa-steps { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.line-oa-steps code { font-size: 11px; word-break: break-all; color: var(--ink); }

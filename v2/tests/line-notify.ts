@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { lineConfigured, newJobsMessage, notifyNewJobs, pushToLine } from '../src/lib/line-notify';
+import { open, seal } from '../src/lib/secret-box';
 
 /**
  * การแจ้งเตือนเข้ากลุ่ม LINE
@@ -268,6 +269,92 @@ async function quotaWarningTest() {
   console.log('PASS: เตือนเมื่อโควต้าใกล้เต็ม โดยแนบท้ายไม่ใช่ส่งเพิ่ม');
 }
 
+/**
+ * มี LINE OA ได้หลายตัว — ส่งด้วยตัวที่เลือก (ส่งเข้ามาเป็นพารามิเตอร์) ไม่ใช่ตัวใน env
+ *
+ * เหตุผลที่มีหลายตัวคือโควต้าของตัวเดิมหมด ถ้าเผลอไปใช้ token ใน env
+ * ข้อความจะยังหายเหมือนเดิมทั้งที่ ADMIN สลับ OA แล้ว
+ */
+async function targetTest() {
+  const original = globalThis.fetch;
+  const calls: Array<{ url: string; auth: string; to?: string }> = [];
+  let skipped: { skipped?: boolean } = {};
+
+  // เลือกแล้วแต่ไม่มีตัวไหนใช้ได้ (null) — ต้องข้าม ไม่ใช่แอบไปใช้ตัวใน env
+  await withEnv({ LINE_CHANNEL_ACCESS_TOKEN: 'env-tok', LINE_GROUP_ID: 'Cenv' }, async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      calls.push({ url: String(url), auth: '' });
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+    skipped = await notifyNewJobs([{ blNo: 'BL-3', jobNo: 'J-3' }], 'PAINT', null);
+  });
+  globalThis.fetch = original;
+
+  assert.equal(skipped.skipped, true, 'ส่ง null มาต้องข้าม');
+  assert.equal(calls.length, 0, 'ส่ง null มาต้องไม่ยิงอะไรเลย แม้ env จะตั้งไว้');
+
+  await withEnv({ LINE_CHANNEL_ACCESS_TOKEN: 'env-tok', LINE_GROUP_ID: 'Cenv' }, async () => {
+    calls.length = 0;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        url: String(url),
+        auth: (init?.headers as Record<string, string>).Authorization,
+        to: init?.body ? JSON.parse(String(init.body)).to : undefined,
+      });
+      return new Response(String(url).includes('quota') ? '{"type":"none"}' : '{}', { status: 200 });
+    }) as typeof fetch;
+    await notifyNewJobs([{ blNo: 'BL-2', jobNo: 'J-2' }], 'PAINT', { token: 'new-tok', groupId: 'Cnew' });
+  });
+  globalThis.fetch = original;
+
+  const push = calls.find((c) => c.url.endsWith('/message/push'));
+  assert.equal(push?.to, 'Cnew', 'ต้องส่งเข้ากลุ่มของ OA ที่เลือก');
+  assert.ok(calls.every((c) => c.auth === 'Bearer new-tok'),
+    'ทุกคำขอ (ส่ง + เช็คโควต้า) ต้องใช้ token ของ OA ที่เลือก ไม่ใช่ของ env');
+
+  console.log('PASS: ส่งด้วย OA ที่เลือก ไม่ใช่ตัวใน env');
+}
+
+/** โควต้าหมด LINE ตอบ 429 — ต้องบอกเป็นภาษาคน ให้รู้ว่าต้องสลับ OA */
+async function quotaExhaustedTest() {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('{"message":"You have reached your monthly limit."}', { status: 429 })) as typeof fetch;
+  const r = await pushToLine('ทดสอบ', { token: 't', groupId: 'C1' });
+  globalThis.fetch = original;
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? '', /โควต้า.*หมด/, '429 ต้องบอกว่าโควต้าหมด');
+  console.log('PASS: โควต้าหมดแล้วบอกตรง ๆ');
+}
+
+/**
+ * token ของ OA ที่เพิ่มจากหน้าเว็บเก็บในฐานข้อมูลแบบเข้ารหัส
+ *
+ * ใครเห็นแถวในตาราง (Supabase dashboard · ไฟล์ backup) ต้องเอา token ไปใช้ไม่ได้
+ * และถอดไม่ได้ต้องคืน null ไม่ใช่ throw — หน้าจอจะได้บอกว่าตัวไหนต้องใส่ใหม่
+ */
+function secretBoxTest() {
+  const saved = process.env.SESSION_SECRET;
+  process.env.SESSION_SECRET = 'a'.repeat(40);
+  const token = 'line-token/with+symbols=';
+  const box = seal(token);
+  assert.ok(!box.includes(token), 'ห้ามมี token ตัวจริงอยู่ในค่าที่เก็บ');
+  assert.equal(open(box), token, 'ถอดกลับต้องได้ค่าเดิม');
+  assert.notEqual(seal(token), box, 'เข้ารหัสค่าเดิมสองครั้งต้องไม่เหมือนกัน (iv สุ่มใหม่ทุกครั้ง)');
+
+  const [v, iv, tag, body] = box.split('.');
+  const flipped = `${body[0] === 'A' ? 'B' : 'A'}${body.slice(1)}`;
+  assert.equal(open([v, iv, tag, flipped].join('.')), null, 'ค่าที่ถูกแก้ต้องถอดไม่ได้');
+  assert.equal(open('ข้อความธรรมดา'), null);
+  assert.equal(open(null), null);
+
+  process.env.SESSION_SECRET = 'b'.repeat(40);
+  assert.equal(open(box), null, 'เปลี่ยน SESSION_SECRET แล้วต้องคืน null ไม่ใช่ throw');
+
+  if (saved === undefined) delete process.env.SESSION_SECRET;
+  else process.env.SESSION_SECRET = saved;
+  console.log('PASS: token ที่เก็บในฐานข้อมูลเข้ารหัสและตรวจการแก้ไข');
+}
+
 async function main() {
   messageTest();
   longListTest();
@@ -276,6 +363,9 @@ async function main() {
   await payloadTest();
   await webhookSignatureTest();
   await quotaWarningTest();
+  await targetTest();
+  await quotaExhaustedTest();
+  secretBoxTest();
   console.log('\nทั้งหมดผ่าน');
 }
 

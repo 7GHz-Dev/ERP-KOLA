@@ -16,9 +16,24 @@
  * ทุกฟังก์ชันในไฟล์นี้จึงกลืน error เองและคืนค่าบอกผลแทนการ throw
  */
 
+/**
+ * OA ที่ใช้ส่ง — token ของ channel กับกลุ่มปลายทาง
+ *
+ * มีได้หลาย OA (ดู line-accounts.ts) เพราะแผนฟรีมีโควต้าต่อเดือน หมดแล้วต้องสลับไปตัวอื่น
+ * ฟังก์ชันในไฟล์นี้รับ OA เข้ามาตรง ๆ ไม่ได้ไปอ่านฐานข้อมูลเอง จะได้ทดสอบได้โดยไม่ต้องมีฐานข้อมูล
+ * ไม่ส่งมา = ใช้ OA ที่ตั้งไว้ใน env (LINE_CHANNEL_ACCESS_TOKEN + LINE_GROUP_ID) แบบเดิม
+ */
+export type LineTarget = { token: string; groupId: string };
+
+export function envLineTarget(): LineTarget | null {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const groupId = process.env.LINE_GROUP_ID;
+  return token && groupId ? { token, groupId } : null;
+}
+
 /** ตั้งค่าครบหรือยัง — ไม่ครบก็ใช้ระบบได้ปกติ แค่ไม่มีการแจ้งเตือน */
 export function lineConfigured(): boolean {
-  return Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN && process.env.LINE_GROUP_ID);
+  return envLineTarget() !== null;
 }
 
 export type LineResult = { ok: boolean; skipped?: boolean; error?: string };
@@ -29,8 +44,8 @@ export type LineResult = { ok: boolean; skipped?: boolean; error?: string };
  * timeout 10 วินาที เพราะฟังก์ชันนี้ถูกเรียกระหว่างที่ผู้ใช้รอหน้าเว็บตอบกลับ
  * ถ้า LINE ค้าง ผู้ใช้ไม่ควรต้องรอไปด้วยจนหมดเวลาของ serverless function
  */
-export async function pushToLine(text: string): Promise<LineResult> {
-  if (!lineConfigured()) return { ok: false, skipped: true };
+export async function pushToLine(text: string, target: LineTarget | null = envLineTarget()): Promise<LineResult> {
+  if (!target) return { ok: false, skipped: true };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
@@ -39,10 +54,10 @@ export async function pushToLine(text: string): Promise<LineResult> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
+        Authorization: `Bearer ${target.token}`,
       },
       body: JSON.stringify({
-        to: process.env.LINE_GROUP_ID,
+        to: target.groupId,
         // LINE จำกัดข้อความละ 5,000 ตัวอักษร ตัดกันไว้ก่อนเพื่อไม่ให้ทั้งข้อความหาย
         messages: [{ type: 'text', text: text.slice(0, 4900) }],
       }),
@@ -50,6 +65,8 @@ export async function pushToLine(text: string): Promise<LineResult> {
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
+      // 429 = โควต้าของเดือนหมด ข้อความนี้หายไปเลย ต้องสลับ OA ที่หน้าการใช้งานและค่าใช้จ่าย
+      if (res.status === 429) return { ok: false, error: 'โควต้าข้อความของ LINE OA นี้หมดแล้ว' };
       return { ok: false, error: `LINE ตอบ ${res.status} ${detail.slice(0, 200)}` };
     }
     return { ok: true };
@@ -101,9 +118,7 @@ export function newJobsMessage(jobs: NewJobLine[], from: string): string {
  * เตือนที่ 80% เพราะยังเหลือที่ให้ตัดสินใจทัน ถ้ารอถึง 100%
  * ข้อความจะเริ่มหายไปแล้วโดยไม่มีใครรู้ เนื่องจาก LINE ปฏิเสธเงียบ ๆ
  */
-async function quotaWarning(): Promise<string> {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) return '';
+async function quotaWarning(token: string): Promise<string> {
   try {
     const headers = { Authorization: `Bearer ${token}` };
     const [q, c] = await Promise.all([
@@ -119,7 +134,8 @@ async function quotaWarning(): Promise<string> {
     if (percent < 80) return '';
     const left = quota.value - used.totalUsage;
     return `\n\n⚠️ โควต้าข้อความ LINE เหลือ ${left} จาก ${quota.value} (ใช้ไป ${Math.round(percent)}%)`
-      + '\nถ้าเต็มแล้วข้อความแจ้งเตือนจะไม่ถูกส่งโดยไม่มีการแจ้งใด ๆ';
+      + '\nถ้าเต็มแล้วข้อความแจ้งเตือนจะไม่ถูกส่งโดยไม่มีการแจ้งใด ๆ'
+      + '\nADMIN สลับไปใช้ LINE OA ตัวอื่นได้ที่หน้า "การใช้งานและค่าใช้จ่าย"';
   } catch {
     // เช็คโควต้าไม่ได้ก็ส่งข้อความปกติไป ไม่ใช่เรื่องที่ควรขวางการแจ้งเตือน
     return '';
@@ -133,9 +149,11 @@ async function quotaWarning(): Promise<string> {
  * เพราะ serverless function จะถูกหยุดทันทีที่ response ถูกส่งกลับ
  * งานที่ยังค้างอยู่หลังจากนั้นจะไม่ได้รันต่อ การแจ้งเตือนจึงหายเงียบ ๆ
  */
-export async function notifyNewJobs(jobs: NewJobLine[], from: string): Promise<LineResult> {
+export async function notifyNewJobs(
+  jobs: NewJobLine[], from: string, target: LineTarget | null = envLineTarget(),
+): Promise<LineResult> {
   if (!jobs.length) return { ok: false, skipped: true };
-  if (!lineConfigured()) return { ok: false, skipped: true };
-  const warning = await quotaWarning();
-  return pushToLine(newJobsMessage(jobs, from) + warning);
+  if (!target) return { ok: false, skipped: true };
+  const warning = await quotaWarning(target.token);
+  return pushToLine(newJobsMessage(jobs, from) + warning, target);
 }

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { activityLog } from '@/db/schema';
+import { lineWebhookSecrets } from '@/lib/line-accounts';
 import { LINE_SOURCE_ACTION } from '@/lib/usage-log';
 
 /**
@@ -35,27 +36,30 @@ export const dynamic = 'force-dynamic';
 
 
 /**
- * ตรวจลายเซ็นว่ามาจาก LINE จริง
+ * ตรวจลายเซ็นว่ามาจาก LINE จริง — คืน id ของ OA ที่เซ็นมา ไม่ตรงตัวไหนเลยคืน null
  *
  * ปลายทางนี้เปิดสาธารณะ ใครยิงเข้ามาก็ได้ ถ้าไม่ตรวจก็จะมีคนยัด Group ID ปลอม
  * เข้ามาให้เราหยิบไปใส่ config แล้วแจ้งเตือนไปออกกลุ่มของคนอื่น
  *
  * LINE เซ็นด้วย channel secret ไม่ใช่ access token — คนละค่ากัน
+ * มี OA ได้หลายตัว (line-accounts.ts) จึงลองกับ secret ของทุกตัว
  */
-function verify(body: string, signature: string | null): boolean {
-  const secret = process.env.LINE_CHANNEL_SECRET;
+function verify(body: string, signature: string | null, secrets: Array<{ id: string; secret: string }>): string | null {
   // ไม่ได้ตั้ง secret ไว้ก็ตรวจไม่ได้ ปฏิเสธทุกอย่างดีกว่ารับของปลอม
-  if (!secret || !signature) return false;
-  const expected = createHmac('sha256', secret).update(body).digest('base64');
-  const a = Buffer.from(expected);
+  if (!signature) return null;
   const b = Buffer.from(signature);
-  // เทียบแบบเวลาคงที่ กัน timing attack เหมือนที่ตรวจ session token
-  return a.length === b.length && timingSafeEqual(a, b);
+  for (const { id, secret } of secrets) {
+    const a = Buffer.from(createHmac('sha256', secret).update(body).digest('base64'));
+    // เทียบแบบเวลาคงที่ กัน timing attack เหมือนที่ตรวจ session token
+    if (a.length === b.length && timingSafeEqual(a, b)) return id;
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
   const raw = await request.text();
-  if (!verify(raw, request.headers.get('x-line-signature'))) {
+  const account = verify(raw, request.headers.get('x-line-signature'), await lineWebhookSecrets());
+  if (!account) {
     return NextResponse.json({ ok: false, error: 'ลายเซ็นไม่ถูกต้อง' }, { status: 401 });
   }
 
@@ -72,7 +76,7 @@ export async function POST(request: Request) {
     const id = source.groupId ?? source.roomId ?? source.userId;
     if (!id) continue;
     const type = source.type ?? 'unknown';
-    console.log(`[LINE webhook] ${type} · ${id}`);
+    console.log(`[LINE webhook] ${account} · ${type} · ${id}`);
     /*
      * บันทึกไม่ได้ก็ไม่เป็นไร ยังมี console.log ให้ดูใน Vercel Logs
      * และต้องตอบ 200 ให้ LINE เสมอ ไม่ว่าการบันทึกจะสำเร็จหรือไม่
@@ -82,7 +86,7 @@ export async function POST(request: Request) {
         id: `LOG-${randomBytes(10).toString('hex').toUpperCase()}`,
         userId: null, action: LINE_SOURCE_ACTION,
         entityType: 'LINE', entityId: id,
-        detail: JSON.stringify({ type, id }),
+        detail: JSON.stringify({ type, id, account }),
       });
     } catch { /* ข้ามไป */ }
   }
@@ -124,7 +128,7 @@ export async function GET() {
   }
 
   // อ่านจากฐานข้อมูล จึงเห็นค่าไม่ว่า request จะไปลงที่ instance ไหน
-  let lastSeen: Array<{ type: string; id: string; at: string }> = [];
+  let lastSeen: Array<{ type: string; id: string; account: string; at: string }> = [];
   try {
     const rows = await db.select({
       entityId: activityLog.entityId, detail: activityLog.detail,
@@ -138,9 +142,10 @@ export async function GET() {
       const id = row.entityId ?? '';
       if (!id || seen.has(id)) continue;
       seen.add(id);
-      let type = 'unknown';
-      try { type = (JSON.parse(row.detail ?? '{}') as { type?: string }).type ?? 'unknown'; } catch { /* ใช้ค่าตั้งต้น */ }
-      lastSeen.push({ type, id, at: String(row.createdAt) });
+      let detail: { type?: string; account?: string } = {};
+      try { detail = JSON.parse(row.detail ?? '{}'); } catch { /* ใช้ค่าตั้งต้น */ }
+      // account = OA ที่ได้ event นี้ (env = ตัวที่ตั้งใน Vercel) แถวเก่าก่อนมีหลาย OA ไม่มีค่านี้
+      lastSeen.push({ type: detail.type ?? 'unknown', id, account: detail.account ?? 'env', at: String(row.createdAt) });
     }
   } catch {
     lastSeen = [];
@@ -149,7 +154,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     hint: lastSeen.length
-      ? 'คัดลอกค่า id ของแถว type=group ไปใส่ LINE_GROUP_ID'
+      ? 'คัดลอกค่า id ของแถว type=group ไปใส่ LINE_GROUP_ID (account=env) หรือกดใช้ Group ID ที่หน้าการใช้งานและค่าใช้จ่าย (OA ที่เพิ่มจากหน้าเว็บ)'
       : 'ยังไม่เห็น event — เชิญ bot เข้ากลุ่ม แล้วพิมพ์อะไรก็ได้ในกลุ่มนั้น แล้วรีเฟรชหน้านี้',
     configured: {
       LINE_CHANNEL_SECRET: Boolean(process.env.LINE_CHANNEL_SECRET),

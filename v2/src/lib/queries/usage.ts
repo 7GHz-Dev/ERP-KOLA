@@ -102,13 +102,12 @@ export type LineQuota = {
  * ค่าเปลี่ยนตลอดตามการใช้งานจริง และหน้านี้เปิดไม่บ่อย จึงไม่คุ้มที่จะ cache
  * แล้วต้องมาคิดเรื่องค่าเก่าค้างอีก
  */
-export async function lineQuota(): Promise<LineQuota> {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+export async function lineQuota(token: string | null | undefined = process.env.LINE_CHANNEL_ACCESS_TOKEN): Promise<LineQuota> {
   if (!token) return { configured: false, type: null, limit: null, used: null, left: null, percent: null };
 
   const headers = { Authorization: `Bearer ${token}` };
   const get = async (path: string) => {
-    const res = await fetch(`https://api.line.me${path}`, { headers, cache: 'no-store' });
+    const res = await fetch(`https://api.line.me${path}`, { headers, cache: 'no-store', signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`LINE ตอบ ${res.status}`);
     return res.json() as Promise<Record<string, unknown>>;
   };
