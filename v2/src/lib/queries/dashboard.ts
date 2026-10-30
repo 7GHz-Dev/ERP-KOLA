@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { doHandoffs, jobs } from '@/db/schema';
-import { latestApproval } from './jobs';
+import { latestApproval, notPartnerRelease } from './jobs';
 
 /** ตัวเลขสรุปทั้งหมดใน query เดียว แทนการนับทีละอย่างแบบระบบเดิม */
 export async function dashboardSummary() {
@@ -70,28 +70,33 @@ export async function navCounts() {
       // ต้องตรงกับ QUEUE.doExchange('wait') — ส่ง Partner แล้ว (ทางใดทางหนึ่ง) แต่ยังไม่ได้ส่งแลก DO
       doExchangeWait: sql<number>`count(*) filter (
         where ${jobs.doExchangedAt} is null
+          and ${notPartnerRelease(jobs.jobTypeId)}
           and (${jobs.eofficeSentAt} is not null
                or exists (select 1 from do_handoffs dh
                            where dh.job_id = ${jobs.id} and dh.sent_at is not null)))::int`,
       // ต้องตรงกับ QUEUE.mayDoPay('wait') — ส่ง Partner แล้ว แต่ MAY ยังไม่ได้ตั้งเบิก
       mayClaimWait: sql<number>`count(*) filter (
         where ${jobs.doClaimedAt} is null
+          and ${notPartnerRelease(jobs.jobTypeId)}
           and (${jobs.eofficeSentAt} is not null
                or exists (select 1 from do_handoffs dh
                            where dh.job_id = ${jobs.id} and dh.sent_at is not null)))::int`,
       queue: sql<number>`(select count(*) from automation_tasks
                           where status in ('QUEUED', 'PROCESSING'))::int`,
-      // ต้องตรงกับ listHaulRows('wait') — ตู้ของงานที่ส่ง Partner แล้วแต่ยังไม่ได้ส่งแพลน
-      haulWait: sql<number>`(select count(*) from containers c
-                             join jobs j on j.id = c.job_id
-                            where j.eoffice_sent_at is not null and j.is_archived = false
-                              and not exists (select 1 from haul_plans hp
-                                               where hp.container_id = c.id and hp.sent_at is not null))::int`,
-      // ต้องตรงกับ listHaulRows('new') — แพลนที่ส่งมาแล้ว MAY ยังไม่ได้กดรับ
-      haulPlanNew: sql<number>`(select count(*) from haul_plans hp
-                                join jobs j on j.id = hp.job_id
-                               where hp.sent_at is not null and hp.ack_at is null
-                                 and j.eoffice_sent_at is not null and j.is_archived = false)::int`,
+      // ต้องตรงกับ QUEUE.haul('wait') — งาน (ไม่ใช่ MUO) ที่ส่ง Partner แล้วแต่ยังมีตู้ที่ไม่ได้ส่งแพลน
+      haulWait: sql<number>`count(*) filter (
+        where ${jobs.eofficeSentAt} is not null
+          and ${notPartnerRelease(jobs.jobTypeId)}
+          and exists (select 1 from containers c
+                       where c.job_id = ${jobs.id}
+                         and not exists (select 1 from haul_plans hp
+                                          where hp.container_id = c.id and hp.sent_at is not null)))::int`,
+      // ต้องตรงกับ QUEUE.haul('new') — งานที่มีแพลนส่งมาแล้ว MAY ยังรับไม่ครบ
+      haulPlanNew: sql<number>`count(*) filter (
+        where ${jobs.eofficeSentAt} is not null
+          and ${notPartnerRelease(jobs.jobTypeId)}
+          and exists (select 1 from haul_plans hp
+                       where hp.job_id = ${jobs.id} and hp.sent_at is not null and hp.ack_at is null))::int`,
       // ต้องตรงกับ QUEUE.fahDo('wait') — งานที่ผ่าน AN แล้วแต่ยังไม่ได้กดส่ง Partner
       fahDoWait: sql<number>`count(*) filter (
         where ${an.status} = 'APPROVED'

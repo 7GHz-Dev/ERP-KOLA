@@ -9,12 +9,12 @@ const PATHS = [
   '/overview', '/intake/an', '/intake/bl', '/pending', '/pending?tab=fn', '/pending?tab=draft', '/pending?tab=edoc',
   '/pending?tab=bl&sub=approve', '/pending?blNo=OOLU', '/pending?sortBy=eta&sortDir=asc',
   '/fah/do', '/fah/fn', '/fah/draft', '/fah/draft?tab=waiting', '/fah/draft?tab=done',
-  '/nam/approve', '/nam/customer', '/nam/release', '/nam/haul', '/nam/haul?tab=sent&q=A',
+  '/nam/approve', '/nam/customer', '/nam/release', '/nam/haul', '/nam/haul?tab=sent&blNo=A',
   '/may/haul', '/may/haul?tab=ack', '/paint/eoffice-signed',
   '/automation', '/automation?tab=customs', '/automation?tab=done',
-  '/master', '/master?type=settings', '/master?type=terminals&q=A',
+  '/master', '/master?type=settings', '/master?type=terminals&q=A', '/master?type=partners',
   '/master/eoffice', '/api/eoffice/form-preview',
-  '/jobs', '/jobs?tab=active', '/jobs?tab=done', '/jobs?blNo=OOLU',
+  '/jobs', '/jobs?tab=active', '/jobs?tab=done', '/jobs?blNo=OOLU', '/jobs?container=TLLU&notify=KOLA',
 ];
 
 async function main() {

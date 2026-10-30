@@ -37,6 +37,23 @@ async function readLease(): Promise<Lease | null> {
   try { return JSON.parse(row?.value ?? 'null'); } catch { return null; }
 }
 
+/** ชื่อเจ้าของ lease ตอนกดปิดเช็คสถานะจากหน้าเว็บ — scripts/customs-monitor.ts ใช้ข้อความเดียวกันบอกใน log */
+export const MONITOR_STOPPED_BY = 'ปิดจากหน้าเว็บ';
+
+/**
+ * ปิดเช็คสถานะ — ยึด lease ไว้ด้วยชื่อ MONITOR_STOPPED_BY ตัว monitor ที่ทำอยู่เห็นว่าไม่ใช่เจ้าของแล้วปิดตัวเองหลังจบรอบ
+ * ใช้กลไกเดียวกับตอนเครื่องอื่นรับหน้าที่ต่อ ตัว monitor รุ่นก่อนหน้าที่ยังไม่ได้อัปเดตโค้ดก็ปิดตาม
+ * กด "สร้างใบขนแล้ว" หรือ "เปิดตัว monitor" อีกครั้ง เครื่องนั้นยึด lease กลับมาเช็กต่อได้ตามปกติ
+ */
+export async function stopMonitorLease() {
+  const value = JSON.stringify({
+    worker: MONITOR_STOPPED_BY, lease: `stopped:${Date.now()}`, since: new Date().toISOString(),
+  } satisfies Lease);
+  await db.insert(masterRecords)
+    .values({ id: newId('CML'), type: LEASE_TYPE, code: LEASE_CODE, name: 'ตัว monitor ใบขน', value })
+    .onConflictDoUpdate({ target: [masterRecords.type, masterRecords.code], set: { value, updatedAt: new Date() } });
+}
+
 /** เครื่องที่เพิ่งเปิดรับหน้าที่ — ตัวที่ทำอยู่ก่อน (ถ้ามี) จะเห็นในรอบถัดไปว่าไม่ใช่ตัวมันแล้ว */
 export async function takeMonitorLease(worker: string, lease: string) {
   const account = monitorAccount();

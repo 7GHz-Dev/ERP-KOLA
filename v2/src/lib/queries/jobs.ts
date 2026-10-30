@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { formatDate } from '@/lib/format';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
 import { MAX_ROWS } from '@/lib/table-filter';
+import { PARTNER_RELEASE_JOB_TYPE } from '@/lib/job-types';
 
 /**
  * ตัวดึงรายการงานกลางที่ทุกหน้าใช้ร่วมกัน
@@ -117,6 +118,11 @@ const SEARCHABLE: Record<string, (value: string) => SQL> = {
   shipper: (v) => sql`shipper.name ilike ${`%${v}%`}`,
   consignee: (v) => sql`consignee.name ilike ${`%${v}%`}`,
   person: (v) => sql`person.name ilike ${`%${v}%`}`,
+  // ช่อง NOTIFY ของทะเบียนงานแสดงชื่อย่อ ค้นได้ทั้งชื่อย่อและชื่อเต็ม
+  notify: (v) => sql`(notify.name ilike ${`%${v}%`} or notify.short_name ilike ${`%${v}%`})`,
+  // เลขตู้อยู่อีกตาราง — งานหนึ่งมีหลายตู้ จึงใช้ EXISTS ไม่ให้แถวงานซ้ำ
+  container: (v) => sql`exists (select 1 from containers c
+                                 where c.job_id = ${jobs.id} and c.container_no ilike ${`%${v.replace(/\s+/g, '')}%`})`,
   jobType: (v) => sql`job_type.name ilike ${`%${v}%`}`,
   port: (v) => sql`port.name ilike ${`%${v}%`}`,
 };
@@ -158,6 +164,7 @@ export async function listJobs(filter: JobFilter = {}) {
     .select({
       id: jobs.id,
       jobNo: jobs.jobNo,
+      status: jobs.status,
       createdAt: jobs.createdAt,
       isArchived: jobs.isArchived,
       blNo: jobs.blNo,
@@ -208,6 +215,18 @@ export async function listJobs(filter: JobFilter = {}) {
        */
       arrivedAt: sql<string | null>`least(${jobs.eofficeSentAt}, handoff.sent_at)`,
       jobTypeName: sql<string | null>`job_type.name`,
+      jobTypeCode: sql<string | null>`job_type.code`,
+      /*
+       * ชื่อย่อตามตารางงานเดิม (MSFZ · KOLA · KMW) — ทะเบียนงานใช้ ว่างก็ใช้ชื่อเต็ม
+       * มาจาก master_records.short_name ที่ผู้ดูแลแก้ได้ที่หน้า Master Data
+       */
+      jobTypeShort: sql<string | null>`job_type.short_name`,
+      consigneeShort: sql<string | null>`consignee.short_name`,
+      notifyName: sql<string | null>`notify.name`,
+      notifyShort: sql<string | null>`notify.short_name`,
+      // เลขตู้ทั้งงานคั่นด้วย "," แบบช่อง CONTAINER NO. ของตารางเดิม (หนึ่งแถวต่อหนึ่งงาน)
+      containerNos: sql<string | null>`ct.nos`,
+      containerCount: sql<number>`coalesce(ct.n, 0)::int`,
       portName: sql<string | null>`port.name`,
       portCode: sql<string | null>`port.code`,
       terminalId: jobs.terminalId,
@@ -245,6 +264,13 @@ export async function listJobs(filter: JobFilter = {}) {
     .leftJoin(sql`${masterRecords} as job_type`, sql`job_type.id = ${jobs.jobTypeId}`)
     .leftJoin(sql`${masterRecords} as port`, sql`port.id = ${jobs.portId}`)
     .leftJoin(sql`${masterRecords} as terminal`, sql`terminal.id = ${jobs.terminalId}`)
+    .leftJoin(sql`${masterRecords} as notify`, sql`notify.id = ${jobs.notifyPartyId}`)
+    .leftJoin(
+      sql`(select job_id, count(*)::int as n,
+                  string_agg(container_no, ',' order by container_no) as nos
+             from containers group by job_id) as ct`,
+      sql`ct.job_id = ${jobs.id}`,
+    )
     .leftJoin(
       sql`(select distinct on (job_id) job_id, declaration_no from customs_entries order by job_id, updated_at desc) as entry`,
       sql`entry.job_id = ${jobs.id}`,
@@ -304,6 +330,17 @@ export function sentToPartner() {
     sql`exists (select 1 from do_handoffs dh
                  where dh.job_id = ${jobs.id} and dh.sent_at is not null)`,
   );
+}
+
+/**
+ * ไม่ใช่งาน MUO — Partner ภายนอกแลก DO และลากตู้เอง (ดู lib/job-types.ts)
+ *
+ * ใช้ตัดออกจากคิวแลก DO ของ ANN · ตั้งเบิกของ MAY · หน้าจัดการลากตู้ และตัวเลขบนเมนูของคิวเหล่านั้น
+ * รับได้ทั้งคอลัมน์ของ drizzle และ SQL ดิบ (เช่น sql`j.job_type_id` ในคำสั่งที่เขียนเอง)
+ */
+export function notPartnerRelease(jobTypeId: AnyPgColumn | SQL): SQL {
+  return sql`not exists (select 1 from master_records jt
+                          where jt.id = ${jobTypeId} and jt.code = ${PARTNER_RELEASE_JOB_TYPE})`;
 }
 
 /**
@@ -434,6 +471,8 @@ export const QUEUE = {
    */
   doExchange: (sub: 'wait' | 'sent' = 'wait') => () => [
     sentToPartner(),
+    // งาน MUO Partner แลก DO เอง ไม่ต้องมีจดหมาย/สลิปจากฝั่งเรา
+    notPartnerRelease(jobs.jobTypeId),
     sub === 'sent' ? isNotNull(jobs.doExchangedAt) : isNull(jobs.doExchangedAt),
   ],
 
@@ -445,6 +484,7 @@ export const QUEUE = {
    */
   mayDoPay: (sub: 'wait' | 'claimed') => () => [
     sentToPartner(),
+    notPartnerRelease(jobs.jobTypeId),
     /*
      * แบ่งสองแท็บด้วยการตั้งเบิกของ MAY อย่างเดียว ไม่ดูว่า ANN ส่งแลกแล้วหรือยัง
      *
@@ -468,6 +508,35 @@ export const QUEUE = {
     sub === 'done' ? isNotNull(jobs.customerConfirmedAt) : isNull(jobs.customerConfirmedAt),
   ],
   namRelease: () => ({ an }: JoinContext) => [eq(an.status, 'APPROVED')],
+
+  /*
+   * จัดการลากตู้ (NAMKANG) / แพลนลากตู้ (MAY) — แถวละงานแบบทะเบียนงาน แพลนเก็บรายตู้ใน haul_plans
+   *
+   * เข้ามาเมื่อ PAINT ส่งชุดปล่อย E-Office ให้ Partner แล้ว และมีรายการตู้
+   * งาน MUO ไม่เข้า เพราะ Partner ภายนอกลากตู้เอง
+   *   wait  ยังมีตู้ที่ไม่ได้ส่งแพลน (รวมตู้ที่เพิ่มเข้ามาทีหลัง)
+   *   sent  ส่งแพลนครบทุกตู้แล้ว
+   *   new   MAY ยังรับไม่ครบทุกตู้ที่ส่งมา (รวมแพลนที่ NAMKANG เปลี่ยนวันแล้วส่งใหม่)
+   *   ack   MAY รับครบทุกตู้ที่ส่งมาแล้ว
+   */
+  haul: (view: 'wait' | 'sent' | 'new' | 'ack') => () => {
+    const unplanned = sql`exists (select 1 from containers c
+                                   where c.job_id = ${jobs.id}
+                                     and not exists (select 1 from haul_plans hp
+                                                      where hp.container_id = c.id and hp.sent_at is not null))`;
+    const planned = sql`exists (select 1 from haul_plans hp where hp.job_id = ${jobs.id} and hp.sent_at is not null)`;
+    const unacked = sql`exists (select 1 from haul_plans hp
+                                 where hp.job_id = ${jobs.id} and hp.sent_at is not null and hp.ack_at is null)`;
+    return [
+      isNotNull(jobs.eofficeSentAt),
+      notPartnerRelease(jobs.jobTypeId),
+      sql`exists (select 1 from containers c where c.job_id = ${jobs.id})`,
+      view === 'wait' ? unplanned
+        : view === 'sent' ? sql`not ${unplanned}`
+        : view === 'new' ? unacked
+        : and(planned, sql`not ${unacked}`),
+    ];
+  },
 } as const;
 
 /**
@@ -558,6 +627,7 @@ export async function doQueueArrivalDates(
          : scope === 'mayClaimed' ? sql`j.do_claimed_at is not null`
          : sql`j.do_exchanged_at is null`}
        and (j.eoffice_sent_at is not null or dh.sent_at is not null)
+       and ${notPartnerRelease(sql`j.job_type_id`)}
      group by day
      order by day desc
   `) as unknown as Array<{ day: string | Date; count: number }>;

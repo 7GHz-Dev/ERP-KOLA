@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { automationTasks, files, jobs, masterRecords } from '@/db/schema';
 import { EVERGREEN, letterDate, matchShippingLine, normalizeDestination } from '@/lib/do-letter';
 import { slashDate } from '@/lib/do-letter-evergreen';
-import { sentToPartner } from '@/lib/queries/jobs';
+import { notPartnerRelease, sentToPartner } from '@/lib/queries/jobs';
 import type { SlipChoice } from '@/lib/do-slip-match';
 import {
   compareDoAttach, DO_DOC_CATEGORIES, DO_SLIP_CATEGORIES, type DoAttachment,
@@ -240,6 +240,8 @@ export async function loadSlipChoices(): Promise<SlipChoice[]> {
     .where(and(
       eq(jobs.isArchived, false),
       sentToPartner(),
+      // งาน MUO ไม่ได้แลก DO ผ่านเรา จึงไม่มีสลิปให้จับคู่
+      notPartnerRelease(jobs.jobTypeId),
     ))
     .orderBy(desc(jobs.createdAt));
   return rows

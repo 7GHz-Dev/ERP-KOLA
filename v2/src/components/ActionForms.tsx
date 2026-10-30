@@ -12,6 +12,7 @@ import { saveMasterRecord } from '@/lib/actions/master';
 import { ConfirmSubmit, PopoverCancel, PopoverHead } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
 import type { Option } from '@/lib/queries/master';
+import { isShipmePartner } from '@/lib/partner-message';
 export { UploadForm } from '@/components/UploadForm';
 export { MergeEofficeButton } from '@/components/MergeEofficeButton';
 
@@ -108,16 +109,25 @@ export function SurrenderForm({ jobId, current }: { jobId: string; current: stri
 }
 
 /** ส่งชุดปล่อย E-Office ให้ Partner — ต้องมีไฟล์ที่เซ็นแล้วก่อน */
-export function SendEofficeButton({ jobId, ready }: { jobId: string; ready: boolean }) {
+export function SendEofficeButton({ jobId, ready, partner, channels }: {
+  jobId: string;
+  ready: boolean;
+  /** Partner ของงาน และช่องทางที่ผูกไว้ (Email · LINE) — บอกในหน้ายืนยันว่าไฟล์จะออกไปไหน */
+  partner?: string | null;
+  channels?: string[];
+}) {
   if (!ready) return <span className="badge pending">ยังไม่มีไฟล์ชุดปล่อย</span>;
+  const sending = channels?.length
+    ? ` และส่งไฟล์ชุดปล่อยที่เซ็นแล้วให้ ${partner} ทาง ${channels.join(' + ')} ทันที`
+    : '';
   return (
     <form action={sendEofficeToPartner} className="inline-form">
       <input type="hidden" name="jobId" value={jobId} />
       <ConfirmSubmit
         label="ส่ง Partner"
         tone="ok"
-        confirm="ส่งชุดปล่อย E-Office ให้ Partner ใช่ไหม"
-        detail="ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน และรายการจะออกจากหน้านี้"
+        confirm={`ส่งชุดปล่อย E-Office ให้ ${partner || 'Partner'} ใช่ไหม`}
+        detail={`ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน${sending} และรายการจะออกจากหน้านี้`}
       />
     </form>
   );
@@ -555,16 +565,21 @@ export function EditBlForm({
 /* ---------- Master Data ---------- */
 
 export function MasterRecordForm({
-  type, typeLabel, record, isSettings,
+  type, typeLabel, record, isSettings, lineGroups,
 }: {
   type: string;
   typeLabel: string;
   /** ไม่ส่งมา = เพิ่มรายการใหม่ */
   record?: { id: string; code: string | null; name: string; description: string | null;
-    value: string | null; isActive: boolean };
+    value: string | null; isActive: boolean; shortName?: string | null;
+    email?: string | null; lineGroupId?: string | null };
   isSettings: boolean;
+  /** Port Release Partner — กลุ่ม LINE ที่ bot เห็นล่าสุด ให้เลือกแทนการพิมพ์ Group ID เอง */
+  lineGroups?: Array<{ id: string; name: string | null }>;
 }) {
   const editing = Boolean(record);
+  const partner = type === 'partners';
+  const groupListId = `line-groups-${record?.id ?? 'new'}`;
   return (
     <details className="disclosure">
       <summary className={`button tiny ${editing ? '' : 'primary'}`}>
@@ -588,11 +603,41 @@ export function MasterRecordForm({
             <input name="value" defaultValue={record?.value ?? ''} />
           </label>
         ) : (
-          <label className="mini">
-            <span>รายละเอียด</span>
-            <input name="description" defaultValue={record?.description ?? ''} />
-          </label>
+          <>
+            <label className="mini">
+              <span>รายละเอียด</span>
+              <input name="description" defaultValue={record?.description ?? ''} />
+            </label>
+            {/* ชื่อย่อแสดงในทะเบียนงานแบบตารางเดิม (เช่น MSFZ · KOLA · KMW) — ว่าง = ใช้ชื่อเต็ม */}
+            <label className="mini">
+              <span>ชื่อย่อ (แสดงในทะเบียนงาน · ว่าง = ใช้ชื่อเต็ม)</span>
+              <input name="shortName" defaultValue={record?.shortName ?? ''} maxLength={60} />
+            </label>
+          </>
         )}
+        {partner && isShipmePartner(record?.name) ? (
+          <p className="mini-note">
+            SHIPME เป็น Partner พื้นฐานของงาน MU (MSFZ) — ช่องทางคือการเชื่อมกับ ERP SHIPME (ทำภายหลัง) ไม่ใช้ Email/LINE
+          </p>
+        ) : partner ? (
+          <fieldset className="mini-fieldset">
+            <legend>ช่องทางแจ้ง — ส่งชุดปล่อย E-Office ที่เซ็นแล้วเมื่อ PAINT กดส่ง Partner</legend>
+            <label className="mini">
+              <span>Email (หลายอีเมลคั่นด้วย , ) — แนบไฟล์ PDF ไปกับอีเมล</span>
+              <input name="email" defaultValue={record?.email ?? ''} placeholder="ops@partner.com, docs@partner.com" />
+            </label>
+            <label className="mini">
+              <span>กลุ่ม LINE (Group ID) — ส่งลิงก์ดาวน์โหลด · เชิญ bot ของ OA เข้ากลุ่มแล้วพิมพ์อะไรก็ได้ในกลุ่ม กลุ่มจะขึ้นให้เลือก</span>
+              <input name="lineGroupId" defaultValue={record?.lineGroupId ?? ''} list={groupListId}
+                placeholder="C1234… (เลือกจากรายการหรือวาง Group ID)" />
+              <datalist id={groupListId}>
+                {(lineGroups ?? []).map((g) => (
+                  <option key={g.id} value={g.id}>{g.name ?? 'กลุ่มที่ bot เห็นล่าสุด'}</option>
+                ))}
+              </datalist>
+            </label>
+          </fieldset>
+        ) : null}
         <label className="mini">
           <span>สถานะ</span>
           <select name="isActive" defaultValue={record && !record.isActive ? '0' : '1'}>

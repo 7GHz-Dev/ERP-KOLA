@@ -5,7 +5,8 @@ import { requireUserReady } from '@/lib/auth';
 import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RejectDraftButton } from '@/components/ActionForms';
-import { CustomsMonitorAutoLaunch, SubmitCustomsDone } from '@/components/CustomsMonitor';
+import { CustomsMonitorAutoLaunch, CustomsMonitorBar, SubmitCustomsDone } from '@/components/CustomsMonitor';
+import { CUSTOMS_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 import { TASK_TYPES } from '@/lib/automation';
 import { netbayStatusLabel, netbayStatusTone } from '@/lib/customs-status';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
@@ -56,7 +57,10 @@ export default async function FahDraftPage({
       .where(eq(automationTasks.type, TASK_TYPES.CUSTOMS))
       .orderBy(desc(automationTasks.createdAt)).limit(1),
   ]);
-  const tasks = tab === 'done' ? new Map() : await latestCustomsTasks(rows.map((r) => r.id));
+  const [tasks, monitors] = await Promise.all([
+    tab === 'done' ? new Map() : latestCustomsTasks(rows.map((r) => r.id)),
+    tab === 'waiting' ? onlineWorkers({ mode: CUSTOMS_WORKER_MODE }) : Promise.resolve([]),
+  ]);
 
   const columns: Column[] =
     tab === 'done'
@@ -97,6 +101,7 @@ export default async function FahDraftPage({
         <p>ตรวจ Draft → กด SEND TO CUSTOMS ใน NETBAY → กด &quot;สร้างใบขนแล้ว&quot; → ระบบรอ ACCEPT แล้วดึงเลขใบขน + PDF ให้</p>
       </div>
       <Tabs basePath="/fah/draft" items={TABS} active={tab} carry={carry} />
+      {tab === 'waiting' ? <CustomsMonitorBar initial={monitors} pending={total} /> : null}
       <JobTable
         basePath="/fah/draft"
         columns={columns}

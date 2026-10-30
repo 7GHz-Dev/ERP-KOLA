@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { OnlineWorker } from '@/lib/worker-status';
+import { StopWorkerButton } from '@/components/StopWorkerButton';
 
 /**
  * แผงสถานะ worker สร้าง Draft ใบขนบนแท็บ 3. Draft ใบขน — สถานะ · เปิด · ดูการทำงาน (log + ภาพหน้าจอสด)
@@ -57,6 +58,10 @@ export function DraftWorkerBar({ initial }: { initial: OnlineWorker[] }) {
         <button type="button" className="button tiny" onClick={() => setWatching((w) => !w)}>
           {watching ? 'ซ่อนการทำงาน' : 'ดูการทำงาน'}
         </button>
+      ) : null}
+      {worker ? (
+        <StopWorkerButton mode="draft" label="ปิด worker"
+          confirmText="ปิด worker สร้าง Draft? (ปิดหลังจบงานที่ทำอยู่ · งานที่กดสร้าง Draft หลังจากนี้จะรอในคิวจนกว่าจะเปิดใหม่)" />
       ) : null}
       {!worker && waiting ? (
         <small className="worker-launcher-note">

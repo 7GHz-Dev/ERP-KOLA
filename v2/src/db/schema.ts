@@ -74,6 +74,8 @@ export const masterRecords = pgTable('master_records', {
   name: text('name').notNull(),
   description: text('description'),
   value: text('value'),                    // ใช้เฉพาะ type=settings
+  /** ชื่อย่อที่ทะเบียนงานแสดงตามตารางเดิม (MSFZ · KOLA · KMW) — ว่าง = ใช้ชื่อเต็ม */
+  shortName: text('short_name'),
   taxId: text('tax_id'),
   address: text('address'),
   contactName: text('contact_name'),
@@ -82,6 +84,8 @@ export const masterRecords = pgTable('master_records', {
   roleName: text('role_name'),
   country: text('country'),
   portId: text('port_id'),
+  /** Port Release Partner — กลุ่ม LINE ที่ส่งลิงก์ชุดปล่อย E-Office (อีเมลใช้ช่อง email) */
+  lineGroupId: text('line_group_id'),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

@@ -4,6 +4,7 @@ import { automationTasks, jobs } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
 import { FileChip, Tabs } from '@/components/JobTable';
 import { CustomsMonitorBar } from '@/components/CustomsMonitor';
+import { StopWorkerButton } from '@/components/StopWorkerButton';
 import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { MAX_ROWS } from '@/lib/table-filter';
@@ -105,7 +106,13 @@ export default async function AutomationPage({
           งานในแถบนี้ทำโดย worker สร้าง Draft (npm run worker:draft) บนเครื่องที่เปิด NETBAY ได้
           — ตรวจ Final Invoice ออกเลขเครื่อง สร้างใบขน และ Import CSV ให้ (ไม่กด Save) ·{' '}
           {drafters.length
-            ? <b>worker ออนไลน์ · {drafters[0].busy ?? 'ว่าง รอรับงาน'}</b>
+            ? (
+              <>
+                <b>worker ออนไลน์ · {drafters[0].busy ?? 'ว่าง รอรับงาน'}</b>{' '}
+                <StopWorkerButton mode="draft" label="ปิด worker"
+                  confirmText="ปิด worker สร้าง Draft? (ปิดหลังจบงานที่ทำอยู่ · งานใหม่จะรอในคิวจนกว่าจะเปิดใหม่)" />
+              </>
+            )
             : <b>worker ออฟไลน์ — งานจะรอในคิวจนกว่าจะเปิด worker (ปุ่มเปิดอยู่ที่แท็บ Draft ใบขน)</b>}
           {' '}· ทำซ้ำหรือแก้ไฟล์แล้วสร้างใหม่ ให้กด &quot;สร้าง Draft&quot; ที่หน้างานคงค้าง
         </div>

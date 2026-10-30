@@ -46,6 +46,26 @@ export async function getWorkerSettings(): Promise<WorkerSettings> {
   return { background: Boolean(data.background), stopAt: data.stopAt ?? null };
 }
 
+/**
+ * สั่งปิด worker ของ mode อื่น (draft · customs) จากหน้าเว็บ — แยกแถวจากของ worker แลก DO
+ * ตัวที่เปิดก่อนเวลานี้ปิดตัวเองหลังจบงานที่ทำอยู่ (อ่านค่ากลับไปจากคำตอบของสัญญาณ)
+ * ตัวที่เปิดใหม่หลังจากนี้ทำงานต่อได้ตามปกติ
+ */
+export async function getModeSettings(mode: string): Promise<WorkerSettings> {
+  const [row] = await db.select({ value: masterRecords.value }).from(masterRecords)
+    .where(and(eq(masterRecords.type, WORKER_SETTING_TYPE), eq(masterRecords.code, mode))).limit(1);
+  let data: Partial<WorkerSettings> = {};
+  try { data = JSON.parse(row?.value ?? '{}'); } catch { /* ค่าเสีย ใช้ค่าตั้งต้น */ }
+  return { background: false, stopAt: data.stopAt ?? null };
+}
+
+export async function stopModeWorkers(mode: string) {
+  const value = JSON.stringify({ stopAt: new Date().toISOString() });
+  await db.insert(masterRecords)
+    .values({ id: newId('WKS'), type: WORKER_SETTING_TYPE, code: mode, name: `${mode} worker`, value })
+    .onConflictDoUpdate({ target: [masterRecords.type, masterRecords.code], set: { value, updatedAt: new Date() } });
+}
+
 export async function setWorkerSettings(patch: Partial<WorkerSettings>) {
   const value = JSON.stringify({ ...(await getWorkerSettings()), ...patch });
   await db.insert(masterRecords)
@@ -96,7 +116,9 @@ export async function recordHeartbeat(worker: string, info: WorkerInfo) {
       target: [masterRecords.type, masterRecords.code],
       set: { value, updatedAt: info.offline ? new Date(0) : new Date(), isActive: true },
     });
-  return getWorkerSettings();
+  // worker สร้าง Draft / ตัว monitor ใบขน มีปุ่มปิดของตัวเอง ไม่ใช้ค่าตั้งของ worker แลก DO
+  const mode = String(info.mode ?? '');
+  return NON_WEB_MODES.includes(mode) ? getModeSettings(mode) : getWorkerSettings();
 }
 
 export async function workerShot(worker: string) {

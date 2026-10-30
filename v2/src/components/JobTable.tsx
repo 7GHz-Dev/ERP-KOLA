@@ -45,6 +45,8 @@ type Props = {
   sortDir: 'asc' | 'desc';
   empty?: string;
   hint?: string;
+  /** คลาสเพิ่มของแถว เช่นสีแถวของทะเบียนงานแบบตารางเดิม (sheetRowClass) */
+  rowClass?: (row: JobRow) => string | undefined;
 };
 
 function href(basePath: string, carry: Record<string, string>, changes: Record<string, string | undefined>) {
@@ -58,7 +60,7 @@ function href(basePath: string, carry: Record<string, string>, changes: Record<s
 }
 
 export function JobTable({
-  basePath, columns, rows, total, carry, sortBy, sortDir, empty, hint,
+  basePath, columns, rows, total, carry, sortBy, sortDir, empty, hint, rowClass,
 }: Props) {
   const searchKeys = columns.map((c) => c.searchKey).filter(Boolean) as string[];
   const hasSearch = searchKeys.length > 0;
@@ -179,7 +181,8 @@ export function JobTable({
                 <tr
                   key={row.id}
                   data-open-job={row.id}
-                  className={row.hasInvoiceAlert ? 'alert' : undefined}
+                  className={[rowClass?.(row), row.hasInvoiceAlert ? 'alert' : null]
+                    .filter(Boolean).join(' ') || undefined}
                 >
                   <td className="col-no">
                     {/* ยังเป็นลิงก์อยู่ เผื่อเบราว์เซอร์ที่ปิด JavaScript จะได้ยังเปิดสรุปงานได้ */}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { submitCustomsTask } from '@/lib/actions/automation';
 import { ConfirmSubmit } from '@/components/Interactions';
 import type { OnlineWorker } from '@/lib/worker-status';
+import { StopWorkerButton } from '@/components/StopWorkerButton';
 
 /**
  * ตัว monitor ใบขน — เช็กสถานะใบขนใน NETBAY จน ACCEPT แล้วดึงเลขใบขน + PDF ให้เอง
@@ -106,6 +107,10 @@ export function CustomsMonitorBar({ initial, pending }: { initial: OnlineWorker[
         <button type="button" className="button tiny" onClick={() => setWatching((w) => !w)}>
           {watching ? 'ซ่อนการทำงาน' : 'ดูการทำงาน'}
         </button>
+      ) : null}
+      {worker ? (
+        <StopWorkerButton mode="customs" label="ปิดเช็คสถานะ"
+          confirmText={'ปิดตัวเช็คสถานะใบขน? (ปิดหลังจบรอบที่เช็กอยู่)\n\nรายการที่ค้างจะยังอยู่ในคิว — กด "เปิดตัว monitor บนเครื่องนี้" เพื่อเช็กต่อ'} />
       ) : null}
       {!worker && waiting ? (
         <small className="worker-launcher-note">

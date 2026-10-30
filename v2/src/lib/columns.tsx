@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
 import type { JobRow } from '@/lib/queries/jobs';
+import { SHEET_COLUMNS, sheetCells, type SheetColumn } from '@/lib/register-sheet';
 
 /**
  * คอลัมน์มาตรฐานที่ใช้ซ้ำหลายหน้า
@@ -131,6 +132,51 @@ export const col = {
     render: (r) => formatDateTime(r.createdAt),
   }),
 };
+
+/** ช่องค้นหา/เรียงของคอลัมน์ตารางเดิม — ชื่อต้องตรงกับ SEARCHABLE / SORTABLE ใน queries/jobs.ts */
+const SHEET_SEARCH: Partial<Record<SheetColumn, Pick<Column, 'searchKey' | 'sortKey' | 'searchHint'>>> = {
+  CUSTOMER: { searchKey: 'person' },
+  ETA: { sortKey: 'eta' },
+  'ประเภท': { searchKey: 'jobType' },
+  SHIPPER: { searchKey: 'shipper' },
+  'BILL OF LADING': { searchKey: 'blNo', sortKey: 'blNo' },
+  'CONTAINER NO.': { searchKey: 'container' },
+  VESSEL: { searchKey: 'vessel', sortKey: 'vessel', searchHint: 'เช่น AS CARLOTTA 522S' },
+  'REF NO': { searchKey: 'refNo', sortKey: 'draftRefNo' },
+  'DECLARATION NO.': { searchKey: 'entryNo' },
+  CONSIGNEE: { searchKey: 'consignee' },
+  NOTIFY: { searchKey: 'notify' },
+};
+
+/**
+ * คอลัมน์ทะเบียนงานแบบตารางเดิม (ลำดับตาม SHEET_COLUMNS) — ใช้ที่ทะเบียนงานและหน้าลากตู้
+ *
+ * ค่าของทุกช่องคำนวณครั้งเดียวต่อแถว (sheetCells) แล้วจำไว้ ไม่คำนวณซ้ำ 26 รอบต่อแถว
+ * REF NO ยังเป็นลิงก์เปิดใบขนใน NETBAY เหมือนคอลัมน์ Ref No. ของหน้าอื่น
+ */
+export function sheetColumns(): Column[] {
+  const memo = new WeakMap<JobRow, Record<SheetColumn, string>>();
+  const cells = (r: JobRow) => {
+    let hit = memo.get(r);
+    if (!hit) { hit = sheetCells(r); memo.set(r, hit); }
+    return hit;
+  };
+  return SHEET_COLUMNS.map((label): Column => ({
+    label,
+    ...SHEET_SEARCH[label],
+    kind: label === 'CONTAINER NO.' || label === 'SHIPPER' ? 'wrap' : undefined,
+    className: `sheet-${label === 'CONTAINER NO.' ? 'containers' : label === 'SHIPPER' ? 'shipper' : 'cell'}`,
+    align: ['CON', 'UNIT', 'WEIGHT', 'DEM', 'DET', 'INV.', 'SUR'].includes(label) ? 'center' : undefined,
+    render: label === 'REF NO'
+      ? (r) => (r.draftRefNo ? col.refNo().render(r) : '-')
+      : label === 'SUR'
+        // ป้ายสีเดียวกับหน้า NAMKANG · ข้อความในป้ายตรงกับ sheetCells ตัวกรองหัวคอลัมน์จึงติ๊กค่าได้ตรง
+        ? (r) => surrenderBadge(r.surrenderStatus)
+        : label === 'BILL OF LADING' || label === 'DECLARATION NO.'
+          ? (r) => <b>{cells(r)[label]}</b>
+          : (r) => cells(r)[label],
+  }));
+}
 
 export type FilesByJob = Map<string, Record<string, { id: string; fileName: string }>>;
 

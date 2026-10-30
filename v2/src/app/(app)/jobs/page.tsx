@@ -1,19 +1,22 @@
-import Link from 'next/link';
 import { eq, ne, sql } from 'drizzle-orm';
 import { jobs } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
-import { col, readParams } from '@/lib/columns';
-import { JobTable, Tabs, type Column } from '@/components/JobTable';
+import { readParams, sheetColumns } from '@/lib/columns';
+import { JobTable, Tabs } from '@/components/JobTable';
 import { listJobs } from '@/lib/queries/jobs';
 import { ExportTemplateButton } from '@/components/ExportTemplateButton';
-import { FILE_ORDER, fileLabel } from '@/lib/queries/job-detail';
 import { jobCreatedConditions, validJobDate } from '@/lib/job-created-date';
 import { JobCreatedDateFilter } from '@/components/JobCreatedDateFilter';
+import { sheetRowClass } from '@/lib/register-sheet';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * ทะเบียนงาน — งานทุกใบในระบบพร้อมไฟล์แนบปัจจุบันทั้งหมดในแถวเดียว
+ * ทะเบียนงาน — งานทุกใบในระบบ หน้าตาเดียวกับตารางงาน Excel ที่ทีมใช้กันอยู่
+ *
+ * หัวคอลัมน์ ลำดับ และสีแถวตามไฟล์เดิม (lib/register-sheet.ts) คนย้ายจาก Excel มาดูที่นี่ได้ทันที
+ * ส้ม = MUO (Partner ภายนอกปล่อยเอง) · ม่วง = ขนทางรถ · เขียว = งานอื่น
+ * ไฟล์แนบดูได้ใน Drawer (คลิกเลขลำดับ / ดับเบิลคลิกแถว)
  *
  * หน้าคิวอื่น ๆ กรองเฉพาะงานที่ค้างในขั้นตอนของตัวเอง หน้านี้ไม่กรองอะไรเลย
  * ใช้ตอนอยากตามหางานใดงานหนึ่งโดยไม่รู้ว่ามันค้างอยู่ขั้นไหน
@@ -25,34 +28,9 @@ const TABS = [
   { key: 'done', label: 'ยื่นใบขนแล้ว' },
 ];
 
-const SEARCH_KEYS = ['jobNo', 'person', 'shipper', 'blNo', 'consignee', 'vessel', 'refNo', 'entryNo'];
-
-/** ไฟล์แนบปัจจุบันทุกหมวดของงานนั้น เรียงตามลำดับขั้นงาน */
-const filesColumn = (): Column => ({
-  label: 'ไฟล์แนบปัจจุบัน',
-  kind: 'wrap',
-  render: (r) => {
-    const current = r.currentFiles ?? {};
-    const categories = Object.keys(current).sort(
-      (a, b) => (FILE_ORDER.indexOf(a) + 1 || 99) - (FILE_ORDER.indexOf(b) + 1 || 99),
-    );
-    if (!categories.length) return <span className="badge pending">ยังไม่มีไฟล์</span>;
-    return (
-      <span className="chip-row">
-        {categories.map((category) => (
-          <Link
-            key={category}
-            className="badge approved file-link"
-            href={`/file/${current[category].id}`}
-            title={current[category].fileName}
-          >
-            {fileLabel(category)}
-          </Link>
-        ))}
-      </span>
-    );
-  },
-});
+const SEARCH_KEYS = [
+  'person', 'jobType', 'shipper', 'blNo', 'container', 'vessel', 'refNo', 'entryNo', 'consignee', 'notify',
+];
 
 export default async function JobsPage({
   searchParams,
@@ -79,23 +57,14 @@ export default async function JobsPage({
     sortDir,
   });
 
-  const columns: Column[] = [
-    {
-      label: 'วันที่สร้าง JOB', sortKey: 'createdAt',
-      render: (r) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok' }).format(r.createdAt),
-    },
-    col.jobNo(), col.source(), col.clientInCharge(), col.shipper(), col.blNo(),
-    col.consignee(), col.eta(), col.lastDem(), col.lastDet(),
-    col.refNo(), col.declarationNo(), col.anStatus(), col.fnStatus(),
-    filesColumn(),
-  ];
+  const columns = sheetColumns();
 
   return (
     <>
       <div className="page-head with-action">
         <div>
           <h1>ทะเบียนงาน</h1>
-          <p>งานทุกใบพร้อมไฟล์แนบ · คลิกเลขลำดับหรือ Job No. เพื่อดูสรุปทั้งใบ</p>
+          <p>งานทุกใบตามตารางงานเดิม · ส้ม = MUO · ม่วง = BY TRUCK · คลิกเลขลำดับเพื่อดูสรุปงานและไฟล์แนบ</p>
         </div>
         {/* หน้านี้เห็นทุกงาน จึงโหลดได้ทั้งสองแบบ */}
         <span className="chip-row">
@@ -118,6 +87,7 @@ export default async function JobsPage({
         sortDir={sortDir}
         empty="ไม่พบงานที่ตรงกับคำค้น"
         hint="อยากเห็นเฉพาะงานที่ค้างในขั้นตอนของคุณ ให้ใช้เมนูงานคงค้าง"
+        rowClass={sheetRowClass}
       />
     </>
   );

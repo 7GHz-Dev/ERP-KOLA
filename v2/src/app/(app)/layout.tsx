@@ -59,7 +59,6 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/nam/approve', label: 'อนุมัติข้อมูล BL เข้าตารางหลัก', count: 'pendingAn' },
       { href: '/nam/customer', label: 'ใส่ Client in Charge / ติดตาม Invoice สินค้า & Surrender', count: 'namCustomerWait' },
-      { href: '/nam/release', label: 'ตรวจ & ปล่อยสินค้า' },
       { href: '/nam/haul', label: 'จัดการลากตู้สินค้า', count: 'haulWait' },
     ],
   },

@@ -2219,3 +2219,30 @@ table.data thead th[data-filtered] { background: var(--navy-2); box-shadow: inse
 .tf-empty { color: var(--muted); padding: 6px; }
 .tf-quick { display: flex; flex-wrap: wrap; gap: 5px; }
 .tf-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* ---------- ทะเบียนงานแบบตารางเดิม (ทะเบียนงาน · จัดการลากตู้) ---------- */
+/* สีแถวตามไฟล์ Excel ของทีม: เขียว = งานทั่วไป · ส้ม = MUO (Partner ภายนอกปล่อยเอง) · ม่วง = ขนทางรถ */
+table.data tbody tr.row-kola { background: #eef7e9; }
+table.data tbody tr.row-kola:hover { background: #e1f0d8; }
+table.data tbody tr.row-muo { background: #ffe5c2; }
+table.data tbody tr.row-muo:hover { background: #ffd9a6; }
+table.data tbody tr.row-truck { background: #ece4f7; }
+table.data tbody tr.row-truck:hover { background: #e0d4f1; }
+/* Invoice ถูกเปลี่ยนยังต้องเด่นกว่าสีประจำแถว */
+table.data tbody tr.alert { background: var(--red-soft); }
+table.data td.sheet-containers { min-width: 200px; max-width: 340px; }
+table.data td.sheet-shipper { min-width: 150px; max-width: 240px; }
+
+/* ---------- Port Release Partner: ช่องทางแจ้ง (Master Data) ---------- */
+.mini-fieldset {
+  display: grid; gap: 6px; margin: 6px 0; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px;
+}
+.mini-fieldset legend { padding: 0 4px; font-size: 11px; color: var(--muted); }
+.partner-channels .gmail-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.partner-channels .gmail-form input {
+  min-height: 28px; padding: 3px 8px; font: inherit; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 5px; background: var(--surface);
+}
+.partner-channels .gmail-form small { flex-basis: 100%; color: var(--muted); }
+.mini-note { margin: 6px 0; font-size: 12px; color: var(--muted); }

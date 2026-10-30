@@ -3,14 +3,16 @@
 import { revalidatePath } from 'next/cache';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
-import { approvals, bls, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
+import { approvals, bls, containers, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { notifyDoQueue } from '@/lib/line-accounts';
+import { isPartnerRelease } from '@/lib/job-types';
+import { describeResults, partnerByName, sendToPartner } from '@/lib/partner-notify';
 import { formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { hasBlBrackets } from '@/lib/bl-format';
 import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
-import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
+import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 
 /**
  * การแก้ไขข้อมูลทั้งหมดผ่าน server action
@@ -301,12 +303,17 @@ async function saveDoHandoffImpl(formData: FormData) {
   if (sendToPartner) {
     await recordStatus(jobId, job.status, 'DO_SENT',
       `ส่ง DO ให้ ${partnerName || 'Partner'}`, user.id);
-    // แจ้งกลุ่ม LINE เฉพาะตอนกดส่งจริง การกดบันทึกเฉย ๆ ยังไม่เข้าคิวของ ANN/MAY
-    await notifyDoQueue([{
-      blNo: blNo || job.blNo, jobNo: job.jobNo,
-      consigneeName: await consigneeNameOf(job.consigneeId),
-      eta: formatDate(eta),
-    }], 'FAH');
+    /*
+     * แจ้งกลุ่ม LINE เฉพาะตอนกดส่งจริง การกดบันทึกเฉย ๆ ยังไม่เข้าคิวของ ANN/MAY
+     * งาน MUO ไม่เข้าคิวแลก DO (Partner ภายนอกแลกเอง) จึงไม่แจ้ง
+     */
+    if (!isPartnerRelease(await jobTypeCodeOf(job.jobTypeId))) {
+      await notifyDoQueue([{
+        blNo: blNo || job.blNo, jobNo: job.jobNo,
+        consigneeName: await consigneeNameOf(job.consigneeId),
+        eta: formatDate(eta),
+      }], 'FAH');
+    }
   }
   await logActivity(user.id, sendToPartner ? 'SEND_DO_PARTNER' : 'SAVE_DO_HANDOFF',
     'JOB', jobId, { eta, transportDate, originPort, partnerName });
@@ -398,8 +405,20 @@ async function consigneeNameOf(consigneeId: string | null): Promise<string | nul
   return row?.name ?? null;
 }
 
+/** รหัส Job Type ของงาน — ใช้แยกงาน MUO (Partner ภายนอกปล่อยเอง) */
+async function jobTypeCodeOf(jobTypeId: string | null): Promise<string | null> {
+  if (!jobTypeId) return null;
+  const [row] = await db.select({ code: masterRecords.code })
+    .from(masterRecords).where(eq(masterRecords.id, jobTypeId)).limit(1);
+  return row?.code ?? null;
+}
+
 /**
  * PAINT ส่งชุดปล่อย E-Office ให้ Partner
+ *
+ * Partner ที่ผูกช่องทางไว้ (Master Data → Port Release Partner) ได้รับไฟล์ที่เซ็นแล้วทันที:
+ * Email แนบ PDF · LINE ส่งลิงก์ดาวน์โหลด — ผลแต่ละช่องทางขึ้นแถบแจ้งผลและไทม์ไลน์ของงาน
+ * ส่งช่องทางไหนไม่สำเร็จก็ยังถือว่าส่ง Partner แล้ว (บันทึกไปก่อนแล้ว) ให้คนกดเห็นแล้วส่งเองต่อ
  *
  * ต้องมีไฟล์ชุดปล่อยที่เซ็นแล้วก่อน ตรวจฝั่งเซิร์ฟเวอร์ด้วยไม่พึ่งแค่ปุ่มบนหน้าจอ
  * เพราะฟอร์มถูกยิงตรงได้ และไฟล์อาจถูกเปลี่ยนจากหน้าอื่นระหว่างนั้น
@@ -412,7 +431,9 @@ async function sendEofficeToPartnerImpl(formData: FormData) {
   if (!job) throw new Error('ไม่พบงาน');
   if (job.eofficeSentAt) throw new Error('ส่ง Partner ไปแล้ว');
 
-  const [signed] = await db.select({ id: files.id })
+  const [signed] = await db.select({
+    id: files.id, storageKey: files.storageKey, fileName: files.fileName, mimeType: files.mimeType,
+  })
     .from(files)
     .where(and(eq(files.jobId, jobId), eq(files.category, 'EOFFICE_SIGNED'), eq(files.isCurrent, true)))
     .limit(1);
@@ -426,20 +447,45 @@ async function sendEofficeToPartnerImpl(formData: FormData) {
     text(formData.get('note'), 500) || 'ส่งชุดปล่อย E-Office ให้ Partner', user.id);
   await logActivity(user.id, 'SEND_EOFFICE_PARTNER', 'JOB', jobId, {});
 
+  const consigneeName = await consigneeNameOf(job.consigneeId);
+  const muo = isPartnerRelease(await jobTypeCodeOf(job.jobTypeId));
+
+  /*
+   * ส่งไฟล์ชุดปล่อยให้ Partner ตามช่องทางที่ผูกไว้ — sendToPartner() ไม่ throw
+   * Partner ที่ไม่ได้ผูกช่องทาง (เช่น SHIPME) ได้ [] กลับมา ไม่มีอะไรเปลี่ยนจากเดิม
+   */
+  const containerRows = await db.select({ no: containers.containerNo }).from(containers)
+    .where(eq(containers.jobId, jobId)).orderBy(containers.containerNo);
+  const [entry] = await db.select({ declarationNo: customsEntries.declarationNo }).from(customsEntries)
+    .where(eq(customsEntries.jobId, jobId)).orderBy(desc(customsEntries.updatedAt)).limit(1);
+  const results = await sendToPartner(await partnerByName(job.releasePartner), {
+    jobNo: job.jobNo, blNo: job.blNo, declarationNo: entry?.declarationNo ?? null, consigneeName,
+    vessel: [job.vessel, job.voyage].filter(Boolean).join(' V.') || null,
+    containerNos: containerRows.map((c) => c.no).filter((v): v is string => Boolean(v)),
+  }, signed);
+  if (results.length) {
+    await recordStatus(jobId, job.status, 'PARTNER_NOTIFIED',
+      `ส่งชุดปล่อยให้ ${job.releasePartner} · ${describeResults(results)}`, user.id);
+  }
+
   /*
    * แจ้งกลุ่ม LINE ว่ามีรายการใหม่เข้าคิวแลก DO
    *
    * อยู่หลังบันทึกทุกอย่างเสร็จแล้ว และ notifyDoQueue() ไม่ throw ไม่ว่าอะไรเกิดขึ้น
    * การส่งไม่สำเร็จจึงไม่ทำให้ผู้ใช้กดส่ง Partner ไม่ได้
+   * งาน MUO ไม่เข้าคิวแลก DO (Partner ภายนอกแลกเอง) จึงไม่แจ้ง
    */
-  await notifyDoQueue([{
-    blNo: job.blNo, jobNo: job.jobNo,
-    consigneeName: await consigneeNameOf(job.consigneeId),
-    eta: formatDate(job.eta),
-  }], 'PAINT');
+  if (!muo) {
+    await notifyDoQueue([{
+      blNo: job.blNo, jobNo: job.jobNo, consigneeName, eta: formatDate(job.eta),
+    }], 'PAINT');
+  }
 
   revalidatePath('/paint/eoffice-signed');
   revalidatePath('/pending');
+  revalidatePath('/nam/haul');
+  // ผลการส่งแต่ละช่องทางขึ้นแถบแจ้งผล — ส่งไม่สำเร็จจะเห็นทันทีว่าต้องส่งเองช่องไหน
+  if (results.length) await backWithOk(`ส่ง Partner แล้ว · ${describeResults(results)}`);
 }
 
 /**

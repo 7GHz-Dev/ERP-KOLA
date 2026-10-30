@@ -101,7 +101,13 @@ async function main() {
         await sleep(TICK_MS);
         continue;
       }
-      if (!state.owner) { log(`เครื่อง ${state.by ?? 'อื่น'} รับหน้าที่ monitor ต่อแล้ว — ปิดตัวนี้`); break; }
+      if (!state.owner) {
+        // 'ปิดจากหน้าเว็บ' = MONITOR_STOPPED_BY ใน src/lib/customs-monitor.ts (กดปุ่มปิดเช็คสถานะ)
+        log(state.by === 'ปิดจากหน้าเว็บ'
+          ? 'สั่งปิดเช็คสถานะจากหน้าเว็บ — ปิดตัวนี้'
+          : `เครื่อง ${state.by ?? 'อื่น'} รับหน้าที่ monitor ต่อแล้ว — ปิดตัวนี้`);
+        break;
+      }
       if (!state.tasks.length) { log('ACCEPT ครบทุกรายการแล้ว — ปิดตัว monitor'); break; }
 
       const since = Date.now() - lastRound;

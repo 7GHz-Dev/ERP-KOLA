@@ -29,6 +29,7 @@ const EVENT_LABELS: Record<string, string> = {
   EOFFICE_HANDOVER: 'ส่งมอบคนเดินเอกสาร',
   EOFFICE_HANDOVER_UNDO: 'คืนไปเตรียมเอกสารเดิน E',
   HAUL_PLAN_SENT: 'ส่งแพลนลากตู้ให้ MAY',
+  PARTNER_NOTIFIED: 'ส่งชุดปล่อยให้ Partner (Email / LINE)',
 };
 
 export function statusLabel(status: string | null | undefined) {

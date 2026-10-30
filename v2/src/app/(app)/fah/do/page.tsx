@@ -6,6 +6,8 @@ import { DoRowForm } from '@/components/DoRowForm';
 import { DoFillBoard } from '@/components/DoFillBoard';
 import { VesselFilter } from '@/components/VesselFilter';
 import { canEditBlAtDo } from '@/lib/do-letter';
+import { isPartnerRelease } from '@/lib/job-types';
+import { isShipmePartner } from '@/lib/partner-message';
 import { fahDoVessels, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
 import { doHandoffSentAt } from '@/lib/queries/dashboard';
@@ -52,8 +54,19 @@ export default async function FahDoPage({
     ports.find((p) => p.code === 'THLCH')?.id
     ?? ports.find((p) => /แหลมฉบัง|laem\s*chabang/i.test(p.name))?.id
     ?? null;
+  // SHIPME = Partner พื้นฐานของงาน MU (MSFZ)
   const defaultPartnerId =
-    partners.find((p) => /shipme/i.test(p.name))?.id ?? null;
+    partners.find((p) => isShipmePartner(p.name))?.id ?? null;
+  /*
+   * งาน MUO — Partner ภายนอก (KMW · A&M …) เป็นคนปล่อยของ ซึ่งคือบริษัทเดียวกับ Notify Party ของงาน
+   * ตั้งค่าเริ่มต้นเป็น Partner ชื่อเดียวกับ Notify Party ไม่ใช่ SHIPME · ไม่เจอก็ปล่อยว่างให้ FAH เลือกเอง
+   * งานอื่นคืน undefined = ใช้ค่าเริ่มต้นของหน้า (SHIPME)
+   */
+  const partnerDefaultFor = (r: JobRow): string | null | undefined => {
+    if (!isPartnerRelease(r.jobTypeCode)) return undefined;
+    const notify = (r.notifyName ?? '').trim().toUpperCase();
+    return partners.find((p) => p.name.trim().toUpperCase() === notify)?.id ?? null;
+  };
   const sentMap = await doHandoffSentAt(rows.map((r) => r.id));
   const sent = tab === 'sent';
 
@@ -69,7 +82,10 @@ export default async function FahDoPage({
     {
       // ชื่อไฟล์อยู่คนละบรรทัดกับปุ่ม ช่องจึงแคบลงและชื่อยาวขึ้นบรรทัดใหม่ได้
       label: 'Invoice DO', kind: 'wrap', className: 'col-file',
-      render: (r) => (
+      render: (r) => (isPartnerRelease(r.jobTypeCode) ? (
+        // MUO ไม่ต้องใช้ Invoice DO — Partner ภายนอกแลก DO เอง ไม่มียอดค่าแลกให้เราตั้งเบิก
+        <span className="badge neutral" title="งาน MUO — Partner แลก DO เอง">ไม่ต้องใช้ (MUO)</span>
+      ) : (
         <div className="file-cell">
           <FileChip file={r.currentFiles?.INVOICE_DO} />
           {/*
@@ -88,7 +104,7 @@ export default async function FahDoPage({
             />
           )}
         </div>
-      ),
+      )),
     },
     {
       /*
@@ -108,7 +124,7 @@ export default async function FahDoPage({
           portId={r.portId ?? defaultPortId}
           terminalId={r.terminalId}
           partnerName={r.releasePartner}
-          defaultPartnerId={defaultPartnerId}
+          defaultPartnerId={partnerDefaultFor(r) === undefined ? defaultPartnerId : partnerDefaultFor(r)}
           ports={ports}
           originPorts={originPorts}
           terminals={terminals}
@@ -185,6 +201,8 @@ export default async function FahDoPage({
             invoiceFileId: r.currentFiles?.INVOICE_DO?.id ?? null,
             invoiceFileName: r.currentFiles?.INVOICE_DO?.fileName ?? null,
             canEditBl: canEditBlAtDo(r.shipline),
+            noInvoiceDo: isPartnerRelease(r.jobTypeCode),
+            defaultPartnerId: partnerDefaultFor(r),
           }))}
           ports={ports}
           originPorts={originPorts}

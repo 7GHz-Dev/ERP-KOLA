@@ -26,6 +26,10 @@ export type DoPaneJob = {
   invoiceFileName: string | null;
   /** สายเรือที่ออกเลข BL ตัวจริงหลังเรือเข้า จึงให้แก้เลขตรงนี้ได้ */
   canEditBl?: boolean;
+  /** งาน MUO — Partner ภายนอกแลก DO เอง ไม่ต้องอัปโหลด Invoice DO */
+  noInvoiceDo?: boolean;
+  /** Partner เริ่มต้นของงานนี้ (MUO = ชื่อเดียวกับ Notify Party) · undefined = ใช้ค่าเริ่มต้นของหน้า */
+  defaultPartnerId?: string | null;
 };
 
 export function DoFillPane({
@@ -88,6 +92,8 @@ export function DoFillPane({
                 <a href={src} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
               </p>
             </object>
+          ) : job.noInvoiceDo ? (
+            <p className="drawer-note">งาน MUO ไม่ต้องใช้ Invoice DO — Partner แลก DO เอง กรอก ETA · Port · Terminal · Partner แล้วส่งได้เลย</p>
           ) : (
             <p className="drawer-note warn">ยังไม่ได้อัปโหลด Invoice DO ของงานนี้</p>
           )}
@@ -100,7 +106,7 @@ export function DoFillPane({
               portId={job.portId ?? defaultPortId}
               terminalId={job.terminalId}
               partnerName={job.releasePartner}
-              defaultPartnerId={defaultPartnerId}
+              defaultPartnerId={job.defaultPartnerId === undefined ? defaultPartnerId : job.defaultPartnerId}
               ports={ports}
               originPorts={originPorts}
               terminals={terminals}

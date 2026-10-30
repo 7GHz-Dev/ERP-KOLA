@@ -41,6 +41,9 @@ const WORK_DIR = process.env.DRAFT_WORKER_DIR ?? join(homedir(), '.kola-draft-wo
 
 const recent: string[] = [];
 let busy: string | null = null;
+// ปุ่ม "ปิด worker" บนหน้าเว็บ — ตัวที่เปิดก่อนเวลาที่สั่งปิดหยุดหลังจบงานที่ทำอยู่
+const STARTED = Date.now();
+let stopping = false;
 
 function log(msg: string) {
   const line = `${new Date().toLocaleTimeString('th-TH', { hour12: false })}  ${msg}`;
@@ -64,10 +67,15 @@ async function api<T = unknown>(fn: string, args: Record<string, unknown> = {}):
 
 async function heartbeat(extra: { shot?: string; offline?: boolean } = {}) {
   const netbay = netbaySettings();
-  await api('heartbeat', {
+  const res = await api<{ settings?: { stopAt?: string | null } }>('heartbeat', {
     worker: WORKER, busy, mode: MODE, platform: process.platform, headless: netbay.headless,
     log: recent, ...extra,
-  }).catch((e) => console.log('heartbeat:', e instanceof Error ? e.message : e));
+  }).catch((e) => { console.log('heartbeat:', e instanceof Error ? e.message : e); return null; });
+  const stopAt = res?.settings?.stopAt;
+  if (stopAt && Date.parse(stopAt) > STARTED && !stopping) {
+    stopping = true;
+    log(busy ? 'สั่งปิดจากหน้าเว็บ — ปิดหลังจบงานที่ทำอยู่' : 'สั่งปิดจากหน้าเว็บ');
+  }
 }
 
 /** ภาพหน้าจอ NETBAY ขึ้น ERP ระหว่างทำงาน */
@@ -85,9 +93,8 @@ async function main() {
   log(`worker ${WORKER} รับงาน Draft ใบขนจาก ${ERP_URL} · NETBAY ${netbay.url}`);
 
   const beat = setInterval(() => { void heartbeat(); }, BEAT_MS);
-  let stop = false;
-  process.on('SIGINT', () => { stop = true; log('กำลังหยุดหลังจบงานที่ทำอยู่…'); });
-  process.on('SIGTERM', () => { stop = true; });
+  process.on('SIGINT', () => { stopping = true; log('กำลังหยุดหลังจบงานที่ทำอยู่…'); });
+  process.on('SIGTERM', () => { stopping = true; });
 
   try {
     await heartbeat();
@@ -100,7 +107,7 @@ async function main() {
       await processTask(task, { api, data, netbay: netbaySettings(), workDir: WORK_DIR, log, onStep: snap });
       return;
     }
-    while (!stop) {
+    while (!stopping) {
       let task: Task | null = null;
       try {
         ({ task } = await api<{ task: Task | null }>('claimNext', { type: TASK_TYPE, worker: WORKER }));
@@ -118,7 +125,8 @@ async function main() {
         continue;
       }
       if (ONCE) { log('คิวว่าง'); break; }
-      await sleep(POLL_MS);
+      // นอนเป็นช่วงสั้น ๆ — กดปิดจากหน้าเว็บแล้วปิดได้ภายในไม่กี่วินาที ไม่ต้องรอครบรอบถามคิว
+      for (let waited = 0; waited < POLL_MS && !stopping; waited += 2_000) await sleep(2_000);
     }
   } finally {
     clearInterval(beat);

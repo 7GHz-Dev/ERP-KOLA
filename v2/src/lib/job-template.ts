@@ -48,9 +48,11 @@ function tplNumber(v: unknown): string {
  * ชื่อย่อที่ไฟล์เดิมใช้ในช่อง CONSIGNEE และ NOTIFY
  *
  * ไฟล์ต้นฉบับเขียน "MSFZ" กับ "KOLA" ไม่ใช่ชื่อบริษัทเต็ม
- * จับจากชื่อใน Master Data ไม่ผูก id ตรง ๆ เผื่อ Master ถูกสร้างใหม่
+ * ใช้ชื่อย่อใน Master Data ก่อน (ชุดเดียวกับที่ทะเบียนงานแสดง) ไม่มีจึงจับจากชื่อ
+ * ไม่ผูก id ตรง ๆ เผื่อ Master ถูกสร้างใหม่
  */
-function shortName(name: string | null): string {
+function shortName(name: string | null, short?: string | null): string {
+  if (short?.trim()) return short.trim();
   if (!name) return '';
   const n = name.toUpperCase();
   if (/MAESOT\s*FREEZONE|MSFZ/.test(n)) return 'MSFZ';
@@ -79,9 +81,12 @@ export async function templateRows(filter: TemplateFilter = {}) {
            person.name                as person_name,
            shipper.name               as shipper_name,
            consignee.name             as consignee_name,
+           consignee.short_name       as consignee_short,
            notify.name                as notify_name,
+           notify.short_name          as notify_short,
            terminal.name              as terminal_name,
            job_type.name              as job_type_name,
+           job_type.short_name        as job_type_short,
            (select string_agg(c.container_no, ',' order by c.container_no)
               from containers c where c.job_id = j.id)          as container_nos,
            (select count(*)::int from containers c
@@ -115,7 +120,8 @@ export async function templateRows(filter: TemplateFilter = {}) {
     const cell: Record<string, string> = {
       CUSTOMER: (r.person_name as string) ?? '',
       ETA: tplDate(eta),
-      'ประเภท': r.job_type_name === 'MSFZ - USED CAR' ? 'MSFZ - รถยนต์เก่า' : (r.job_type_name as string) ?? '',
+      'ประเภท': (r.job_type_short as string | null)?.trim()
+        || (r.job_type_name === 'MSFZ - USED CAR' ? 'MSFZ - รถยนต์เก่า' : (r.job_type_name as string) ?? ''),
       // Y = แนบ Invoice สินค้าแล้ว · ยังไม่แนบปล่อยว่างตามไฟล์เดิม
       'INV.': Number(r.has_invoice) > 0 ? 'Y' : '',
       // เว้นว่างทุกงานตามแบบฟอร์มส่งออก
@@ -135,8 +141,8 @@ export async function templateRows(filter: TemplateFilter = {}) {
       PORT: (r.terminal_name as string) ?? '',
       REF: (r.draft_ref_no as string) ?? '',
       REMARK: (r.customer_note as string) ?? '',
-      CONSIGNEE: shortName((r.consignee_name as string) ?? null),
-      NOTIFY: shortName((r.notify_name as string) ?? null),
+      CONSIGNEE: shortName((r.consignee_name as string) ?? null, r.consignee_short as string | null),
+      NOTIFY: shortName((r.notify_name as string) ?? null, r.notify_short as string | null),
       K: '',
       O: '',
       DEM: String(r.dem_days ?? ''),

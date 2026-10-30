@@ -84,6 +84,16 @@ function samePath(referer: string | null): string {
 }
 
 /**
+ * กลับหน้าเดิมพร้อมข้อความผลลัพธ์ (?ok=) — ActionAlert แสดงเป็นแถบสีเขียว
+ * ใช้เมื่อคำสั่งสำเร็จแต่มีรายละเอียดที่คนกดต้องรู้ เช่นผลการส่ง Email/LINE ให้ Partner
+ * เรียกจากในงานที่ห่อด้วย runAction ได้ — redirect เป็น error ของ Next ซึ่ง runAction ปล่อยผ่าน
+ */
+export async function backWithOk(message: string): Promise<never> {
+  const base = samePath((await headers()).get('referer'));
+  redirect(`${base}${base.includes('?') ? '&' : '?'}ok=${encodeURIComponent(message.slice(0, 500))}`);
+}
+
+/**
  * ห่อคำสั่งทุกตัวที่ผูกกับปุ่มบนหน้าเว็บ
  *
  * ข้อผิดพลาดที่ผู้ใช้แก้เองได้ เช่น "ต้องมีไฟล์ Final Invoice ก่อน" ถ้าปล่อยให้ throw
