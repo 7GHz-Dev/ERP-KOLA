@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { and, asc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { automationTasks } from '@/db/schema';
 import { downloadFile } from '@/lib/storage';
-import { completeTask, CUSTOMS_TASK_TYPES, failTask } from '@/lib/automation';
+import { completeTask, CUSTOMS_TASK_TYPES, failTask, TASK_TYPES } from '@/lib/automation';
+import { monitorTasks, recordCustomsCheck, takeMonitorLease } from '@/lib/customs-monitor';
 import { downloadTaskFile, saveRecording } from '@/lib/web-template-store';
 import { recordHeartbeat } from '@/lib/worker-status';
 import { assignNetbayAccount } from '@/lib/netbay-accounts';
@@ -43,6 +44,11 @@ async function claimNext(args: any) {
    * เครื่องที่กดเปิด worker เฉพาะงานนั้นผ่านลิงก์ kola-worker://draft?task=… แล้วหยิบด้วย claimTask
    */
   conditions.push(sql`coalesce(${automationTasks.payload}, '') not like '%"local":true%'`);
+  /*
+   * งานสร้างใบขนไม่มีใครหยิบไปทำ — ตัว monitor (worker:customs) เช็กสถานะใน NETBAY ทุกรายการที่ค้างเอง
+   * ถ้า worker ตัวอื่นหยิบไป งานจะค้าง PROCESSING และไม่มีใครดึงเลขใบขนกลับมา
+   */
+  conditions.push(ne(automationTasks.type, TASK_TYPES.CUSTOMS));
 
   const [task] = await db.select().from(automationTasks)
     .where(and(...conditions)).orderBy(asc(automationTasks.createdAt)).limit(1);
@@ -174,6 +180,23 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
       sourceFile: s(args?.sourceFile, 300), issue, add,
     });
     return { issued };
+  },
+
+  /*
+   * ตัว monitor ใบขน (worker:customs) — เครื่องที่กด "สร้างใบขนแล้ว" ล่าสุดรับหน้าที่ต่อ
+   * เริ่ม: รับ lease + บัญชี NETBAY ของตัว monitor · ทุกรอบ: ถามรายการที่ค้าง (ไม่ใช่เจ้าของ lease แล้ว = ปิดตัว)
+   * ผลการเช็กรายรายการ: สถานะใน NETBAY · ACCEPT แล้วส่งเลข + PDF ผ่าน completeTask ตัวเดิม
+   */
+  async customsMonitorStart(args: any) {
+    return takeMonitorLease(String(args?.worker ?? ''), String(args?.lease ?? ''));
+  },
+  async customsMonitorTasks(args: any) {
+    return monitorTasks(String(args?.lease ?? ''));
+  },
+  async customsStatus(args: any) {
+    return recordCustomsCheck({
+      taskId: String(args?.taskId ?? ''), actorId: WORKER_ACTOR, status: args?.status, error: args?.error,
+    });
   },
 
   async saveRecording(args: any) {

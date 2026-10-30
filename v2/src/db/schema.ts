@@ -137,6 +137,12 @@ export const jobs = pgTable('jobs', {
   /** NAMKANG กดยืนยันข้อมูลลูกค้าแล้ว — ใช้แยกแท็บรออัปเดต/อัปเดตแล้ว */
   customerConfirmedAt: timestamp('customer_confirmed_at', { withTimezone: true }),
   customerConfirmedBy: text('customer_confirmed_by'),
+  /*
+   * PAINT ส่งมอบชุดเอกสารเดิน E ให้คนเดินเอกสารแล้ว (เลือกหลายรายการได้ที่แท็บ 4)
+   * งานออกจาก 4. เตรียมเอกสารเดิน E ไปรออัปโหลดชุดที่เซ็นแล้วที่หน้า Upload ชุดปล่อย E-Office
+   */
+  eofficeHandoverAt: timestamp('eoffice_handover_at', { withTimezone: true }),
+  eofficeHandoverBy: text('eoffice_handover_by'),
   /** PAINT ส่งชุดปล่อย E-Office ให้ Partner แล้ว — ใช้แยกแท็บรอส่ง/ส่งแล้ว */
   eofficeSentAt: timestamp('eoffice_sent_at', { withTimezone: true }),
   eofficeSentBy: text('eoffice_sent_by'),
@@ -253,6 +259,33 @@ export const containers = pgTable('containers', {
 }, (t) => ({
   jobIdx: index('containers_job_idx').on(t.jobId),
   runningKey: uniqueIndex('containers_running_key').on(t.runningNo),
+}));
+
+/**
+ * แพลนลากตู้ — ตู้ละแถว
+ *
+ * NAMKANG เลือกวันลากตู้ของงานที่ส่ง Partner แล้ว แล้วส่งแพลนให้ MAY ซึ่งจัดการแพลนฝั่ง Partner
+ * (เชื่อม ERP SHIPME ภายหลัง) · แยกตารางจาก containers เพราะเป็นงานของคนละฝ่าย
+ * และฝั่ง SHIPME จะผูกข้อมูลรถ/คนขับเพิ่มเข้ามาที่แพลน ไม่ใช่ที่ตัวตู้
+ *
+ * เปลี่ยนวันหลังส่งแล้ว = ส่งใหม่ (ack ถูกล้าง) แพลนกลับไปอยู่ในรายการใหม่ของ MAY
+ */
+export const haulPlans = pgTable('haul_plans', {
+  id: id(),
+  jobId: text('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+  containerId: text('container_id').notNull().references(() => containers.id, { onDelete: 'cascade' }),
+  haulDate: date('haul_date').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  sentBy: text('sent_by'),
+  /** MAY รับแพลนแล้ว */
+  ackAt: timestamp('ack_at', { withTimezone: true }),
+  ackBy: text('ack_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  containerKey: uniqueIndex('haul_plans_container_key').on(t.containerId),
+  jobIdx: index('haul_plans_job_idx').on(t.jobId),
+  dateIdx: index('haul_plans_date_idx').on(t.haulDate),
 }));
 
 export const files = pgTable('files', {
@@ -402,6 +435,9 @@ export const automationTasks = pgTable('automation_tasks', {
   resultStorageKey: text('result_storage_key'),
   resultFileName: text('result_file_name'),
   error: text('error'),
+  /** งาน CUSTOMS_ENTRY: สถานะล่าสุดที่ตัว monitor เห็นใน NETBAY (ACCEPT, REJECT, …) และเวลาที่เช็ก */
+  externalStatus: text('external_status'),
+  checkedAt: timestamp('checked_at', { withTimezone: true }),
   attempts: integer('attempts').default(0).notNull(),
   claimedBy: text('claimed_by'),
   claimedAt: timestamp('claimed_at', { withTimezone: true }),

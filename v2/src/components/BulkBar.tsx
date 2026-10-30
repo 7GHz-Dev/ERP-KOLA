@@ -30,7 +30,7 @@ export type BulkAction = {
 };
 
 export function BulkBar({
-  action, label, confirmText, idName, fields, extra, children,
+  action, label, confirmText, idName, fields, extra, dateField, children,
 }: {
   action: (formData: FormData) => Promise<unknown>;
   /** ข้อความบนปุ่ม — {n} จะถูกแทนด้วยจำนวนที่เลือก */
@@ -42,10 +42,16 @@ export function BulkBar({
   fields?: Record<string, string>;
   /** ปุ่มเพิ่มเติมบนแถบเดียวกัน เช่นลบรายการที่เลือก */
   extra?: BulkAction;
+  /**
+   * ช่องวันที่บนแถบ ส่งไปกับปุ่มหลัก — ใช้กับคำสั่งที่ต้องบอกวันเดียวกันทุกรายการ เช่นวันลากตู้
+   * ต้องเลือกก่อนกด ไม่งั้นบอกให้เลือกบนแถบเลย ไม่ต้องรอไปเจอ error จากเซิร์ฟเวอร์
+   */
+  dateField?: { name: string; label: string };
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState<string[]>([]);
+  const [date, setDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -130,12 +136,20 @@ export function BulkBar({
               {extra.label.replace('{n}', String(picked.length))}
             </button>
           ) : null}
+          {dateField ? (
+            <label className="mini">
+              {dateField.label}{' '}
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+          ) : null}
           <button
             type="button"
             className="button primary"
             disabled={busy}
             onClick={() => {
-              if (window.confirm(confirmText.replace('{n}', String(picked.length)))) void run(action, fields);
+              if (dateField && !date) { setError(`กรุณาเลือก${dateField.label}`); return; }
+              const text = confirmText.replace('{n}', String(picked.length)).replace('{date}', date.split('-').reverse().join('/'));
+              if (window.confirm(text)) void run(action, dateField ? { ...fields, [dateField.name]: date } : fields);
             }}
           >
             {busy ? 'กำลังทำ…' : label.replace('{n}', String(picked.length))}

@@ -7,8 +7,7 @@ import { automationTasks, customsEntries, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId, required, runAction } from './common';
-import { completeTask, failTask, reuseOpenTask, TASK_TYPES } from '@/lib/automation';
-import { renderCustomsEntryPdf } from '@/lib/customs-pdf';
+import { reuseOpenTask, TASK_TYPES } from '@/lib/automation';
 
 /**
  * คิวงาน automation
@@ -53,7 +52,10 @@ async function submitDraftTaskImpl(formData: FormData) {
   revalidatePath('/automation');
 }
 
-/** FAH ส่งเลข Ref No. เข้าคิวเพื่อให้ automate ทำใบขนสินค้า */
+/**
+ * FAH กด SEND TO CUSTOMS ใน NETBAY เองแล้ว — งานเข้าคิวรอสร้างใบขน
+ * ตัว monitor (worker:customs) บนเครื่องที่กดเช็กสถานะใน NETBAY จน ACCEPT แล้วส่งเลขใบขน + PDF กลับ
+ */
 async function submitCustomsTaskImpl(formData: FormData) {
   const user = await requireActiveSession(['FAH']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
@@ -79,58 +81,6 @@ async function submitCustomsTaskImpl(formData: FormData) {
   revalidatePath('/automation');
 }
 
-/** ปุ่มจำลองบนหน้าเว็บ ใช้ทดสอบทั้งเส้นก่อนโปรแกรม Python จะพร้อม */
-async function runTaskSimulationImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT', 'FAH']);
-  const taskId = required(formData.get('taskId'), 'งาน', 80);
-
-  const [task] = await db.select().from(automationTasks)
-    .where(eq(automationTasks.id, taskId)).limit(1);
-  if (!task) throw new Error('ไม่พบงานในคิว');
-  // Draft ใบขนมี worker ตัวจริงแล้ว (worker:draft) — ตัวจำลองจะออก Ref No. ปลอมทับงานจริง
-  if (task.type === TASK_TYPES.DRAFT) {
-    throw new Error('งาน Draft ใบขนทำโดย worker สร้าง Draft แล้ว ใช้ปุ่มจำลองไม่ได้ — ทำซ้ำให้กด "สร้าง Draft" ที่หน้างานคงค้าง');
-  }
-
-  const [job] = task.jobId
-    ? await db.select().from(jobs).where(eq(jobs.id, task.jobId)).limit(1)
-    : [];
-
-  await db.update(automationTasks).set({
-    status: 'PROCESSING', claimedBy: 'simulator', claimedAt: new Date(),
-    attempts: task.attempts + 1, updatedAt: new Date(),
-  }).where(eq(automationTasks.id, taskId));
-
-  const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, '');
-  const suffix = String(Date.now() % 100000).padStart(5, '0');
-
-  try {
-    if (task.type === TASK_TYPES.DRAFT) {
-      await completeTask({ taskId, actorId: user.id, refNo: `QELS${stamp}${suffix}` });
-    } else {
-      const entryNo = `A${stamp}${suffix}`;
-      // ต้องเป็น PDF เพราะไฟล์นี้ถูกเอาไปต่อในชุด E-Office ไฟล์ข้อความต่อไม่ได้
-      const body = await renderCustomsEntryPdf({
-        entryNo,
-        refNo: job?.draftRefNo ?? '',
-        jobNo: job?.jobNo ?? '',
-        blNo: job?.blNo ?? '',
-      });
-      await completeTask({
-        taskId, actorId: user.id, entryNo,
-        file: { name: `${entryNo}.pdf`, mimeType: 'application/pdf', body },
-      });
-    }
-  } catch (error) {
-    await failTask(taskId, user.id, error instanceof Error ? error.message : String(error));
-    throw error;
-  }
-
-  revalidatePath('/automation');
-  revalidatePath('/pending');
-  revalidatePath('/fah/draft');
-}
-
 /** ดึงผลกลับเข้า Job — เก็บไว้เผื่อกรณีที่ worker บันทึกผลแต่ Job ยังไม่อัปเดต */
 export async function pendingTaskCount() {
   const [row] = await db
@@ -154,6 +104,3 @@ export async function submitCustomsTask(formData: FormData) {
   return runAction(() => submitCustomsTaskImpl(formData));
 }
 
-export async function runTaskSimulation(formData: FormData) {
-  return runAction(() => runTaskSimulationImpl(formData));
-}

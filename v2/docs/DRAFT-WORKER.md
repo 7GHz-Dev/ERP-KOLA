@@ -16,6 +16,8 @@ PAINT → งานคงค้าง → **3. Draft ใบขน** → กด *
    **จบเมื่อขึ้น "success please check your invoice"** — ไม่กด Save / Send to Customs
 4. ส่ง **Ref No.** (เช่น `QENX000000019`) + ไฟล์ "FN Invoice (เติมเลขเครื่องแล้ว)" + "CSV นำเข้า NETBAY" เข้างาน
 
+ต่อจากนั้น FAH ตรวจ Draft กด SEND TO CUSTOMS ใน NETBAY เอง แล้วกด "สร้างใบขนแล้ว" — ดู [CUSTOMS-MONITOR.md](CUSTOMS-MONITOR.md)
+
 เลข Ref No. ทุกหน้า (รวมหน้าตรวจ Draft ของ FAH) เป็นลิงก์ `kola-netbay://open?ref=…`
 กดแล้วเครื่องนั้นเปิด Chrome → login → Import → ค้นหา Ref No. → เปิดใบขน
 (ลิงก์ตรงไปหน้าใบขนใช้ไม่ได้ เพราะ NETBAY ผูก session ไว้กับเบราว์เซอร์ที่ login)

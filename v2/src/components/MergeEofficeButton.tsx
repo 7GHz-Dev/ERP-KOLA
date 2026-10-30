@@ -24,7 +24,7 @@ const BUNDLE_CFG = {
   eoffice: {
     title: 'รวมชุด E-Office',
     label: 'รวมชุด E-Office',
-    order: 'คำร้อง → ใบขนสินค้า → Final Invoice → Arrival Notice / BL',
+    order: 'คำร้อง → ใบขนสินค้า (ทุกหน้า) → BL → Final Invoice',
   },
   do: {
     title: 'รวมชุดแลก DO (ประทับตรา)',

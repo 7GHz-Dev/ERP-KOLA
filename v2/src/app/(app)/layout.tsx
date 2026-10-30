@@ -60,6 +60,7 @@ const NAV: NavGroup[] = [
       { href: '/nam/approve', label: 'อนุมัติข้อมูล BL เข้าตารางหลัก', count: 'pendingAn' },
       { href: '/nam/customer', label: 'ใส่ Client in Charge / ติดตาม Invoice สินค้า & Surrender', count: 'namCustomerWait' },
       { href: '/nam/release', label: 'ตรวจ & ปล่อยสินค้า' },
+      { href: '/nam/haul', label: 'จัดการลากตู้สินค้า', count: 'haulWait' },
     ],
   },
   {
@@ -74,6 +75,7 @@ const NAV: NavGroup[] = [
       // นับงานที่ MAY ยังไม่ได้ตั้งเบิก ไม่ใช่คิวของ ANN — สองคิวนี้ไม่เท่ากันเมื่อ ANN ส่งแลกไปก่อน
       { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'mayClaimWait' },
       { href: '/may/do-slips', label: 'อัป Slip ค่าแลก DO หลายรูป' },
+      { href: '/may/haul', label: 'แพลนลากตู้', count: 'haulPlanNew' },
     ],
   },
   {

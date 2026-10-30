@@ -5,6 +5,7 @@
 #   kola-worker://draft        แท็บ Draft ใบขน     -> npm run worker:draft
 #   kola-worker://draft?task=… ปุ่ม "สร้าง Draft"  -> npm run worker:draft -- --task … (ทำงานนั้นบนเครื่องนี้)
 #   kola-netbay://open?ref=…   เลข Ref No.        -> npm run netbay:open (เปิดใบขนนั้นใน NETBAY)
+#   kola-worker://customs      ปุ่ม "สร้างใบขนแล้ว" -> npm run worker:customs (ตัว monitor ใบขน จน ACCEPT ครบ)
 # รันในโฟลเดอร์ v2 นี้แบบไม่มีหน้าต่าง · log อยู่ที่ %LOCALAPPDATA%\KOLA\ · worker ที่เปิดอยู่แล้วจะไม่เปิดซ้ำ
 #
 # วิธีใช้: ดับเบิลคลิก windows-worker-launcher.cmd ในโฟลเดอร์เดียวกันนี้
@@ -40,15 +41,18 @@ function Start-Npm($npmArgs, $logName) {
   $log = Join-Path $logDir $logName
   Start-Process cmd.exe -WindowStyle Hidden -ArgumentList '/c', ('chcp 65001 >nul && cd /d "__V2__" && npm run ' + $npmArgs + ' >> "' + $log + '" 2>&1')
 }
-function Start-Worker($npmScript, $pattern, $logName, $label) {
+function Start-Worker($npmScript, $pattern, $logName, $label, [switch]$Quiet) {
   $running = Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like "*$pattern*" }
-  if ($running) { Show "$label เปิดอยู่แล้ว"; exit }
+  if ($running) { if (-not $Quiet) { Show "$label เปิดอยู่แล้ว" }; exit }
   Start-Npm $npmScript $logName
 }
 if ($url -like 'kola-netbay:*') {
   # ส่งต่อเฉพาะ Ref No. ที่เป็นตัวอักษร/ตัวเลข — URL มาจากเบราว์เซอร์ ห้ามต่อเป็นคำสั่งตรง ๆ
   if ($url -notmatch '[?&]ref=([A-Za-z0-9][A-Za-z0-9-]{3,39})(&|$)') { Show "ลิงก์ Ref No. ไม่ถูกต้อง: $url"; exit }
   Start-Npm ('netbay:open -- ' + $Matches[1]) 'netbay-open.log'
+} elseif ($url -like '*customs*') {
+  # FAH กดสร้างใบขนหลายงานติดกัน — เปิดอยู่แล้วไม่ต้องเตือน ตัวที่เปิดอยู่เห็นงานใหม่เองภายในครึ่งนาที
+  Start-Worker 'worker:customs' 'customs-monitor' 'customs-monitor.log' 'ตัว monitor ใบขน' -Quiet
 } elseif ($url -like '*draft*task=*') {
   # กด "สร้าง Draft" ที่เครื่องนี้ — ทำเฉพาะงานนั้นบนเครื่องนี้ (เลขงานตรวจรูปแบบก่อน ห้ามต่อ URL เป็นคำสั่งตรง ๆ)
   if ($url -notmatch '[?&]task=(TASK-[A-F0-9]{8,40})(&|$)') { Show "ลิงก์งาน Draft ไม่ถูกต้อง: $url"; exit }

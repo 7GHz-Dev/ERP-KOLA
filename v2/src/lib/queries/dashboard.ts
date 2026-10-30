@@ -58,13 +58,15 @@ export async function navCounts() {
                and (${jobs.draftStatus} is null
                     or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))
            or (${jobs.customsStatus} = 'FILED'
-               and merged.job_id is null and signed.job_id is null))::int`,
-      // ต้องตรงกับ QUEUE.pendingEdoc — ตัดงานที่ได้ชุดปล่อยเซ็นแล้วออก
+               and ${jobs.eofficeHandoverAt} is null and signed.job_id is null))::int`,
+      // ต้องตรงกับ QUEUE.pendingEdoc — ยังไม่ส่งมอบคนเดินเอกสาร และยังไม่มีชุดปล่อยเซ็นแล้ว
       edoc: sql<number>`count(*) filter (
-        where ${jobs.customsStatus} = 'FILED' and signed.job_id is null)::int`,
-      // ต้องตรงกับ QUEUE.eofficeSigned('wait') — ยังไม่ได้กดส่ง Partner
+        where ${jobs.customsStatus} = 'FILED'
+          and ${jobs.eofficeHandoverAt} is null and signed.job_id is null)::int`,
+      // ต้องตรงกับ QUEUE.eofficeSigned('wait') — ส่งมอบแล้ว (หรืองานเก่าที่มีไฟล์แล้ว) แต่ยังไม่ได้กดส่ง Partner
       eofficeSignedWait: sql<number>`count(*) filter (
-        where ${jobs.customsStatus} = 'FILED' and ${jobs.eofficeSentAt} is null)::int`,
+        where ${jobs.customsStatus} = 'FILED' and ${jobs.eofficeSentAt} is null
+          and (${jobs.eofficeHandoverAt} is not null or signed.job_id is not null))::int`,
       // ต้องตรงกับ QUEUE.doExchange('wait') — ส่ง Partner แล้ว (ทางใดทางหนึ่ง) แต่ยังไม่ได้ส่งแลก DO
       doExchangeWait: sql<number>`count(*) filter (
         where ${jobs.doExchangedAt} is null
@@ -79,6 +81,17 @@ export async function navCounts() {
                            where dh.job_id = ${jobs.id} and dh.sent_at is not null)))::int`,
       queue: sql<number>`(select count(*) from automation_tasks
                           where status in ('QUEUED', 'PROCESSING'))::int`,
+      // ต้องตรงกับ listHaulRows('wait') — ตู้ของงานที่ส่ง Partner แล้วแต่ยังไม่ได้ส่งแพลน
+      haulWait: sql<number>`(select count(*) from containers c
+                             join jobs j on j.id = c.job_id
+                            where j.eoffice_sent_at is not null and j.is_archived = false
+                              and not exists (select 1 from haul_plans hp
+                                               where hp.container_id = c.id and hp.sent_at is not null))::int`,
+      // ต้องตรงกับ listHaulRows('new') — แพลนที่ส่งมาแล้ว MAY ยังไม่ได้กดรับ
+      haulPlanNew: sql<number>`(select count(*) from haul_plans hp
+                                join jobs j on j.id = hp.job_id
+                               where hp.sent_at is not null and hp.ack_at is null
+                                 and j.eoffice_sent_at is not null and j.is_archived = false)::int`,
       // ต้องตรงกับ QUEUE.fahDo('wait') — งานที่ผ่าน AN แล้วแต่ยังไม่ได้กดส่ง Partner
       fahDoWait: sql<number>`count(*) filter (
         where ${an.status} = 'APPROVED'
@@ -93,11 +106,6 @@ export async function navCounts() {
     .leftJoin(fn, eq(fn.jobId, jobs.id))
     .leftJoin(
       sql`(select distinct job_id from files
-             where category = 'EOFFICE_MERGED' and is_current = true) as merged`,
-      sql`merged.job_id = ${jobs.id}`,
-    )
-    .leftJoin(
-      sql`(select distinct job_id from files
              where category = 'EOFFICE_SIGNED' and is_current = true) as signed`,
       sql`signed.job_id = ${jobs.id}`,
     )
@@ -108,7 +116,7 @@ export async function navCounts() {
 /**
  * ตัวเลขเตือนบนแท็บของหน้างานคงค้าง
  *
- * แท็บ 1-3 นับ "รายการที่รอให้กดส่งอนุมัติ" ส่วนแท็บ 4 นับงานที่ยังไม่ได้รวมชุด E-Office
+ * แท็บ 1-3 นับ "รายการที่รอให้กดส่งอนุมัติ" ส่วนแท็บ 4 นับงานที่ยังไม่ได้ส่งมอบคนเดินเอกสาร
  * เงื่อนไขต้องตรงกับ QUEUE ในไฟล์ jobs.ts ไม่งั้นตัวเลขจะไม่ตรงกับจำนวนแถวที่เห็น
  */
 export async function pendingTabCounts() {
@@ -127,16 +135,11 @@ export async function pendingTabCounts() {
                or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))::int`,
       edoc: sql<number>`count(*) filter (
         where ${jobs.customsStatus} = 'FILED'
-          and merged.job_id is null and signed.job_id is null)::int`,
+          and ${jobs.eofficeHandoverAt} is null and signed.job_id is null)::int`,
     })
     .from(jobs)
     .leftJoin(an, eq(an.jobId, jobs.id))
     .leftJoin(fn, eq(fn.jobId, jobs.id))
-    .leftJoin(
-      sql`(select distinct job_id from files
-             where category = 'EOFFICE_MERGED' and is_current = true) as merged`,
-      sql`merged.job_id = ${jobs.id}`,
-    )
     .leftJoin(
       sql`(select distinct job_id from files
              where category = 'EOFFICE_SIGNED' and is_current = true) as signed`,

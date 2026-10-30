@@ -7,6 +7,7 @@ import {
 } from '@/components/ActionForms';
 import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
 import { requestApprovalMany } from '@/lib/actions/jobs';
+import { handoverEoffice } from '@/lib/actions/eoffice-handover';
 import { deleteJobs } from '@/lib/actions/job-delete';
 import Link from 'next/link';
 import { hasArrivalFiles, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
@@ -116,7 +117,17 @@ function columnsFor(
       }];
   }
   if (tab === 'edoc') {
-    return [col.createdAt(), col.clientInCharge(), col.shipper(), col.blNo(), col.refNo(),
+    return [
+      /*
+       * ติ๊กหลายรายการแล้วกด "ส่งมอบคนเดินเอกสาร" ทีเดียว
+       * ติ๊กได้เฉพาะงานที่รวมชุด E-Office แล้ว — ยังไม่มีชุดก็ไม่มีอะไรให้คนเดินเอกสารถือไป
+       */
+      {
+        label: '', kind: 'actions' as const, className: 'col-pick',
+        header: <PickAllBox />,
+        render: (r: JobRow) => (r.currentFiles?.EOFFICE_MERGED ? <PickBox id={r.id} /> : null),
+      },
+      col.createdAt(), col.clientInCharge(), col.shipper(), col.blNo(), col.refNo(),
       col.declarationNo(), col.consignee(), col.eta(), col.lastDem(), col.lastDet(),
       {
         label: 'คำร้อง E-Office', kind: 'actions',
@@ -254,7 +265,7 @@ export default async function PendingPage({
     tab === 'draft' ? onlineWorkers({ mode: DRAFT_WORKER_MODE }) : Promise.resolve([]),
   ]);
 
-  // แท็บ 1-3 เตือนจำนวนที่รอกดส่งอนุมัติ แท็บ 4 เตือนจำนวนที่ยังไม่ได้รวมชุด
+  // แท็บ 1-3 เตือนจำนวนที่รอกดส่งอนุมัติ แท็บ 4 เตือนจำนวนที่ยังไม่ได้ส่งมอบคนเดินเอกสาร
   const tabsWithCount = TABS.map((t) => ({ ...t, count: counts[t.key] || undefined }));
 
   /*
@@ -280,7 +291,7 @@ export default async function PendingPage({
     <>
       <div className="page-head">
         <h1>งานคงค้าง</h1>
-        <p>BL → Final Invoice → Draft ใบขน → เตรียมเอกสารเดิน E</p>
+        <p>BL → Final Invoice → Draft ใบขน → เตรียมเอกสารเดิน E (คำร้อง → รวมชุด → ส่งมอบคนเดินเอกสาร)</p>
       </div>
 
       {/* ตัวกรองติดไปตอนสลับแท็บด้วย เพราะเป็นเรื่องเดียวกันทุกแท็บ ไม่ใช่ของแท็บใดแท็บหนึ่ง */}
@@ -340,7 +351,17 @@ export default async function PendingPage({
       {/* กด "สร้าง Draft" แล้ว worker ตรวจ Final Invoice ออกเลขเครื่อง สร้างใบขนใน NETBAY และ Import CSV ให้ */}
       {tab === 'draft' ? <DraftWorkerBar initial={draftWorkers} /> : null}
 
-      {tab === 'bl' && sub === 'wait' ? (
+      {tab === 'edoc' ? (
+        <BulkBar
+          action={handoverEoffice}
+          idName="jobIds"
+          label="ส่งมอบคนเดินเอกสาร {n} รายการ"
+          confirmText={'ส่งมอบชุดเอกสารเดิน E {n} รายการให้คนเดินเอกสารใช่ไหม\n\n'
+            + 'รายการจะไปรออัปโหลดชุดที่เซ็นแล้วที่หน้า Upload ชุดปล่อย E-Office'}
+        >
+          {table}
+        </BulkBar>
+      ) : tab === 'bl' && sub === 'wait' ? (
         <BulkBar
           action={requestApprovalMany}
           idName="jobIds"

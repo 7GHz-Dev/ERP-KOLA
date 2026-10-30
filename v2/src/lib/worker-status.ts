@@ -20,6 +20,10 @@ export const WORKER_HEARTBEAT_TYPE = 'workerHeartbeat';
  * แยกจาก worker กรอกเว็บแลก DO — หน้าแลก DO ไม่นับตัวนี้ และปุ่มปิด worker ของ ANN ไม่มีผลกับมัน
  */
 export const DRAFT_WORKER_MODE = 'draft';
+/** mode ของตัว monitor ใบขน (worker:customs) — ตรงกับ CUSTOMS_MONITOR_MODE ใน lib/customs-monitor */
+export const CUSTOMS_WORKER_MODE = 'customs';
+/** worker ที่ไม่ใช่ตัวกรอกเว็บแลก DO — หน้าแลก DO ไม่นับ และปุ่มปิด worker ของ ANN ไม่มีผล */
+export const NON_WEB_MODES = [DRAFT_WORKER_MODE, CUSTOMS_WORKER_MODE];
 export const WORKER_SETTING_TYPE = 'workerSetting';
 const SETTING_CODE = 'web';
 
@@ -105,7 +109,7 @@ export type OnlineWorker = {
 };
 
 export async function onlineWorkers(
-  filter: { mode?: string; exceptMode?: string } = {},
+  filter: { mode?: string; exceptMode?: string | string[] } = {},
 ): Promise<OnlineWorker[]> {
   const rows = await db.select({ name: masterRecords.name, value: masterRecords.value, updatedAt: masterRecords.updatedAt })
     .from(masterRecords)
@@ -128,5 +132,5 @@ export async function onlineWorkers(
       seenAt: r.updatedAt.toISOString(),
     };
   }).filter((w) => (!filter.mode || w.mode === filter.mode)
-    && (!filter.exceptMode || w.mode !== filter.exceptMode));
+    && !([] as string[]).concat(filter.exceptMode ?? []).includes(w.mode));
 }

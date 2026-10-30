@@ -5,8 +5,9 @@ import {
   updateBlInfo, updateSurrender,
 } from '@/lib/actions/jobs';
 import { acknowledgeInvoice, uploadJobFile } from '@/lib/actions/files';
-import { submitCustomsTask, submitDraftTask } from '@/lib/actions/automation';
+import { submitDraftTask } from '@/lib/actions/automation';
 import { createEofficeRequest } from '@/lib/actions/eoffice';
+import { undoEofficeHandover } from '@/lib/actions/eoffice-handover';
 import { saveMasterRecord } from '@/lib/actions/master';
 import { ConfirmSubmit, PopoverCancel, PopoverHead } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
@@ -117,6 +118,20 @@ export function SendEofficeButton({ jobId, ready }: { jobId: string; ready: bool
         tone="ok"
         confirm="ส่งชุดปล่อย E-Office ให้ Partner ใช่ไหม"
         detail="ระบบจะบันทึกเวลาที่ส่งไว้เป็นหลักฐาน และรายการจะออกจากหน้านี้"
+      />
+    </form>
+  );
+}
+
+/** คืนงานไป 4. เตรียมเอกสารเดิน E — ส่งมอบผิดใบ หรือต้องออกคำร้อง/รวมชุดใหม่ก่อน */
+export function UndoHandoverButton({ jobId }: { jobId: string }) {
+  return (
+    <form action={undoEofficeHandover} className="inline-form">
+      <input type="hidden" name="jobId" value={jobId} />
+      <ConfirmSubmit
+        label="คืนไปเตรียมเอกสาร"
+        confirm="คืนงานนี้ไปที่ งานคงค้าง → 4. เตรียมเอกสารเดิน E ใช่ไหม"
+        detail="ใช้เมื่อส่งมอบผิดใบ หรือต้องออกคำร้อง/รวมชุดใหม่ก่อนเดินเอกสาร"
       />
     </form>
   );
@@ -264,20 +279,6 @@ export function SubmitDraftTask({
         label={label ?? 'สร้าง Draft'}
         tone="primary"
         confirm="ส่ง Final Invoice เข้าคิวสร้าง Draft ใบขนใช่ไหม"
-      />
-    </form>
-  );
-}
-
-export function SubmitCustomsTask({ jobId }: { jobId: string }) {
-  return (
-    <form action={submitCustomsTask} className="inline-form">
-      <input type="hidden" name="jobId" value={jobId} />
-      <ConfirmSubmit
-        label="สร้างใบขน"
-        tone="primary"
-        confirm="ส่งงานนี้เข้าคิวสร้างใบขนสินค้าใช่ไหม"
-        detail="ระบบจะส่งเลข Ref No. ให้โปรแกรมทำใบขนต่อ"
       />
     </form>
   );

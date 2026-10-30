@@ -4,17 +4,21 @@
  *   createDraft()      worker สร้าง Draft ใบขน: login -> New (610) -> กรอกหัวใบขน -> Add Invoice -> Import CSV
  *                      จบทันทีที่ NETBAY ขึ้น "success please check your invoice" — ไม่กด Save / Send to Customs
  *   openDeclaration()  ลิงก์ Ref No. บน ERP: login -> Import -> ค้นหา Reference No. -> เปิดใบขนนั้นค้างไว้ให้ตรวจ
+ *   readDeclaration()  ตัว monitor ใบขน: ค้นหา Reference No. -> อ่านสถานะ (รูปป้าย) + DECLARATION NO
+ *   downloadDeclarationPdf()  ติ๊กแถว -> ชื่อไฟล์ = เลขที่ใบขน -> Save PDF -> แตก zip เอา <เลขใบขน>.pdf
  *
  * XPath ยกมาจากโปรแกรมเดิม (Selenium) และตรวจกับหน้าจริงแล้ว
  * ค่าตั้งอยู่ใน .env.local: NETBAY_USER, NETBAY_PASSWORD (และค่าหัวใบขนถ้าต่างจากค่าตั้งต้นด้านล่าง)
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium, type Browser, type Frame, type FrameLocator, type Locator, type Page } from 'playwright-core';
+import JSZip from 'jszip';
+import { chromium, type Browser, type Download, type Frame, type FrameLocator, type Locator, type Page } from 'playwright-core';
 import type { Totals } from '../src/lib/draft/csv';
+import { DECLARATION_NO, parseStatusImage, type NetbayStatusCode } from '../src/lib/customs-status';
 
 export type NetbaySettings = {
   url: string; username: string; password: string; declarationType: string;
@@ -60,7 +64,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const squash = (s: string) => s.split(/\s+/).filter(Boolean).join(' ');
 const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; };
 
-function check(s: NetbaySettings) {
+export function check(s: NetbaySettings) {
   if (!s.url || !s.username || !s.password) {
     throw new NetbayError('ยังไม่ได้ตั้ง NETBAY_USER / NETBAY_PASSWORD ใน .env.local');
   }
@@ -101,7 +105,7 @@ export function chromePath(): string {
  */
 const windowArgs = (s: NetbaySettings) => (s.headless ? [] : [`--force-device-scale-factor=${s.zoom}`]);
 
-async function launch(s: NetbaySettings): Promise<Browser> {
+export async function launch(s: NetbaySettings): Promise<Browser> {
   const args = [`--unsafely-treat-insecure-origin-as-secure=${s.url}`, ...windowArgs(s)];
   try {
     return await chromium.launch({ channel: 'chrome', headless: s.headless, args });
@@ -275,6 +279,129 @@ export async function findDeclaration(page: Page, listUrl: string, ref: string) 
   const hit = page.locator(`img[id^="statusPic"][value="${ref}"]`);
   if (!(await hit.count())) return null;
   return ((await hit.first().getAttribute('id')) ?? '').slice('statusPic'.length) || null;
+}
+
+/* ---------------- ตัว monitor ใบขน: สถานะ · เลขใบขน · PDF ---------------- */
+
+export type DeclarationRow = {
+  found: boolean;
+  /** รหัสสถานะ (ACCEPT, REJECT, …) — null = อ่านจากรูปป้ายไม่ออก */
+  status: NetbayStatusCode | null;
+  /** ชื่อไฟล์รูปป้ายสถานะ (หรือ title) ไว้แสดงเมื่ออ่านไม่ออก จะได้รู้ว่า NETBAY มีสถานะใหม่ */
+  image: string;
+  /** คอลัมน์ DECLARATION NO — มีเฉพาะใบที่กรมศุลฯ รับแล้ว */
+  declarationNo: string | null;
+};
+
+/** ค้นหา Ref No. แล้วอ่านแถวนั้น: รูปป้ายในคอลัมน์ STATUS กับคอลัมน์ DECLARATION NO */
+export async function readDeclaration(page: Page, listUrl: string, ref: string): Promise<DeclarationRow> {
+  const id = await findDeclaration(page, listUrl, ref);
+  if (!id) return { found: false, status: null, image: '', declarationNo: null };
+  // ห้ามประกาศฟังก์ชันที่มีชื่อในนี้ — tsx ใส่ตัวช่วย __name ให้ ซึ่งไม่มีในหน้าเว็บ
+  const info = await page.locator(`img[id="statusPic${id}"]`).first().evaluate((img) => {
+    const el = img as HTMLImageElement;
+    const cells = Array.from(el.closest('tr')?.cells ?? []).map((c) => (c.textContent ?? '').replace(/\s+/g, ' ').trim());
+    // หัวตารางอาจอยู่คนละ <table> กับแถวข้อมูล — ไล่หาจากทุกแถวในหน้า
+    let col = -1;
+    for (const tr of Array.from(document.querySelectorAll('tr'))) {
+      const i = Array.from(tr.cells)
+        .findIndex((c) => (c.textContent ?? '').replace(/\s+/g, ' ').trim().toUpperCase() === 'DECLARATION NO');
+      if (i >= 0) { col = i; break; }
+    }
+    return { src: el.getAttribute('src'), title: el.getAttribute('title'), alt: el.getAttribute('alt'), cells, col };
+  });
+  const atHeader = info.col >= 0 ? info.cells[info.col] ?? '' : '';
+  // หัวตารางกับแถวข้อมูลนับคอลัมน์ไม่ตรงกันได้ (colspan) — ถอยไปหาช่องที่หน้าตาเหมือนเลขใบขน
+  const declarationNo = DECLARATION_NO.test(atHeader) ? atHeader : info.cells.find((c) => DECLARATION_NO.test(c)) ?? null;
+  const image = (info.src ?? '').split(/[?#]/)[0].split('/').pop() || info.title || info.alt || '';
+  return { found: true, status: parseStatusImage(info), image, declarationNo };
+}
+
+/**
+ * ทางสำรองเมื่ออ่านรูปป้ายไม่ออก: ค้น Ref No. พร้อมเลือกช่อง Status = ACCEPT
+ * เจอแถว = ใบนี้ Accept แล้ว · null = หน้านี้ไม่มีช่อง Status ให้เลือก
+ */
+export async function acceptedByFilter(page: Page, listUrl: string, ref: string): Promise<boolean | null> {
+  await page.goto(listUrl);
+  const status = page.locator('select:has(option[value="ACCEPT"])').first();
+  if (!(await status.count())) return null;
+  await page.locator(SEARCH_REF).fill(ref);
+  await status.selectOption('ACCEPT');
+  await Promise.all([
+    page.waitForNavigation({ timeout: 30_000 }).catch(() => {}),
+    page.locator(SEARCH_BTN).click(),
+  ]);
+  return (await page.locator(`img[id^="statusPic"][value="${ref}"]`).count()) > 0;
+}
+
+/** รอไฟล์ที่ได้จากการกดปุ่ม — NETBAY อาจส่งไฟล์มาที่หน้าเดิม หรือเปิดหน้าต่างใหม่แล้วส่งจากหน้านั้น */
+async function catchDownload(page: Page, press: () => Promise<void>, timeout = 120_000): Promise<Download> {
+  const direct = page.waitForEvent('download', { timeout });
+  const popup = page.context().waitForEvent('page', { timeout }).then((p) => p.waitForEvent('download', { timeout }));
+  await press();
+  return new Promise<Download>((resolve, reject) => {
+    let failed = 0;
+    const fail = () => { if (++failed === 2) reject(new NetbayError(`กด Save PDF แล้วไม่ได้ไฟล์ภายใน ${timeout / 1000} วินาที`)); };
+    direct.then(resolve, fail);
+    popup.then(resolve, fail);
+  });
+}
+
+/**
+ * ไฟล์จากปุ่ม Save PDF เป็น zip (เช่น _runtime_temp_20261030034633.zip) ที่มี <เลขใบขน>.pdf อยู่ข้างใน
+ * เลือกไฟล์ที่ชื่อตรงเลขใบขน ถ้าในชุดมี PDF ไฟล์เดียวก็ใช้ไฟล์นั้น · ได้ PDF มาตรง ๆ ก็ใช้ได้เลย
+ */
+export async function pdfFromDownload(body: Buffer, declarationNo: string): Promise<{ name: string; body: Buffer }> {
+  const name = `${declarationNo}.pdf`;
+  if (body.subarray(0, 5).toString('latin1') === '%PDF-') return { name, body };
+  if (body.subarray(0, 2).toString('latin1') !== 'PK') {
+    throw new NetbayError('ไฟล์ที่ได้จาก Save PDF ไม่ใช่ zip และไม่ใช่ PDF');
+  }
+  const zip = await JSZip.loadAsync(body);
+  const pdfs = Object.values(zip.files).filter((f) => !f.dir && /\.pdf$/i.test(f.name));
+  const stem = (p: string) => p.split('/').pop()!.replace(/\.pdf$/i, '').trim().toUpperCase();
+  const pick = pdfs.find((f) => stem(f.name) === declarationNo.toUpperCase()) ?? (pdfs.length === 1 ? pdfs[0] : undefined);
+  if (!pick) {
+    throw new NetbayError(`ใน zip ไม่มี ${name} (มี ${pdfs.map((f) => f.name).join(', ') || 'ไม่มีไฟล์ PDF'})`);
+  }
+  return { name, body: await pick.async('nodebuffer') };
+}
+
+/**
+ * ดาวน์โหลด PDF ใบขนแบบที่คนทำ: ติ๊กแถวนั้น → ช่อง "ชื่อไฟล์" = เลขที่ใบขน → Save PDF → แตก zip
+ * ค้นหา Ref No. ใหม่ก่อน ตารางจึงเหลือแถวเดียว ไม่เผลอติ๊กใบอื่นติดไปด้วย
+ */
+export async function downloadDeclarationPdf(page: Page, listUrl: string, ref: string, declarationNo: string, dir: string) {
+  const id = await findDeclaration(page, listUrl, ref);
+  if (!id) throw new NetbayError(`ค้นหา ${ref} อีกครั้งเพื่อดาวน์โหลด PDF แล้วไม่พบ`);
+  const row = page.locator(`img[id="statusPic${id}"]`).first().locator('xpath=ancestor::tr[1]');
+  await row.locator('input[type="checkbox"]').first().check();
+
+  // ช่องค้นหาด้านบนมีตัวเลือก "เลขที่ใบขนฯ" (มี ฯ) — เทียบแบบตรงตัว และเลือกช่องที่มี default ด้วยก่อน
+  const value = await page.evaluate(() => {
+    const want = 'เลขที่ใบขน';
+    const hits = Array.from(document.querySelectorAll('select')).flatMap((sel) => {
+      const opt = Array.from(sel.options).find((o) => o.text.trim() === want);
+      return opt ? [{ sel, opt, hasDefault: Array.from(sel.options).some((o) => o.text.trim().toLowerCase() === 'default') }] : [];
+    });
+    const hit = hits.find((h) => h.hasDefault) ?? hits[0];
+    if (!hit) return null;
+    hit.sel.setAttribute('data-kola-file-name', '1');
+    return hit.opt.value;
+  });
+  if (value === null) throw new NetbayError('ไม่พบช่อง "ชื่อไฟล์" ที่มีตัวเลือก เลขที่ใบขน');
+  await page.locator('select[data-kola-file-name="1"]').selectOption(value);
+
+  const save = page.locator('input[value="Save PDF"], button:has-text("Save PDF")').first();
+  const download = await catchDownload(page, () => save.click());
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${ref}-${Date.now()}-${download.suggestedFilename() || 'download'}`);
+  await download.saveAs(path);
+  try {
+    return await pdfFromDownload(readFileSync(path), declarationNo);
+  } finally {
+    rmSync(path, { force: true });
+  }
 }
 
 /** แถบแจ้งด้านบนหน้าเว็บ NETBAY (alert ใช้ไม่ได้ เพราะ Playwright ปิด dialog เอง) */

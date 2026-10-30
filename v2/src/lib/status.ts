@@ -20,9 +20,20 @@ export const STATUS_LABELS: Record<string, string> = {
   RELEASED: 'Released',
 };
 
+/**
+ * เหตุการณ์ในไทม์ไลน์ที่ไม่ใช่สถานะงาน — แยกจาก STATUS_LABELS
+ * เพราะชุดนั้นเป็นตัวเลือกสถานะงานในหน้าแก้งานของผู้ดูแลด้วย ไม่ควรเลือกเหตุการณ์พวกนี้เป็นสถานะได้
+ */
+const EVENT_LABELS: Record<string, string> = {
+  CUSTOMS_CANCELED: 'ใบขนถูกยกเลิกใน NETBAY',
+  EOFFICE_HANDOVER: 'ส่งมอบคนเดินเอกสาร',
+  EOFFICE_HANDOVER_UNDO: 'คืนไปเตรียมเอกสารเดิน E',
+  HAUL_PLAN_SENT: 'ส่งแพลนลากตู้ให้ MAY',
+};
+
 export function statusLabel(status: string | null | undefined) {
   if (!status) return '-';
-  return STATUS_LABELS[status] ?? status;
+  return STATUS_LABELS[status] ?? EVENT_LABELS[status] ?? status;
 }
 
 /** สีป้ายสถานะ ใช้เกณฑ์เดียวกับระบบเดิม */

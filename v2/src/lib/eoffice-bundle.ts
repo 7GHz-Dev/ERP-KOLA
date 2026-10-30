@@ -12,8 +12,10 @@ import { DO_DOC_TYPES, DO_SLIP_TYPES } from '@/lib/do-attachments';
 /**
  * ชุดเอกสาร E-Office
  *
- * ลำดับเดียวกับชุดที่ยื่นจริง ยกมาจาก BUNDLE_PARTS ของระบบเดิม:
- *   1. คำร้อง  2. ใบขนสินค้า  3. Final Invoice  4. Arrival Notice หรือ BL
+ * ลำดับเดียวกับชุดที่ยื่นจริง:
+ *   1. คำร้อง  2. ใบขนสินค้า (ทุกหน้า)  3. BL  4. Final Invoice
+ * ระบบเดิมวาง Final Invoice ก่อน Arrival Notice / BL — หน้างานเดิน E ใช้ BL ก่อน Final Invoice
+ * งานที่ไม่มีไฟล์ BL ถอยไปใช้ Arrival Notice แทน ไม่งั้นรวมชุดไม่ได้ทั้งที่มีเอกสารต้นเรื่องอยู่
  *
  * ระบบเดิมต้องส่งไฟล์ทั้งหมดไปต่อกันที่เบราว์เซอร์ เพราะ Apps Script รวม PDF ไม่ได้
  * ตรงนี้รวมที่เซิร์ฟเวอร์ ไฟล์ไม่ต้องวิ่งผ่านเครื่องผู้ใช้
@@ -30,8 +32,8 @@ type BundlePart = { label: string; categories: string[]; multi?: boolean; option
 export const BUNDLE_PARTS: BundlePart[] = [
   { label: 'คำร้อง', categories: ['EOFFICE_REQUEST'] },
   { label: 'ใบขนสินค้า', categories: ['CUSTOMS_ENTRY_DOC'] },
+  { label: 'BL', categories: ['BL', 'ARRIVAL_NOTICE'] },
   { label: 'Final Invoice', categories: ['FINAL_INVOICE_PDF', 'FINAL_INVOICE'] },
-  { label: 'Arrival Notice / BL', categories: ['ARRIVAL_NOTICE', 'BL'] },
 ];
 
 export const MERGED_CATEGORY = 'EOFFICE_MERGED';

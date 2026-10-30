@@ -6,9 +6,16 @@
  * ค้นหา Reference No. แล้วเปิดใบขน  ค่าที่กรอกและไฟล์ที่ได้รับเก็บไว้ใน state
  */
 import { createServer, type IncomingMessage, type Server } from 'node:http';
+import JSZip from 'jszip';
 
 export const IMPORTER = 'บริษัท เเม่สอด ฟรีโซน จำกัด';
 export const REF_NO = 'QENX000000099';
+
+/**
+ * แถวของใบขนในหน้ารายการ (ตัว monitor ใบขน) — ป้ายสถานะเป็นรูป แบบหน้าจริง
+ * code = ค่าที่ช่อง Status ของ NETBAY ใช้กรอง · image = src ของรูปป้าย · declarationNo = คอลัมน์ DECLARATION NO
+ */
+export type MockStatus = { code: string; image: string; declarationNo?: string };
 
 export type MockState = {
   login: [string, string] | null;
@@ -17,7 +24,13 @@ export type MockState = {
   created: number; saved: number; sentToCustoms: boolean; searched: string[];
   importOk: boolean;
   declarations: Record<string, string>;     // เลขภายใน (ImDclCtrl) -> Reference No.
+  statuses: Record<string, MockStatus>;     // Reference No. -> สถานะ (ไม่มี = กำลังเตรียมเอกสาร)
+  /** การกด Save PDF แต่ละครั้ง: แถวที่ติ๊ก + ตัวเลือกช่อง "ชื่อไฟล์" */
+  pdfRequests: { refs: string[]; fileName: string }[];
 };
+
+/** PDF เล็กที่สุดที่ยังขึ้นต้นด้วย %PDF- — พอให้ตรวจว่าแตก zip ได้ไฟล์ที่ถูก */
+export const mockPdf = (text: string) => Buffer.from(`%PDF-1.4\n% ${text}\n%%EOF\n`, 'latin1');
 
 const row = (cells: string[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
 
@@ -107,7 +120,9 @@ export async function startMockNetbay(): Promise<{ url: string; state: MockState
   const state: MockState = {
     login: null, decl: null, upload: null, created: 0, saved: 0, sentToCustoms: false, searched: [],
     importOk: true, declarations: { 16399: REF_NO, 16300: 'QENX000000042' },
+    statuses: {}, pdfRequests: [],
   };
+  const statusOf = (ref: string): MockStatus => state.statuses[ref] ?? { code: 'PREPARE', image: '/images/st_prepare.gif' };
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
     const html = (s: string) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(s); };
@@ -129,13 +144,36 @@ export async function startMockNetbay(): Promise<{ url: string; state: MockState
     if (p === '/import') {
       // หน้ารายการใบขน: ช่องค้นหา Reference No. (sREF) + แถวละใบ (statusPic<id> value=<ref>)
       const ref = url.searchParams.get('sREF');
+      const want = url.searchParams.get('sStatus') ?? '';
       if (ref !== null) state.searched.push(ref);
-      const rows = Object.entries(state.declarations).filter(([, r]) => !ref || r === ref)
-        .map(([id, r]) => `<tr><td><img id="statusPic${id}" value="${r}" onclick="editID('${id}')"></td><td>${r}</td></tr>`).join('');
+      const rows = Object.entries(state.declarations)
+        .filter(([, r]) => (!ref || r === ref) && (!want || statusOf(r).code === want))
+        .map(([id, r]) => {
+          const st = statusOf(r);
+          return `<tr><td><input type="checkbox" name="sel" value="${id}"><img src="/images/print.gif"></td>`
+            + `<td><img id="statusPic${id}" value="${r}" src="${st.image}" onclick="editID('${id}')"></td>`
+            + `<td><a href="#">${r}</a></td><td></td><td>${st.declarationNo ?? ''}</td></tr>`;
+        }).join('');
+      const codes = ['ACCEPT', 'CANCEL_REJECT', 'CANCELED', 'ERROR', 'IMPREJECT', 'PREPARE', 'REJECT', 'SEND', 'SEND_CANCEL', 'VALIDATED', 'DRAFT_CANCEL'];
+      /*
+       * ข้อความบนหน้านี้ต้องสั้น — เทสต์ worker สร้าง Draft อ่านข้อความทั้งหน้า (ตัดที่ 300 ตัวอักษร)
+       * เพื่อหาข้อความ error ของ Import ที่อยู่ใน iframe ท้ายหน้า ตัวเลือก Status จึงไม่มีข้อความ มีแต่ value
+       * ช่อง "จาก" มี "เลขที่ใบขนฯ" (มี ฯ) ไว้ตรวจว่าตัว monitor ไม่เลือกผิดช่องตอนตั้งชื่อไฟล์
+       */
       return html(`<html><body>
-<form method="get" action="/import"><input type="text" id="invno1TXT" name="sREF"><input type="submit" id="refreshBTN" value="Search"></form>
-<table><tbody>${rows}</tbody></table>
-<script>function editID(id) { location = "/workspace?SELITEM=ImDclCtrl:" + id; }</script>
+<form method="get" action="/import">
+ <select name="sFrom"><option value="decl">เลขที่ใบขนฯ</option></select>
+ <select name="sStatus"><option value=""></option>${codes.map((c) => `<option value="${c}"></option>`).join('')}</select>
+ <input type="text" id="invno1TXT" name="sREF"><input type="submit" id="refreshBTN" value="Search"></form>
+<table><tbody><tr><td></td><td></td><td></td><td></td><td>DECLARATION NO</td></tr>${rows}</tbody></table>
+<input type="button" value="Save XML"> <input type="button" value="Save PDF" onclick="savePdf()">
+ชื่อไฟล์ <select id="fileNameSel"><option value="0">default</option><option value="1">เลขที่ใบขน</option></select>
+<script>function editID(id) { location = "/workspace?SELITEM=ImDclCtrl:" + id; }
+function savePdf() {
+  const ids = Array.from(document.querySelectorAll('input[name=sel]:checked')).map(b => b.value);
+  if (!ids.length) { alert('กรุณาเลือกรายการ'); return; }
+  location = '/save_pdf?ids=' + ids.join(',') + '&name=' + document.getElementById('fileNameSel').value;
+}</script>
 <button id="newBTN" onclick="document.getElementById('area').style.display='block';detailfrm.location='/decl?ImDclCtrl=16399'">New</button>
 <div id="area" style="display:none">
  <div id="outLineTree"><font><div><table><tbody><tr><td><div><font><b>
@@ -162,6 +200,24 @@ export async function startMockNetbay(): Promise<{ url: string; state: MockState
     if (p === '/edit') return html(`<html><body><input id="referenceNo" value="${state.declarations[url.searchParams.get('ImDclCtrl') ?? '']}"></body></html>`);
     if (p === '/save') { state.saved += 1; return html('ok'); }
     if (p === '/send_customs') { state.sentToCustoms = true; return html('ok'); }
+    if (p === '/save_pdf') {
+      // ได้ zip ที่มี PDF ต่อใบ ชื่อไฟล์ตามช่อง "ชื่อไฟล์": เลขที่ใบขน = <เลขใบขน>.pdf · default = <Ref No.>.pdf
+      const refs = (url.searchParams.get('ids') ?? '').split(',').map((id) => state.declarations[id]).filter(Boolean);
+      const byDecl = url.searchParams.get('name') === '1';
+      state.pdfRequests.push({ refs, fileName: byDecl ? 'เลขที่ใบขน' : 'default' });
+      const zip = new JSZip();
+      const folder = zip.folder('_runtime_temp_20261030034633')!;
+      for (const r of refs) {
+        const decl = statusOf(r).declarationNo ?? r;
+        folder.file(`${byDecl ? decl : r}.pdf`, mockPdf(`ใบขน ${decl}`));
+      }
+      const body = await zip.generateAsync({ type: 'nodebuffer' });
+      res.writeHead(200, {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'attachment; filename="_runtime_temp_20261030034633.zip"',
+      });
+      return res.end(body);
+    }
     res.writeHead(404); res.end();
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));

@@ -6,6 +6,7 @@
 #   kola-worker://start        หน้าจัดการแลก DO  -> npm run worker:web    (log: ~/Library/Logs/KOLA/web-worker.log)
 #   kola-worker://draft        แท็บ Draft ใบขน     -> npm run worker:draft  (log: ~/Library/Logs/KOLA/draft-worker.log)
 #   kola-netbay://open?ref=…   เลข Ref No.        -> npm run netbay:open   เปิดใบขนนั้นใน NETBAY (log: netbay-open.log)
+#   kola-worker://customs      ปุ่ม "สร้างใบขนแล้ว" -> npm run worker:customs ตัว monitor ใบขน (log: customs-monitor.log)
 # รันในโฟลเดอร์ v2 นี้แบบไม่มีหน้าต่าง Terminal · ถ้า worker ตัวนั้นเปิดอยู่แล้วจะไม่เปิดซ้ำ
 #
 # วิธีใช้ (ในโฟลเดอร์ v2):  bash scripts/install/mac-worker-launcher.sh
@@ -31,6 +32,8 @@ cat > "$SCRIPT" <<APPLESCRIPT
 on open location theURL
   if theURL starts with "kola-netbay:" then
     openRef(theURL)
+  else if theURL contains "customs" then
+    startWorker("worker:customs", "customs-monito[r]", "customs-monitor.log", "ตัว monitor ใบขน")
   else if theURL contains "task=" then
     runTask(theURL)
   else if theURL contains "draft" then

@@ -1,7 +1,8 @@
 import { requireUserReady } from '@/lib/auth';
 import { col, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
-import { RequestEditButton, SendEofficeButton, UploadForm } from '@/components/ActionForms';
+import { RequestEditButton, SendEofficeButton, UndoHandoverButton, UploadForm } from '@/components/ActionForms';
+import { formatDateTime } from '@/lib/format';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,11 @@ export default async function PaintEofficeSignedPage({
   const sent = tab === 'sent';
 
   const columns: Column[] = [
+    {
+      // เวลาที่ PAINT กดส่งมอบคนเดินเอกสารที่แท็บ 4 — ใช้ดูว่าชุดไหนออกไปนานแล้วยังไม่กลับ
+      label: 'ส่งมอบคนเดินเอกสาร', kind: 'wrap',
+      render: (r) => (r.eofficeHandoverAt ? formatDateTime(r.eofficeHandoverAt) : '-'),
+    },
     col.clientInCharge(), col.shipper(), col.blNo(), col.refNo(),
     col.declarationNo(), col.consignee(),
     {
@@ -60,7 +66,9 @@ export default async function PaintEofficeSignedPage({
           ? <RequestEditButton jobId={r.id} />
           : r.currentFiles?.EOFFICE_SIGNED
             ? <SendEofficeButton jobId={r.id} ready />
-            : null),
+            : r.eofficeHandoverAt
+              ? <UndoHandoverButton jobId={r.id} />
+              : null),
     },
   ];
 
@@ -69,8 +77,8 @@ export default async function PaintEofficeSignedPage({
       <div className="page-head">
         <h1>Upload ชุดปล่อย E-Office / ส่ง Partner</h1>
         <p>
-          อัปโหลดชุด E-Office ที่เดินพิธีการและได้ลายเซ็นแล้ว ·
-          BL ที่ได้ไฟล์แล้วจะถูกตัดออกจาก งานคงค้าง → 4. เตรียมเอกสารเดิน E
+          รายการมาจาก งานคงค้าง → 4. เตรียมเอกสารเดิน E หลังกด &quot;ส่งมอบคนเดินเอกสาร&quot; ·
+          สแกนชุดที่เซ็นแล้วอัปโหลดให้ตรงรายการ แล้วกดส่ง Partner
         </p>
       </div>
       <Tabs basePath="/paint/eoffice-signed" items={TABS} active={tab} carry={carry} />
@@ -78,8 +86,8 @@ export default async function PaintEofficeSignedPage({
         basePath="/paint/eoffice-signed"
         columns={columns}
         rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
-        empty={sent ? 'ยังไม่มีงานที่ส่ง Partner แล้ว' : 'ไม่มีงานรออัปโหลดชุดปล่อย'}
-        hint="อัปโหลดเสร็จรายการจะหายจากแท็บ 4 ทันที · อัปโหลดแล้วกดส่ง Partner ได้ในแถวเดียวกัน"
+        empty={sent ? 'ยังไม่มีงานที่ส่ง Partner แล้ว' : 'ไม่มีงานรออัปโหลดชุดปล่อย — ส่งมอบคนเดินเอกสารจากแท็บ 4 ก่อน'}
+        hint="อัปโหลดแล้วกดส่ง Partner ได้ในแถวเดียวกัน · ส่ง Partner แล้วรายการไปที่ NAMKANG → จัดการลากตู้สินค้า"
       />
     </>
   );

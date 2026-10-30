@@ -45,7 +45,11 @@
     "netbay:account": "tsx --tsconfig tsconfig.json scripts/netbay-account.ts",
     "engine:migrate": "tsx scripts/migrate-engine-numbers.ts",
     "engine:import": "tsx scripts/import-engine-numbers.ts",
-    "test:draft": "tsx --tsconfig tsconfig.json tests/draft-invoice.ts && tsx --tsconfig tsconfig.json tests/draft-worker.ts"
+    "test:draft": "tsx --tsconfig tsconfig.json tests/draft-invoice.ts && tsx --tsconfig tsconfig.json tests/draft-worker.ts",
+    "worker:customs": "tsx --tsconfig tsconfig.json scripts/customs-monitor.ts",
+    "netbay:probe": "tsx --tsconfig tsconfig.json scripts/netbay-probe.ts",
+    "test:customs": "tsx --tsconfig tsconfig.json tests/customs-monitor.ts",
+    "migrate:customs-flow": "tsx scripts/migrate-customs-flow.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",

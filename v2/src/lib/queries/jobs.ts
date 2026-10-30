@@ -182,6 +182,7 @@ export async function listJobs(filter: JobFilter = {}) {
       personName: sql<string | null>`person.name`,
       personId: jobs.personId,
       customerConfirmedAt: jobs.customerConfirmedAt,
+      eofficeHandoverAt: jobs.eofficeHandoverAt,
       eofficeSentAt: jobs.eofficeSentAt,
       doShippingLine: jobs.doShippingLine,
       shipline: jobs.shipline,
@@ -349,13 +350,15 @@ export const QUEUE = {
       : and(eq(jobs.draftStatus, 'SUBMITTED'), ne(jobs.customsStatus, 'FILED')),
   ],
   /*
-   * แท็บ 4 เตรียมเอกสารเดิน E — ตัดงานที่ได้ชุดปล่อยเซ็นแล้วออก
+   * แท็บ 4 เตรียมเอกสารเดิน E — งานที่ได้เลขใบขนแล้ว จนกว่าจะส่งมอบคนเดินเอกสาร
    *
-   * PAINT อัปโหลดไฟล์ที่เดินพิธีการจนได้ลายเซ็นกลับมาที่หน้า "Upload ชุดปล่อย E-Office"
-   * งานที่มีไฟล์นั้นแล้วถือว่าจบขั้นเตรียมเอกสาร จึงไม่ต้องค้างในคิวนี้อีก
+   * PAINT สร้างคำร้อง รวมชุด แล้วเลือกหลายรายการกด "ส่งมอบคนเดินเอกสาร"
+   * งานจึงย้ายไปรออัปโหลดชุดที่เซ็นแล้วที่หน้า "Upload ชุดปล่อย E-Office"
+   * งานเก่าที่อัปไฟล์ชุดปล่อยไปก่อนมีขั้นส่งมอบ ถือว่าพ้นขั้นนี้แล้วเหมือนเดิม
    */
   pendingEdoc: () => () => [
     eq(jobs.customsStatus, 'FILED'),
+    isNull(jobs.eofficeHandoverAt),
     sql`not exists (select 1 from files f
                      where f.job_id = ${jobs.id}
                        and f.category = 'EOFFICE_SIGNED'
@@ -366,11 +369,23 @@ export const QUEUE = {
    * PAINT — Upload ชุดปล่อย E-Office ที่เซ็นแล้ว แล้วส่งให้ Partner
    *
    * แยกสองแท็บด้วยเวลาที่กดส่ง Partner
-   * แท็บแรกทำงานจบในตัว: อัปโหลดไฟล์แล้วกดส่งได้เลยในแถวเดียวกัน
+   * แท็บแรกมีเฉพาะงานที่ส่งมอบคนเดินเอกสารแล้ว (รายการรอไว้ให้อัปชุดที่สแกนกลับมา)
+   * บวกงานเก่าที่อัปไฟล์ไว้ก่อนมีขั้นส่งมอบ — ไม่งั้นงานพวกนั้นหายจากทั้งสองหน้า
    */
   eofficeSigned: (sub: 'wait' | 'sent') => () => [
     eq(jobs.customsStatus, 'FILED'),
-    sub === 'sent' ? isNotNull(jobs.eofficeSentAt) : isNull(jobs.eofficeSentAt),
+    ...(sub === 'sent'
+      ? [isNotNull(jobs.eofficeSentAt)]
+      : [
+          isNull(jobs.eofficeSentAt),
+          or(
+            isNotNull(jobs.eofficeHandoverAt),
+            sql`exists (select 1 from files f
+                         where f.job_id = ${jobs.id}
+                           and f.category = 'EOFFICE_SIGNED'
+                           and f.is_current = true)`,
+          ),
+        ]),
   ],
 
   /** FAH */
