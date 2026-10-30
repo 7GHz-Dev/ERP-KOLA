@@ -79,10 +79,12 @@ assert.equal(partner['CONTAINER NO.'], '-');
 
 /* ---------- สีแถว / งาน MUO ---------- */
 
-assert.equal(sheetRowClass({ jobTypeCode: 'MU', shipline: 'OOCL', vessel: 'GSL MAREN' }), 'row-kola');
-assert.equal(sheetRowClass({ jobTypeCode: 'MUO', shipline: 'ONE', vessel: 'AS CARLOTTA' }), 'row-muo');
-assert.equal(sheetRowClass({ jobTypeCode: 'MU', shipline: 'BY TRUCK', vessel: 'BY TRUCK' }), 'row-truck');
-assert.equal(sheetRowClass({ jobTypeCode: 'MUO', shipline: 'BY TRUCK', vessel: null }), 'row-muo', 'MUO มาก่อนขนทางรถ');
+assert.equal(sheetRowClass({ jobTypeCode: 'MU', shipline: 'OOCL', vessel: 'GSL MAREN', haulPlanned: true }), 'row-kola', 'MU ส่งแพลนลากตู้แล้ว = เขียว');
+assert.equal(sheetRowClass({ jobTypeCode: 'MU', shipline: 'OOCL', vessel: 'GSL MAREN', haulPlanned: false }), 'row-plain', 'MU ยังไม่ส่งแพลน = ขาว');
+assert.equal(sheetRowClass({ jobTypeCode: 'MO', shipline: 'OOCL', vessel: 'GSL MAREN', haulPlanned: false }), 'row-kola', 'งานอื่นเขียวเหมือนเดิม');
+assert.equal(sheetRowClass({ jobTypeCode: 'MUO', shipline: 'ONE', vessel: 'AS CARLOTTA', haulPlanned: false }), 'row-muo');
+assert.equal(sheetRowClass({ jobTypeCode: 'MU', shipline: 'BY TRUCK', vessel: 'BY TRUCK', haulPlanned: false }), 'row-truck');
+assert.equal(sheetRowClass({ jobTypeCode: 'MUO', shipline: 'BY TRUCK', vessel: null, haulPlanned: false }), 'row-muo', 'MUO มาก่อนขนทางรถ');
 assert.equal(isPartnerRelease(' muo '), true);
 assert.equal(isPartnerRelease('MU'), false);
 assert.equal(isPartnerRelease(null), false);

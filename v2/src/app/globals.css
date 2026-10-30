@@ -2227,6 +2227,8 @@ table.data thead th[data-filtered] { background: var(--navy-2); box-shadow: inse
 
 /* ---------- ทะเบียนงานแบบตารางเดิม (ทะเบียนงาน · จัดการลากตู้) ---------- */
 /* สีแถวตามไฟล์ Excel ของทีม: เขียว = งานทั่วไป · ส้ม = MUO (Partner ภายนอกปล่อยเอง) · ม่วง = ขนทางรถ */
+table.data tbody tr.row-plain { background: var(--surface); }
+table.data tbody tr.row-plain:hover { background: #f7fafc; }
 table.data tbody tr.row-kola { background: #eef7e9; }
 table.data tbody tr.row-kola:hover { background: #e1f0d8; }
 table.data tbody tr.row-muo { background: #ffe5c2; }

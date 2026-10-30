@@ -231,6 +231,15 @@ export async function listJobs(filter: JobFilter = {}) {
       // เลขตู้ทั้งงานคั่นด้วย "," แบบช่อง CONTAINER NO. ของตารางเดิม (หนึ่งแถวต่อหนึ่งงาน)
       containerNos: sql<string | null>`ct.nos`,
       containerCount: sql<number>`coalesce(ct.n, 0)::int`,
+      /*
+       * ส่งแพลนลากตู้ครบทุกตู้แล้ว (เงื่อนไขเดียวกับแท็บ "ส่งแพลนแล้ว" ของ QUEUE.haul)
+       * ทะเบียนงานใช้ลงสี: งาน MU ที่ยังไม่ส่งแพลนเป็นพื้นขาว ส่งแล้วเป็นเขียว
+       */
+      haulPlanned: sql<boolean>`(coalesce(ct.n, 0) > 0 and not exists (
+        select 1 from containers c
+         where c.job_id = ${jobs.id}
+           and not exists (select 1 from haul_plans hp
+                            where hp.container_id = c.id and hp.sent_at is not null)))`,
       portName: sql<string | null>`port.name`,
       portCode: sql<string | null>`port.code`,
       terminalId: jobs.terminalId,

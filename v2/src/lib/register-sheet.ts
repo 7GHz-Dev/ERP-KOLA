@@ -85,11 +85,13 @@ export function sheetCells(r: SheetSource): Record<SheetColumn, string> {
 }
 
 /**
- * สีแถวตามตารางเดิม — ส้ม = MUO (Partner ภายนอกปล่อยเอง) · ม่วง = ขนทางรถ · เขียว = งานอื่น
+ * สีแถวตามตารางเดิม — ส้ม = MUO (Partner ภายนอกปล่อยเอง) · ม่วง = ขนทางรถ
+ * · งาน MU: ขาว = ยังไม่ได้ส่งแพลนลากตู้ · เขียว = ส่งแพลนลากตู้แล้ว · งานอื่นเขียว
  * MUO มาก่อน เพราะเป็นตัวบอกว่าใครรับผิดชอบงานนี้ ส่วนขนทางรถเป็นแค่วิธีขนส่ง
  */
-export function sheetRowClass(r: Pick<JobRow, 'jobTypeCode' | 'shipline' | 'vessel'>): string {
+export function sheetRowClass(r: Pick<JobRow, 'jobTypeCode' | 'shipline' | 'vessel' | 'haulPlanned'>): string {
   if (isPartnerRelease(r.jobTypeCode)) return 'row-muo';
   if (isByTruck(r.shipline, r.vessel)) return 'row-truck';
+  if ((r.jobTypeCode ?? '').trim().toUpperCase() === 'MU' && !r.haulPlanned) return 'row-plain';
   return 'row-kola';
 }
