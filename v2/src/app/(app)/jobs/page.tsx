@@ -3,11 +3,13 @@ import { jobs } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
 import { readParams, sheetColumns } from '@/lib/columns';
 import { JobTable, Tabs } from '@/components/JobTable';
-import { listJobs } from '@/lib/queries/jobs';
+import { etaInPeriod, etaPeriodCounts, listJobs } from '@/lib/queries/jobs';
 import { ExportTemplateButton } from '@/components/ExportTemplateButton';
 import { jobCreatedConditions, validJobDate } from '@/lib/job-created-date';
 import { JobCreatedDateFilter } from '@/components/JobCreatedDateFilter';
 import { sheetRowClass } from '@/lib/register-sheet';
+import { PeriodFilter } from '@/components/PeriodFilter';
+import { periodParams, readPeriod } from '@/lib/eta-period';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +31,7 @@ const TABS = [
 ];
 
 const SEARCH_KEYS = [
-  'person', 'jobType', 'shipper', 'blNo', 'container', 'vessel', 'refNo', 'entryNo', 'consignee', 'notify',
+  'person', 'jobType', 'shipper', 'blNo', 'container', 'vessel', 'voyage', 'refNo', 'entryNo', 'consignee', 'notify',
 ];
 
 export default async function JobsPage({
@@ -45,17 +47,25 @@ export default async function JobsPage({
   const createdTo = validJobDate(one('createdTo'));
   if (createdFrom) carry.createdFrom = createdFrom;
   if (createdTo) carry.createdTo = createdTo;
+  // ปุ่มปี/เดือนของ ETA — ติดไปกับทุกลิงก์ (แท็บ · ค้นหา · เรียง) เหมือนตัวกรองอื่น
+  const period = readPeriod(one('year'), one('month'));
+  const baseCarry = { ...carry };
+  Object.assign(carry, periodParams(period));
 
-  const { rows, total } = await listJobs({
-    where: () => [
-      ...jobCreatedConditions(sql`${jobs.createdAt}`, createdFrom, createdTo),
-      tab === 'done' ? eq(jobs.customsStatus, 'FILED') : undefined,
-      tab === 'active' ? ne(jobs.customsStatus, 'FILED') : undefined,
-    ],
-    search,
-    sortBy: sortBy ?? 'jobNo',
-    sortDir,
-  });
+  const tabWhere = () => [
+    ...jobCreatedConditions(sql`${jobs.createdAt}`, createdFrom, createdTo),
+    tab === 'done' ? eq(jobs.customsStatus, 'FILED') : undefined,
+    tab === 'active' ? ne(jobs.customsStatus, 'FILED') : undefined,
+  ];
+  const [{ rows, total }, periods] = await Promise.all([
+    listJobs({
+      where: () => [...tabWhere(), etaInPeriod(period)],
+      search,
+      sortBy: sortBy ?? 'jobNo',
+      sortDir,
+    }),
+    etaPeriodCounts(tabWhere),
+  ]);
 
   const columns = sheetColumns();
 
@@ -76,6 +86,7 @@ export default async function JobsPage({
       <Tabs basePath="/jobs" items={TABS} active={tab} carry={carry} />
 
       <JobCreatedDateFilter key={`${createdFrom}:${createdTo}`} createdFrom={createdFrom} createdTo={createdTo} />
+      <PeriodFilter basePath="/jobs" carry={{ ...baseCarry, tab }} period={period} counts={periods} />
 
       <JobTable
         basePath="/jobs"
@@ -88,6 +99,7 @@ export default async function JobsPage({
         empty="ไม่พบงานที่ตรงกับคำค้น"
         hint="อยากเห็นเฉพาะงานที่ค้างในขั้นตอนของคุณ ให้ใช้เมนูงานคงค้าง"
         rowClass={sheetRowClass}
+        tableClassName="sheet-table"
       />
     </>
   );

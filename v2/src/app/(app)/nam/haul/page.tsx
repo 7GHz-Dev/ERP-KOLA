@@ -5,9 +5,11 @@ import { JobTable, Tabs } from '@/components/JobTable';
 import { BulkBar } from '@/components/BulkBar';
 import { haulColumns } from '@/components/HaulTable';
 import { sendHaulPlan } from '@/lib/actions/haul-plan';
-import { listJobs, QUEUE } from '@/lib/queries/jobs';
+import { etaInPeriod, etaPeriodCounts, listJobs, QUEUE } from '@/lib/queries/jobs';
 import { haulSummaries, sentJobsWithoutContainers } from '@/lib/queries/haul';
 import { sheetRowClass } from '@/lib/register-sheet';
+import { PeriodFilter } from '@/components/PeriodFilter';
+import { periodParams, readPeriod } from '@/lib/eta-period';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +18,7 @@ const TABS = [
   { key: 'sent', label: 'ส่งแพลนแล้ว' },
 ];
 const SEARCH_KEYS = [
-  'person', 'jobType', 'shipper', 'blNo', 'container', 'vessel', 'refNo', 'entryNo', 'consignee', 'notify',
+  'person', 'jobType', 'shipper', 'blNo', 'container', 'vessel', 'voyage', 'refNo', 'entryNo', 'consignee', 'notify',
 ];
 
 /**
@@ -37,9 +39,14 @@ export default async function NamHaulPage({
   const sort = sortBy ?? 'eta';
   const dir = sortBy ? sortDir : 'asc';
 
-  const [{ rows, total }, noContainers] = await Promise.all([
-    listJobs({ where: QUEUE.haul(tab), search, sortBy: sort, sortDir: dir }),
+  const period = readPeriod(one('year'), one('month'));
+  const baseCarry = { ...carry };
+  Object.assign(carry, periodParams(period));
+
+  const [{ rows, total }, noContainers, periods] = await Promise.all([
+    listJobs({ where: () => [...QUEUE.haul(tab)(), etaInPeriod(period)], search, sortBy: sort, sortDir: dir }),
     tab === 'wait' ? sentJobsWithoutContainers() : Promise.resolve([]),
+    etaPeriodCounts(QUEUE.haul(tab)),
   ]);
   const summaries = await haulSummaries(rows.map((r) => r.id));
 
@@ -50,6 +57,7 @@ export default async function NamHaulPage({
         <p>งานที่ส่ง Partner แล้ว · เลือกงาน → ตั้งวันลากตู้ → ส่งแพลนให้ MAY (ลงทุกตู้ของงาน) · งาน MUO Partner ลากเอง ไม่อยู่ในหน้านี้</p>
       </div>
       <Tabs basePath="/nam/haul" items={TABS} active={tab} carry={carry} />
+      <PeriodFilter basePath="/nam/haul" carry={{ ...baseCarry, tab }} period={period} counts={periods} />
 
       {noContainers.length ? (
         <div className="notice">
@@ -80,6 +88,7 @@ export default async function NamHaulPage({
           empty={tab === 'wait' ? 'ไม่มีงานรอวางแพลน' : 'ยังไม่ได้ส่งแพลน'}
           hint="ติ๊กหลายงานแล้วตั้งวันลากตู้ที่แถบด้านล่าง"
           rowClass={sheetRowClass}
+          tableClassName="sheet-table"
         />
       </BulkBar>
     </>

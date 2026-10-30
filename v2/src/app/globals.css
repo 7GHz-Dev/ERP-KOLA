@@ -2230,8 +2230,26 @@ table.data tbody tr.row-truck { background: #ece4f7; }
 table.data tbody tr.row-truck:hover { background: #e0d4f1; }
 /* Invoice ถูกเปลี่ยนยังต้องเด่นกว่าสีประจำแถว */
 table.data tbody tr.alert { background: var(--red-soft); }
-table.data td.sheet-containers { min-width: 200px; max-width: 340px; }
 table.data td.sheet-shipper { min-width: 150px; max-width: 240px; }
+/* เส้นคั่นทุกคอลัมน์แบบ Excel */
+table.data.sheet-table th, table.data.sheet-table td { border-right: 1px solid var(--line); }
+table.data.sheet-table thead tr:first-child th { border-right-color: rgba(255, 255, 255, .22); }
+/* ตู้ละบรรทัด — ค่าในช่องคั่นด้วยการขึ้นบรรทัด (sheetCells) */
+table.data.sheet-table td.sheet-containers { white-space: pre-line; font-variant-numeric: tabular-nums; }
+
+/* ปุ่มเลือกแสดงตามปี / เดือนของ ETA (PeriodFilter) */
+.period-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.period-bar a, .period-bar .period-empty {
+  padding: 4px 10px; font-size: 12px; text-decoration: none; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+}
+.period-bar a:hover { border-color: var(--navy); }
+.period-bar a[aria-current="page"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+.period-bar a.in-year:not([aria-current]) { border-color: var(--navy); font-weight: 600; }
+.period-bar a small { margin-left: 2px; opacity: .65; }
+.period-bar .period-empty { color: var(--muted); opacity: .55; cursor: default; }
+.period-bar .period-month-label { margin-left: 10px; }
+.period-bar .period-hint { color: var(--muted); }
 
 /* ---------- Port Release Partner: ช่องทางแจ้ง (Master Data) ---------- */
 .mini-fieldset {

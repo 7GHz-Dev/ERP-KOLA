@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/format';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
 import { MAX_ROWS } from '@/lib/table-filter';
 import { PARTNER_RELEASE_JOB_TYPE } from '@/lib/job-types';
+import { periodRange, type Period, type PeriodCount } from '@/lib/eta-period';
 
 /**
  * ตัวดึงรายการงานกลางที่ทุกหน้าใช้ร่วมกัน
@@ -55,6 +56,7 @@ const SORTABLE: Record<string, AnyPgColumn | SQL> = {
   detDays: jobs.detDays,
   draftRefNo: jobs.draftRefNo,
   vessel: jobs.vessel,
+  voyage: jobs.voyage,
   createdAt: jobs.createdAt,
 };
 
@@ -114,6 +116,8 @@ const SEARCHABLE: Record<string, (value: string) => SQL> = {
   arrivedOn: (v) => sql`(least(${jobs.eofficeSentAt}, handoff.sent_at)
                            at time zone 'Asia/Bangkok')::date = ${v}::date`,
   refNo: (v) => ilike(jobs.draftRefNo, `%${v}%`),
+  // คอลัมน์ VOYAGE ของทะเบียนงาน — ค้นเที่ยวเรืออย่างเดียว (ช่อง VESSEL ค้นชื่อเรือต่อเที่ยวได้อยู่แล้ว)
+  voyage: (v) => ilike(jobs.voyage, `%${v}%`),
   entryNo: (v) => sql`entry.declaration_no ilike ${`%${v}%`}`,
   shipper: (v) => sql`shipper.name ilike ${`%${v}%`}`,
   consignee: (v) => sql`consignee.name ilike ${`%${v}%`}`,
@@ -296,6 +300,34 @@ export async function listJobs(filter: JobFilter = {}) {
 }
 
 export type JobRow = Awaited<ReturnType<typeof listJobs>>['rows'][number];
+
+/** ETA อยู่ในปี/เดือนที่เลือก (ปุ่มปี/เดือนเหนือตาราง) — ไม่ได้เลือกคืน undefined = ไม่กรอง */
+export function etaInPeriod(p: Period): SQL | undefined {
+  const range = periodRange(p);
+  return range ? sql`${jobs.eta} >= ${range.from}::date and ${jobs.eta} < ${range.to}::date` : undefined;
+}
+
+/**
+ * จำนวนงานต่อปี/เดือนของ ETA ภายใต้เงื่อนไขของหน้า (แท็บ) — ตัวเลขบนปุ่มปี/เดือน
+ * ไม่นับคำค้นในหัวคอลัมน์ ปุ่มจึงบอกว่าทั้งแท็บมีงานเดือนไหนบ้าง · งานที่ยังไม่มี ETA ไม่อยู่ในปุ่มใด (อยู่ใน "ทั้งหมด")
+ */
+export async function etaPeriodCounts(where?: JobFilter['where']): Promise<PeriodCount[]> {
+  const an = latestApproval('AN');
+  const fn = latestApproval('FN');
+  const conditions = [eq(jobs.isArchived, false), isNotNull(jobs.eta), ...(where?.({ an, fn }) ?? [])];
+  const rows = await db
+    .select({
+      year: sql<number>`extract(year from ${jobs.eta})::int`,
+      month: sql<number>`extract(month from ${jobs.eta})::int`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(jobs)
+    .leftJoin(an, eq(an.jobId, jobs.id))
+    .leftJoin(fn, eq(fn.jobId, jobs.id))
+    .where(and(...(conditions.filter(Boolean) as SQL[])))
+    .groupBy(sql`1`, sql`2`);
+  return rows.map((r) => ({ year: Number(r.year), month: Number(r.month), count: Number(r.count) }));
+}
 
 /** ไฟล์ปัจจุบันของหลายงานพร้อมกัน ไม่ยิงทีละแถว */
 export async function currentFilesFor(jobIds: string[]) {

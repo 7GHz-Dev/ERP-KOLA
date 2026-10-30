@@ -4,9 +4,11 @@ import { JobTable, Tabs } from '@/components/JobTable';
 import { BulkBar } from '@/components/BulkBar';
 import { haulColumns } from '@/components/HaulTable';
 import { ackHaulPlan } from '@/lib/actions/haul-plan';
-import { listJobs, QUEUE } from '@/lib/queries/jobs';
+import { etaInPeriod, etaPeriodCounts, listJobs, QUEUE } from '@/lib/queries/jobs';
 import { haulSummaries } from '@/lib/queries/haul';
 import { sheetRowClass } from '@/lib/register-sheet';
+import { PeriodFilter } from '@/components/PeriodFilter';
+import { periodParams, readPeriod } from '@/lib/eta-period';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +17,7 @@ const TABS = [
   { key: 'ack', label: 'รับแพลนแล้ว' },
 ];
 const SEARCH_KEYS = [
-  'person', 'jobType', 'shipper', 'blNo', 'container', 'vessel', 'refNo', 'entryNo', 'consignee', 'notify',
+  'person', 'jobType', 'shipper', 'blNo', 'container', 'vessel', 'voyage', 'refNo', 'entryNo', 'consignee', 'notify',
 ];
 
 /**
@@ -32,7 +34,13 @@ export default async function MayHaulPage({
   const tab = one('tab') === 'ack' ? 'ack' : 'new';
   const sort = sortBy ?? 'eta';
   const dir = sortBy ? sortDir : 'asc';
-  const { rows, total } = await listJobs({ where: QUEUE.haul(tab), search, sortBy: sort, sortDir: dir });
+  const period = readPeriod(one('year'), one('month'));
+  const baseCarry = { ...carry };
+  Object.assign(carry, periodParams(period));
+  const [{ rows, total }, periods] = await Promise.all([
+    listJobs({ where: () => [...QUEUE.haul(tab)(), etaInPeriod(period)], search, sortBy: sort, sortDir: dir }),
+    etaPeriodCounts(QUEUE.haul(tab)),
+  ]);
   const summaries = await haulSummaries(rows.map((r) => r.id));
 
   const table = (
@@ -46,6 +54,7 @@ export default async function MayHaulPage({
       sortDir={dir}
       empty={tab === 'new' ? 'ไม่มีแพลนใหม่' : 'ยังไม่มีแพลนที่รับแล้ว'}
       rowClass={sheetRowClass}
+      tableClassName="sheet-table"
     />
   );
 
@@ -56,6 +65,7 @@ export default async function MayHaulPage({
         <p>แพลนจาก NAMKANG · รับแพลนแล้วจัดการแพลนฝั่ง Partner ต่อ</p>
       </div>
       <Tabs basePath="/may/haul" items={TABS} active={tab} carry={carry} />
+      <PeriodFilter basePath="/may/haul" carry={{ ...baseCarry, tab }} period={period} counts={periods} />
       {tab === 'new' ? (
         <BulkBar
           action={ackHaulPlan}

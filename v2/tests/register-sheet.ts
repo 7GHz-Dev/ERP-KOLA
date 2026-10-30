@@ -7,12 +7,15 @@ import { isByTruck, isPartnerRelease } from '../src/lib/job-types';
 import { isShipmePartner, partnerLineMessage, partnerMail, parseEmails } from '../src/lib/partner-message';
 import { SHEET_COLUMNS, sheetCells, sheetRowClass, type SheetSource } from '../src/lib/register-sheet';
 import { TEMPLATE_COLUMNS } from '../src/lib/template-columns';
+import { periodCounts, periodParams, periodRange, readPeriod } from '../src/lib/eta-period';
+import { cellValue } from '../src/lib/table-filter';
 
 /* ---------- หัวคอลัมน์ตามตารางเดิม ---------- */
 
-// ลำดับเดียวกับไฟล์ export/import (ยกเว้น K · O ที่ไม่แสดง · REF -> REF NO · REMARK -> DECLARATION NO. + STATUS ท้ายตาราง)
-const renamed: Record<string, string> = { REF: 'REF NO', REMARK: 'DECLARATION NO.' };
-const fromTemplate = TEMPLATE_COLUMNS.filter((c) => c !== 'K' && c !== 'O').map((c) => renamed[c] ?? c);
+// ลำดับเดียวกับไฟล์ export/import (ยกเว้น K · O ที่ไม่แสดง · REF -> REF NO · REMARK -> DECLARATION NO.
+// · VESSEL แยก VOYAGE ต่อท้าย · STATUS ท้ายตาราง)
+const renamed: Record<string, string[]> = { REF: ['REF NO'], REMARK: ['DECLARATION NO.'], VESSEL: ['VESSEL', 'VOYAGE'] };
+const fromTemplate = TEMPLATE_COLUMNS.filter((c) => c !== 'K' && c !== 'O').flatMap((c) => renamed[c] ?? [c]);
 assert.deepEqual([...SHEET_COLUMNS], [...fromTemplate, 'STATUS'], 'คอลัมน์ตามตาราง Excel ของทีม');
 
 /* ---------- ค่าในช่อง ---------- */
@@ -37,11 +40,13 @@ assert.equal(kola.SUR, 'เคลียร์แล้ว', 'SUR = สถาน�
 assert.equal(kola.TRANSPORT, '08/01/2026');
 assert.equal(kola['AT-MAESOT'], '-', 'ยังไม่เก็บข้อมูล');
 assert.equal(kola.OPEN, '-');
-assert.equal(kola.CON, '2');
-assert.equal(kola['CONTAINER NO.'], 'TLLU6866880, TEMU6284893');
+assert.equal(kola.CON, '2 ตู้');
+assert.equal(kola['CONTAINER NO.'], 'TLLU6866880\nTEMU6284893', 'ตู้ละบรรทัด ไม่มีลูกน้ำ');
+assert.equal(cellValue(kola['CONTAINER NO.']), 'TLLU6866880 TEMU6284893', 'ตัวกรองหัวคอลัมน์ยุบบรรทัดเป็นวรรค');
 assert.equal(kola.UNIT, '17');
 assert.equal(kola.WEIGHT, '24,610');
-assert.equal(kola.VESSEL, 'GSL MAREN V.023S');
+assert.equal(kola.VESSEL, 'GSL MAREN', 'เรือกับเที่ยวแยกคอลัมน์');
+assert.equal(kola.VOYAGE, '023S');
 assert.equal(kola.PORT, 'C1C2');
 assert.equal(kola['REF NO'], 'QNEX423503');
 assert.equal(kola['DECLARATION NO.'], 'A0030690102077');
@@ -106,5 +111,25 @@ assert.match(line, /https:\/\/example\.test\/file/);
 assert.match(line, /7 วัน/);
 assert.match(partnerLineMessage(job, null, 7), /ติดต่อ KOLA/, 'สร้างลิงก์ไม่ได้ก็ยังส่งข้อความได้');
 assert.ok(!partnerMail({ ...job, declarationNo: null }).text.includes('Declaration'), 'ไม่มีเลขใบขนไม่ต้องมีบรรทัดนั้น');
+
+/* ---------- ปุ่มปี / เดือนของ ETA ---------- */
+
+assert.deepEqual(readPeriod('2026', '11'), { year: 2026, month: 11 });
+assert.deepEqual(readPeriod('2026', ''), { year: 2026, month: null });
+assert.deepEqual(readPeriod('', '11'), { year: null, month: null }, 'เดือนต้องมาพร้อมปี');
+assert.deepEqual(readPeriod('26', '1'), { year: null, month: null });
+assert.deepEqual(readPeriod('2026', '13'), { year: 2026, month: null }, 'เดือนผิดถือว่าทั้งปี');
+assert.deepEqual(periodRange({ year: 2026, month: 12 }), { from: '2026-12-01', to: '2027-01-01' }, 'ธันวาคมข้ามปี');
+assert.deepEqual(periodRange({ year: 2026, month: 2 }), { from: '2026-02-01', to: '2026-03-01' });
+assert.deepEqual(periodRange({ year: 2026, month: null }), { from: '2026-01-01', to: '2027-01-01' });
+assert.equal(periodRange({ year: null, month: null }), null);
+assert.deepEqual(periodParams({ year: 2026, month: 3 }), { year: '2026', month: '3' });
+assert.deepEqual(periodParams({ year: null, month: null }), {});
+const pc = periodCounts([
+  { year: 2025, month: 12, count: 4 }, { year: 2026, month: 1, count: 10 }, { year: 2026, month: 11, count: 3 },
+], 2026);
+assert.deepEqual(pc.years, [{ year: 2026, count: 13 }, { year: 2025, count: 4 }], 'ปีล่าสุดก่อน พร้อมยอดรวม');
+assert.equal(pc.months.get(1), 10);
+assert.equal(pc.months.get(12), undefined, 'เดือนของปีอื่นไม่นับ');
 
 console.log('register-sheet: ผ่านทั้งหมด');

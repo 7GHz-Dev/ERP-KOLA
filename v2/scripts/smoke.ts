@@ -15,6 +15,7 @@ const PATHS = [
   '/master', '/master?type=settings', '/master?type=terminals&q=A', '/master?type=partners',
   '/master/eoffice', '/api/eoffice/form-preview',
   '/jobs', '/jobs?tab=active', '/jobs?tab=done', '/jobs?blNo=OOLU', '/jobs?container=TLLU&notify=KOLA',
+  '/jobs?year=2026&month=11', '/jobs?tab=active&year=2026&voyage=S', '/nam/haul?year=2026', '/may/haul?tab=ack&year=2026&month=1',
 ];
 
 async function main() {

@@ -141,7 +141,8 @@ const SHEET_SEARCH: Partial<Record<SheetColumn, Pick<Column, 'searchKey' | 'sort
   SHIPPER: { searchKey: 'shipper' },
   'BILL OF LADING': { searchKey: 'blNo', sortKey: 'blNo' },
   'CONTAINER NO.': { searchKey: 'container' },
-  VESSEL: { searchKey: 'vessel', sortKey: 'vessel', searchHint: 'เช่น AS CARLOTTA 522S' },
+  VESSEL: { searchKey: 'vessel', sortKey: 'vessel', searchHint: 'เช่น AS CARLOTTA' },
+  VOYAGE: { searchKey: 'voyage', sortKey: 'voyage' },
   'REF NO': { searchKey: 'refNo', sortKey: 'draftRefNo' },
   'DECLARATION NO.': { searchKey: 'entryNo' },
   CONSIGNEE: { searchKey: 'consignee' },
@@ -164,7 +165,7 @@ export function sheetColumns(): Column[] {
   return SHEET_COLUMNS.map((label): Column => ({
     label,
     ...SHEET_SEARCH[label],
-    kind: label === 'CONTAINER NO.' || label === 'SHIPPER' ? 'wrap' : undefined,
+    kind: label === 'SHIPPER' ? 'wrap' : undefined,
     className: `sheet-${label === 'CONTAINER NO.' ? 'containers' : label === 'SHIPPER' ? 'shipper' : 'cell'}`,
     align: ['CON', 'UNIT', 'WEIGHT', 'DEM', 'DET', 'INV.', 'SUR'].includes(label) ? 'center' : undefined,
     render: label === 'REF NO'

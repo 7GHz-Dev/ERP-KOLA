@@ -47,6 +47,8 @@ type Props = {
   hint?: string;
   /** คลาสเพิ่มของแถว เช่นสีแถวของทะเบียนงานแบบตารางเดิม (sheetRowClass) */
   rowClass?: (row: JobRow) => string | undefined;
+  /** คลาสเพิ่มของ <table> เช่น sheet-table = มีเส้นคั่นทุกคอลัมน์แบบ Excel */
+  tableClassName?: string;
 };
 
 function href(basePath: string, carry: Record<string, string>, changes: Record<string, string | undefined>) {
@@ -60,7 +62,7 @@ function href(basePath: string, carry: Record<string, string>, changes: Record<s
 }
 
 export function JobTable({
-  basePath, columns, rows, total, carry, sortBy, sortDir, empty, hint, rowClass,
+  basePath, columns, rows, total, carry, sortBy, sortDir, empty, hint, rowClass, tableClassName,
 }: Props) {
   const searchKeys = columns.map((c) => c.searchKey).filter(Boolean) as string[];
   const hasSearch = searchKeys.length > 0;
@@ -113,7 +115,7 @@ export function JobTable({
       {/* ตัวกรองหัวคอลัมน์ + เลือกคอลัมน์ — จำแยกตามหน้าและแท็บ */}
       <TableFilterScope storageKey={`${basePath}?tab=${carry.tab ?? ''}&sub=${carry.sub ?? ''}`}>
       <div className="table-wrap">
-        <table className="data">
+        <table className={tableClassName ? `data ${tableClassName}` : 'data'}>
           <thead>
             <tr>
               <th className="col-no">No.</th>

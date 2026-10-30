@@ -13,12 +13,13 @@ import type { JobRow } from '@/lib/queries/jobs';
  * เพราะตัวกรองหัวคอลัมน์จับคอลัมน์วันที่จากรูปแบบนี้ ส่วนไฟล์ export ต้องเป็น d/m/yy ตามไฟล์เดิม
  *
  * AT-MAESOT · OPEN ระบบยังไม่ได้เก็บ — คงหัวคอลัมน์ไว้ตามตารางเดิม แสดง "-"
- * ต่างจากไฟล์เดิมสองช่อง: SUR แสดงสถานะ Surrender (ที่ NAMKANG อัปเดต) · REMARK เป็น DECLARATION NO. (เลขใบขน)
+ * ต่างจากไฟล์เดิม: SUR แสดงสถานะ Surrender (ที่ NAMKANG อัปเดต) · REMARK เป็น DECLARATION NO. (เลขใบขน)
+ * · VESSEL กับ VOYAGE แยกคอลัมน์ · CON มีคำว่า "ตู้" · CONTAINER NO. ตู้ละบรรทัด
  */
 export const SHEET_COLUMNS = [
   'CUSTOMER', 'ETA', 'ประเภท', 'INV.', 'SUR', 'TRANSPORT', 'AT-MAESOT', 'OPEN',
   'SHIPPER', 'CON', 'BILL OF LADING', 'CONTAINER NO.', 'UNIT', 'WEIGHT',
-  'SHIPLINE', 'VESSEL', 'PORT', 'REF NO', 'DECLARATION NO.', 'CONSIGNEE', 'NOTIFY',
+  'SHIPLINE', 'VESSEL', 'VOYAGE', 'PORT', 'REF NO', 'DECLARATION NO.', 'CONSIGNEE', 'NOTIFY',
   'DEM', 'DEM DATE', 'DET', 'DET DATE', 'STATUS',
 ] as const;
 
@@ -60,15 +61,15 @@ export function sheetCells(r: SheetSource): Record<SheetColumn, string> {
     'AT-MAESOT': '-',
     OPEN: '-',
     SHIPPER: or(r.shipperName),
-    CON: r.containerCount ? String(r.containerCount) : '-',
+    CON: r.containerCount ? `${r.containerCount} ตู้` : '-',
     'BILL OF LADING': or(r.blNo),
-    // เว้นวรรคหลังลูกน้ำ ช่องจะได้ตัดบรรทัดได้เมื่อมีหลายตู้
-    'CONTAINER NO.': or((r.containerNos ?? '').split(',').filter(Boolean).join(', ')),
+    // ตู้ละบรรทัด ไม่มีลูกน้ำ — ช่องแสดงด้วย white-space: pre-line (ตัวกรองหัวคอลัมน์ยุบบรรทัดเป็นวรรคเอง)
+    'CONTAINER NO.': or((r.containerNos ?? '').split(',').map((v) => v.trim()).filter(Boolean).join('\n')),
     UNIT: num(r.unitAmount),
     WEIGHT: num(r.grossWeight),
     SHIPLINE: or(r.shipline),
-    // ตารางเดิมเขียนเรือกับเที่ยวรวมกันเป็น "AS CARLOTTA V.522S"
-    VESSEL: or([r.vessel, r.voyage].filter(Boolean).join(' V.')),
+    VESSEL: or(r.vessel),
+    VOYAGE: or(r.voyage),
     PORT: or(r.terminalName),
     'REF NO': or(r.draftRefNo),
     // เลขใบขน — ได้มาตอนตัว monitor เจอ ACCEPT ใน NETBAY (หรือ FAH ใส่เอง)
