@@ -13,16 +13,20 @@
  *   npm run test:customs
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import JSZip from 'jszip';
-import { NOT_FOUND, parseStatusImage } from '../src/lib/customs-status';
+import { NOT_FOUND, parseStatusImage, statusFromImageHash, statusGroup } from '../src/lib/customs-status';
 import { checkRound, type Api, type MonitorTask } from '../scripts/customs-check';
 import { netbaySettings, pdfFromDownload } from '../scripts/netbay-kola';
 import { mockPdf, startMockNetbay } from './draft-mock-netbay';
 
 type Call = { fn: string; args: Record<string, any> };
+
+/** รูปป้ายสถานะต้นฉบับจากหน้าจริงของ NETBAY — ชื่อไฟล์ = รหัสสถานะ */
+const STATUS_GIFS = join(__dirname, '..', 'assets', 'netbay', 'status');
 
 function fakeErp() {
   const calls: Call[] = [];
@@ -50,7 +54,17 @@ async function testStatusImage() {
   assert.equal(parseStatusImage({ src: '/img/1.gif', title: 'Customs Accept' }), 'ACCEPT');
   assert.equal(parseStatusImage({ src: '/img/2.gif', alt: 'เอกสารพร้อมส่ง' }), 'VALIDATED');
   assert.equal(parseStatusImage({ src: '/img/1.gif' }), null);
-  console.log('✓ อ่านรหัสจากรูปป้ายสถานะ');
+
+  // รูปป้ายต้นฉบับจาก NETBAY (ชื่อไฟล์ = รหัส) ต้องจำได้จากเนื้อไฟล์ทุกรูป
+  const gifs = readdirSync(STATUS_GIFS).filter((f) => f.endsWith('.gif'));
+  assert.ok(gifs.length >= 10, 'มีรูปป้ายครบชุด');
+  for (const f of gifs) {
+    const hash = createHash('sha256').update(readFileSync(join(STATUS_GIFS, f))).digest('hex');
+    assert.equal(statusFromImageHash(hash), f.replace('.gif', ''), f);
+  }
+  assert.equal(statusGroup('AUDIT_LOADED'), 'done');
+  assert.equal(statusGroup('AUDIT_CHECKED'), 'done');
+  console.log('✓ อ่านรหัสจากรูปป้ายสถานะ (เนื้อรูป + ชื่อไฟล์)');
 }
 
 async function testZip() {
@@ -76,11 +90,15 @@ async function testRound() {
 
   mock.state.declarations = {
     101: 'QELS100015966', 102: 'QELS100015965', 104: 'QELS100015960',
-    105: 'QELS100015956', 106: 'QELS100015971',
+    105: 'QELS100015956', 106: 'QELS100015971', 109: 'QELS100015909',
   };
+  const gif = (code: string) => join(STATUS_GIFS, `${code}.gif`);
   mock.state.statuses = {
-    QELS100015966: { code: 'ACCEPT', image: '/images/status/ACCEPT.gif', declarationNo: 'A0300691008769' },
-    QELS100015965: { code: 'VALIDATED', image: '/images/status/VALIDATED.gif' },
+    // ชื่อไฟล์รูปไม่บอกอะไร — ต้องจำได้จากเนื้อรูป (รูปจริงของ NETBAY)
+    QELS100015966: { code: 'ACCEPT', image: '/images/b/14.gif', file: gif('ACCEPT'), declarationNo: 'A0300691008769' },
+    QELS100015965: { code: 'VALIDATED', image: '/images/b/9.gif', file: gif('VALIDATED') },
+    // Audit Checked 03 = เสร็จเหมือน Customs Accept
+    QELS100015909: { code: 'AUDIT', image: '/images/b/8.gif', file: gif('AUDIT_CHECKED'), declarationNo: 'A0290691012214' },
     QELS100015960: { code: 'REJECT', image: '/images/status/REJECT.gif' },
     // รูปป้ายชื่อไม่บอกสถานะ แต่ช่อง Status ของ NETBAY กรองได้ว่า Accept แล้ว
     QELS100015956: { code: 'ACCEPT', image: '/images/7.gif', declarationNo: 'A0290691009900' },
@@ -92,10 +110,12 @@ async function testRound() {
     const result = await checkRound([
       task('T1', 'QELS100015966'), task('T2', 'QELS100015965'), task('T3', 'QELS100099999'),
       task('T4', 'QELS100015960'), task('T5', 'QELS100015956'), task('T6', 'QELS100015971'),
+      task('T9', 'QELS100015909'),
     ], { api: erp.api, netbay, workDir, log: (m) => lines.push(m) });
     const why = lines.join('\n');
 
-    assert.deepEqual(result, { accepted: 2, waiting: 4, failed: 0 }, why);
+    assert.deepEqual(result, { accepted: 3, waiting: 4, failed: 0 }, why);
+    assert.deepEqual(erp.statusOf('T9'), [{ taskId: 'T9', status: 'AUDIT_CHECKED' }], why);
     assert.deepEqual(erp.statusOf('T1'), [{ taskId: 'T1', status: 'ACCEPT' }], why);
     assert.deepEqual(erp.statusOf('T2'), [{ taskId: 'T2', status: 'VALIDATED' }], why);
     assert.deepEqual(erp.statusOf('T3'), [{ taskId: 'T3', status: NOT_FOUND }], why);
@@ -107,6 +127,7 @@ async function testRound() {
     assert.deepEqual(done.map((d) => [d.taskId, d.entryNo, d.file.name]), [
       ['T1', 'A0300691008769', 'A0300691008769.pdf'],
       ['T5', 'A0290691009900', 'A0290691009900.pdf'],
+      ['T9', 'A0290691012214', 'A0290691012214.pdf'],
     ], why);
     assert.ok(Buffer.from(done[0].file.base64, 'base64').equals(mockPdf('ใบขน A0300691008769')), 'PDF ที่ส่งเข้า ERP = ไฟล์ใน zip');
     assert.equal(done[0].file.mimeType, 'application/pdf');
@@ -115,6 +136,7 @@ async function testRound() {
     assert.deepEqual(mock.state.pdfRequests, [
       { refs: ['QELS100015966'], fileName: 'เลขที่ใบขน' },
       { refs: ['QELS100015956'], fileName: 'เลขที่ใบขน' },
+      { refs: ['QELS100015909'], fileName: 'เลขที่ใบขน' },
     ]);
     assert.deepEqual(mock.state.login, ['monitorerpkola', 'x']);
     console.log('✓ เช็ก 1 รอบ: ACCEPT ดึงเลข + PDF · ที่ยังไม่ ACCEPT ส่งสถานะ');

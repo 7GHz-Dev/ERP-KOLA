@@ -3,14 +3,14 @@
  *
  *   ไม่พบแถว           -> สถานะ NOT_FOUND (ป้ายแดงในคิว) เช็กต่อรอบหน้า
  *   ยังไม่ ACCEPT       -> ส่งสถานะที่เห็นเข้า ERP เช็กต่อรอบหน้า (REJECT ฯลฯ ก็เช็กต่อ รอ FAH แก้แล้วส่งใหม่)
- *   ACCEPT + มีเลขใบขน -> ดาวน์โหลด PDF (Save PDF -> zip) แล้ว completeTask: เลขใบขน + PDF
+ *   ACCEPT (หรือ Audit Loaded/Checked) + มีเลขใบขน -> ดาวน์โหลด PDF (Save PDF -> zip) แล้ว completeTask: เลขใบขน + PDF
  *                         ERP ตั้งงานเป็น FILED งานจึงไปที่ งานคงค้าง > 4. เตรียมเอกสารเดิน E เอง
  *
  * รายการไหนพังไม่ลามไปรายการอื่น — บันทึกข้อผิดพลาดไว้ที่แถวนั้นแล้วรอบหน้าลองใหม่
  * แยกจากตัววน (customs-monitor.ts) ให้เทสต์กับ ERP จำลอง + NETBAY จำลองได้ (tests/customs-monitor.ts)
  */
 import type { Page } from 'playwright-core';
-import { NOT_FOUND } from '../src/lib/customs-status';
+import { NOT_FOUND, statusGroup } from '../src/lib/customs-status';
 import {
   acceptedByFilter, check, downloadDeclarationPdf, launch, login, readDeclaration, type NetbaySettings,
 } from './netbay-kola';
@@ -73,7 +73,8 @@ export async function checkRound(tasks: MonitorTask[], deps: Deps) {
         let status: string | null = row.status;
         // อ่านป้ายไม่ออก แต่มีเลขใบขนแล้ว — ถามช่อง Status ของ NETBAY ตรง ๆ ว่า Accept หรือยัง
         if (!status && row.declarationNo && await acceptedByFilter(page, listUrl, t.refNo)) status = 'ACCEPT';
-        if (status !== 'ACCEPT') {
+        // Customs Accept และ Audit Loaded 04 / Audit Checked 03 = เสร็จ ดึงเลขใบขน + PDF ได้
+        if (!status || statusGroup(status) !== 'done') {
           const shown = status ?? `ไม่รู้จักสถานะ (${row.image || 'ไม่มีรูปป้าย'})`;
           await report(t.id, { status: shown });
           log(`  ${label}: ${shown}`);
@@ -81,13 +82,13 @@ export async function checkRound(tasks: MonitorTask[], deps: Deps) {
           continue;
         }
         if (!row.declarationNo) {
-          await report(t.id, { status, error: 'ACCEPT แล้วแต่คอลัมน์ DECLARATION NO ยังว่าง — รอบหน้าเช็กใหม่' });
-          log(`  ${label}: ACCEPT แต่ยังไม่มีเลขใบขน`);
+          await report(t.id, { status, error: `${status} แล้วแต่คอลัมน์ DECLARATION NO ยังว่าง — รอบหน้าเช็กใหม่` });
+          log(`  ${label}: ${status} แต่ยังไม่มีเลขใบขน`);
           result.waiting += 1;
           continue;
         }
 
-        log(`  ${label}: ACCEPT เลขใบขน ${row.declarationNo} — ดาวน์โหลด PDF ...`);
+        log(`  ${label}: ${status} เลขใบขน ${row.declarationNo} — ดาวน์โหลด PDF ...`);
         const pdf = await downloadDeclarationPdf(page, listUrl, t.refNo, row.declarationNo, deps.workDir);
         await report(t.id, { status });
         await api('completeTask', {

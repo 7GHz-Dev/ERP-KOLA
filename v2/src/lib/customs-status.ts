@@ -1,5 +1,6 @@
 /**
  * สถานะใบขนใน NETBAY — รหัสตรงกับ <option value> ของช่อง Status บนหน้า Import Declaration
+ * ยกเว้น AUDIT_LOADED / AUDIT_CHECKED ซึ่งเป็นป้ายที่ไม่มีในช่อง Status (ตั้งชื่อเอง ไม่ใช้กรองใน NETBAY)
  *
  * ตัว monitor ใบขน (scripts/customs-monitor.ts) อ่านสถานะนี้จากแถวของ Ref No. แล้วส่งเข้า ERP
  * หน้าคิว Automation ใช้ไฟล์เดียวกันแสดงป้ายสี ทั้งสองฝั่งจึงเรียกสถานะเดียวกันด้วยชื่อเดียวกัน
@@ -18,6 +19,8 @@ export const NETBAY_STATUS = {
   SEND_CANCEL: 'Sending Cancel',
   VALIDATED: 'เอกสารพร้อมส่ง',
   DRAFT_CANCEL: 'Cancel Draft',
+  AUDIT_LOADED: 'Audit Loaded 04',
+  AUDIT_CHECKED: 'Audit Checked 03',
 } as const;
 
 export type NetbayStatusCode = keyof typeof NETBAY_STATUS;
@@ -38,6 +41,9 @@ export type StatusGroup = 'done' | 'waiting' | 'problem' | 'canceled' | 'unknown
 
 const GROUPS: Record<NetbayStatusCode, StatusGroup> = {
   ACCEPT: 'done',
+  // ผ่านขั้นกรมศุลฯ รับแล้ว มีเลขใบขนแล้ว — ดึงเลข + PDF ได้เหมือน Customs Accept
+  AUDIT_LOADED: 'done',
+  AUDIT_CHECKED: 'done',
   PREPARE: 'waiting',
   VALIDATED: 'waiting',
   SEND: 'waiting',
@@ -72,6 +78,29 @@ export function netbayStatusTone(code: string | null | undefined): 'approved' | 
   if (group === 'done') return 'approved';
   if (group === 'waiting') return 'pending';
   return 'rejected';
+}
+
+/**
+ * รูปป้ายสถานะของ NETBAY (sha256 ของไฟล์ GIF) — ตรงกันทุกไบต์ = รู้สถานะแน่นอน ไม่ต้องเดาจากชื่อไฟล์
+ * ไฟล์ต้นฉบับเก็บไว้ที่ assets/netbay/status/<รหัส>.gif (ได้จากหน้าจริง)
+ * ยังไม่มีรูปของ IMPREJECT · SEND_CANCEL · DRAFT_CANCEL — เจอเมื่อไหร่ใช้ชื่อไฟล์/ช่อง Status แทน
+ */
+const STATUS_IMAGE_SHA256: Record<string, NetbayStatusCode> = {
+  be59a2547785381be06d2c0fac53e14fc7310c69e495de1adc9a9934f9ef20e9: 'ACCEPT',
+  '0a778e8c227b81e126019669adf7e1233ac00fcecb16d1e8b76296cde9f2e748': 'AUDIT_CHECKED',
+  '7771198d7fb5a148929fc33e38192abd850ae7ea8a377fb253469abe3036a015': 'AUDIT_LOADED',
+  '964fffb1213846613fff8e35cbc77fc4c8e8069f8fd3c7d41a19e2d0f6a8f18b': 'CANCELED',
+  '895dacffb5cf133b840fea3467e188e0e375a3035682db1bec5590526d1f70ee': 'CANCEL_REJECT',
+  '819adef2fc894703604e4931a9f9609fc9f67e19914bb07e02b0b501eca341b4': 'ERROR',
+  '31d5fd28cd91782795fde58434d5dabfc0cc2f40fb6663e9f722409894282985': 'PREPARE',
+  '5317e984dacaa2655e42346c8f5320cb0e6d9f791da89bc5ae7fb15f0711a890': 'REJECT',
+  '9d2124bbca19816a96533aa74ad9ad28cf7abd7953ae829778aab54c8f6aa8d8': 'SEND',
+  '42e616fce6c0c29ad97beb6821e1efe33c9748fb2a7805b304367cd67622926b': 'VALIDATED',
+};
+
+/** สถานะจาก sha256 (hex) ของไฟล์รูปป้าย — ไม่รู้จัก = null */
+export function statusFromImageHash(sha256: string): NetbayStatusCode | null {
+  return STATUS_IMAGE_SHA256[sha256.toLowerCase()] ?? null;
 }
 
 /*

@@ -5,6 +5,7 @@
  * ใช้ตรวจว่าทุกขั้นทำได้: login, iframe, autocomplete, ช่องวันที่แบบ mask, แนบไฟล์, ข้อความ success,
  * ค้นหา Reference No. แล้วเปิดใบขน  ค่าที่กรอกและไฟล์ที่ได้รับเก็บไว้ใน state
  */
+import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import JSZip from 'jszip';
 
@@ -15,7 +16,11 @@ export const REF_NO = 'QENX000000099';
  * แถวของใบขนในหน้ารายการ (ตัว monitor ใบขน) — ป้ายสถานะเป็นรูป แบบหน้าจริง
  * code = ค่าที่ช่อง Status ของ NETBAY ใช้กรอง · image = src ของรูปป้าย · declarationNo = คอลัมน์ DECLARATION NO
  */
-export type MockStatus = { code: string; image: string; declarationNo?: string };
+export type MockStatus = {
+  code: string; image: string; declarationNo?: string;
+  /** ไฟล์รูปจริงที่เสิร์ฟที่ image (assets/netbay/status/*.gif) — ไม่ใส่ = รูปโหลดไม่ได้ (404) */
+  file?: string;
+};
 
 export type MockState = {
   login: [string, string] | null;
@@ -209,6 +214,10 @@ function savePdf() {
     if (p === '/edit') return html(`<html><body><input id="referenceNo" value="${state.declarations[url.searchParams.get('ImDclCtrl') ?? '']}"></body></html>`);
     if (p === '/save') { state.saved += 1; return html('ok'); }
     if (p === '/send_customs') { state.sentToCustoms = true; return html('ok'); }
+    if (p.startsWith('/images/')) {
+      const st = Object.values(state.statuses).find((x) => x.image === p && x.file);
+      if (st) { res.writeHead(200, { 'Content-Type': 'image/gif' }); return res.end(readFileSync(st.file!)); }
+    }
     if (p === '/save_pdf') {
       // ได้ zip ที่มี PDF ต่อใบ ชื่อไฟล์ตามช่อง "ชื่อไฟล์": เลขที่ใบขน = <เลขใบขน>.pdf · default = <Ref No.>.pdf
       const refs = (url.searchParams.get('ids') ?? '').split(',').map((id) => state.declarations[id]).filter(Boolean);

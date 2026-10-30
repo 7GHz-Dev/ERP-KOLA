@@ -34,7 +34,7 @@ MAY › แพลนลากตู้ › "รับแพลน"   (เชื�
 
 | สถานะใน NETBAY | ระบบทำ |
 |---|---|
-| `ACCEPT` Customs Accept | ติ๊กแถวนั้น → ชื่อไฟล์ = **เลขที่ใบขน** → **Save PDF** → แตก zip เอา `<เลขใบขน>.pdf` → เลขใบขน + PDF เข้างาน (FILED) |
+| `ACCEPT` Customs Accept · `AUDIT_LOADED` Audit Loaded 04 · `AUDIT_CHECKED` Audit Checked 03 | ติ๊กแถวนั้น → ชื่อไฟล์ = **เลขที่ใบขน** → **Save PDF** → แตก zip เอา `<เลขใบขน>.pdf` → เลขใบขน + PDF เข้างาน (FILED) |
 | `PREPARE` · `VALIDATED` · `SEND` · `SEND_CANCEL` | ป้ายเหลือง เช็กต่อ |
 | `REJECT` · `IMPREJECT` · `ERROR` · `CANCEL_REJECT` | ป้ายแดง เช็กต่อ — แก้ใน NETBAY แล้ว Send ใหม่ จน ACCEPT ระบบดึงให้เอง |
 | `CANCELED` · `DRAFT_CANCEL` | หยุดเช็ก คืนงานไป FAH › ตรวจ Draft (ขึ้นป้าย "ใบขนถูกยกเลิกใน NETBAY") |
@@ -55,7 +55,9 @@ log: Windows `%LOCALAPPDATA%\KOLA\customs-monitor.log` · Mac `~/Library/Logs/KO
 
 ### ตรวจกับหน้าจริงของ NETBAY
 
-ตัว monitor อ่านรหัสสถานะจาก**ชื่อไฟล์รูปป้าย** (หรือ title/alt) เพราะป้ายเป็นรูปภาพ
+ป้ายสถานะเป็นรูปภาพ — ตัว monitor โหลดไฟล์รูปของแถวนั้นแล้ว**เทียบกับรูปต้นฉบับทีละไบต์** (sha256)
+รูปต้นฉบับ 10 แบบเก็บไว้ที่ `assets/netbay/status/<รหัส>.gif` (ได้จากหน้าจริง) · ไม่ตรงรูปไหนค่อยเดาจากชื่อไฟล์/title/alt
+ยังไม่มีรูปของ Customer Reject · Sending Cancel · Cancel Draft — เจอแล้วขึ้น "ไม่รู้จักสถานะ" ให้บันทึกรูปนั้นมาเพิ่ม
 ถ้าหน้าคิวขึ้น "ไม่รู้จักสถานะ (…)" ให้รันบนเครื่องในออฟฟิศ (อ่านอย่างเดียว ไม่กดอะไร):
 
 ```sh

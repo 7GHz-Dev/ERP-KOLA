@@ -11,13 +11,14 @@
  * ค่าตั้งอยู่ใน .env.local: NETBAY_USER, NETBAY_PASSWORD (และค่าหัวใบขนถ้าต่างจากค่าตั้งต้นด้านล่าง)
  */
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import JSZip from 'jszip';
 import { chromium, type Browser, type Download, type Frame, type FrameLocator, type Locator, type Page } from 'playwright-core';
 import type { Totals } from '../src/lib/draft/csv';
-import { DECLARATION_NO, parseStatusImage, type NetbayStatusCode } from '../src/lib/customs-status';
+import { DECLARATION_NO, parseStatusImage, statusFromImageHash, type NetbayStatusCode } from '../src/lib/customs-status';
 
 export type NetbaySettings = {
   url: string; username: string; password: string; declarationType: string;
@@ -309,11 +310,17 @@ export async function readDeclaration(page: Page, listUrl: string, ref: string):
     }
     return { src: el.getAttribute('src'), title: el.getAttribute('title'), alt: el.getAttribute('alt'), cells, col };
   });
+  // ป้ายเป็นรูป — โหลดไฟล์รูปด้วย session เดียวกันแล้วเทียบกับรูปต้นฉบับ (ตรงทุกไบต์ = รู้แน่) ก่อนเดาจากชื่อไฟล์
+  let byImage: NetbayStatusCode | null = null;
+  if (info.src) {
+    const res = await page.request.get(new URL(info.src, page.url()).href).catch(() => null);
+    if (res?.ok()) byImage = statusFromImageHash(createHash('sha256').update(await res.body()).digest('hex'));
+  }
   const atHeader = info.col >= 0 ? info.cells[info.col] ?? '' : '';
   // หัวตารางกับแถวข้อมูลนับคอลัมน์ไม่ตรงกันได้ (colspan) — ถอยไปหาช่องที่หน้าตาเหมือนเลขใบขน
   const declarationNo = DECLARATION_NO.test(atHeader) ? atHeader : info.cells.find((c) => DECLARATION_NO.test(c)) ?? null;
   const image = (info.src ?? '').split(/[?#]/)[0].split('/').pop() || info.title || info.alt || '';
-  return { found: true, status: parseStatusImage(info), image, declarationNo };
+  return { found: true, status: byImage ?? parseStatusImage(info), image, declarationNo };
 }
 
 /**
