@@ -511,7 +511,12 @@ table.data thead th {
   height: 36px; white-space: nowrap;
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .18);
 }
-tr.filters th {
+/*
+ * ตรึง 2 บรรทัด: หัวคอลัมน์ (top 0) + ช่องค้นหา (ต่อจากหัว 36px)
+ * ต้องระบุ table.data thead ด้วย ไม่งั้นกฎ "table.data thead th { top: 0 }" ข้างบนเฉพาะเจาะจงกว่า
+ * ช่องค้นหาจะเลื่อนขึ้นไปทับหัวคอลัมน์ตอนเลื่อนตาราง เหลือให้เห็นบรรทัดเดียว
+ */
+table.data thead tr.filters th {
   position: sticky; top: 36px; z-index: 2;
   background: #e9eff3; padding: 5px 6px;
   border-bottom: 1px solid var(--line);
