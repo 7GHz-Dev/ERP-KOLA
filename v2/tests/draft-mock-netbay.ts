@@ -27,6 +27,11 @@ export type MockState = {
   statuses: Record<string, MockStatus>;     // Reference No. -> สถานะ (ไม่มี = กำลังเตรียมเอกสาร)
   /** การกด Save PDF แต่ละครั้ง: แถวที่ติ๊ก + ตัวเลือกช่อง "ชื่อไฟล์" */
   pdfRequests: { refs: string[]; fileName: string }[];
+  /**
+   * session แบบหน้าจริง: login แล้วได้ cookie · requireSession = หน้ารายการต้องมี session ไม่งั้นได้หน้า login
+   * epoch เพิ่ม = บัญชีนี้ถูก login จากที่อื่น session เดิมใช้ไม่ได้แล้ว
+   */
+  logins: number; requireSession: boolean; epoch: number;
 };
 
 /** PDF เล็กที่สุดที่ยังขึ้นต้นด้วย %PDF- — พอให้ตรวจว่าแตก zip ได้ไฟล์ที่ถูก */
@@ -120,14 +125,16 @@ export async function startMockNetbay(): Promise<{ url: string; state: MockState
   const state: MockState = {
     login: null, decl: null, upload: null, created: 0, saved: 0, sentToCustoms: false, searched: [],
     importOk: true, declarations: { 16399: REF_NO, 16300: 'QENX000000042' },
-    statuses: {}, pdfRequests: [],
+    statuses: {}, pdfRequests: [], logins: 0, requireSession: false, epoch: 1,
   };
+  const hasSession = (req: IncomingMessage) =>
+    (req.headers.cookie ?? '').split(/;\s*/).includes(`nbsid=${state.epoch}`);
   const statusOf = (ref: string): MockStatus => state.statuses[ref] ?? { code: 'PREPARE', image: '/images/st_prepare.gif' };
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
     const html = (s: string) => { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(s); };
     const p = url.pathname;
-    if (p === '/' && req.method === 'GET') {
+    if ((p === '/' && req.method === 'GET') || (p === '/import' && state.requireSession && !hasSession(req))) {
       return html(`<html><body>
 <form method="post" action="/login"><input id="user" name="user"><input id="passwd" name="passwd" type="password">
 <img src="/btn.gif" usemap="#m" width="60" height="20"></form>
@@ -137,6 +144,8 @@ export async function startMockNetbay(): Promise<{ url: string; state: MockState
     if (p === '/login') {
       const f = new URLSearchParams((await readBody(req)).toString());
       state.login = [f.get('user') ?? '', f.get('passwd') ?? ''];
+      state.logins += 1;
+      res.setHeader('Set-Cookie', `nbsid=${state.epoch}; Max-Age=86400; Path=/`);
       return html(`<html><body><div id="smoothmenu1"><ul><li>a</li><li>b</li><li>c<ul>
 <li>1</li><li>2</li><li>3</li><li>4</li><li><a href="/import?uid=1&amp;mode=imp">ใบขนขาเข้า</a></li>
 </ul></li></ul></div></body></html>`);

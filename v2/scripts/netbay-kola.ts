@@ -11,8 +11,7 @@
  * ค่าตั้งอยู่ใน .env.local: NETBAY_USER, NETBAY_PASSWORD (และค่าหัวใบขนถ้าต่างจากค่าตั้งต้นด้านล่าง)
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import JSZip from 'jszip';
@@ -426,20 +425,94 @@ async function maximize(page: Page) {
   await page.bringToFront().catch(() => {});
 }
 
-const freePort = () => new Promise<number>((resolve, reject) => {
-  const srv = createServer();
-  srv.listen(0, '127.0.0.1', () => {
-    const port = (srv.address() as { port: number }).port;
-    srv.close(() => resolve(port));
-  });
-  srv.on('error', reject);
-});
+/**
+ * โปรไฟล์ Chrome ประจำบัญชี NETBAY ของเครื่อง — ใช้ซ้ำทุกครั้งที่กดเลข Ref No. session จึงอยู่ข้ามครั้ง
+ * แยกตามบัญชี เปลี่ยนบัญชีแล้วไม่ไปหยิบ session ของบัญชีเก่ามาใช้
+ */
+export const netbayProfileDir = (profilesDir: string, username: string) =>
+  join(profilesDir, `netbay-${username.replace(/[^A-Za-z0-9_-]/g, '_') || 'default'}`);
+
+/** Chrome ที่เปิดค้างไว้ด้วยโปรไฟล์นี้ (Chrome เขียนเลข port ไว้ที่ DevToolsActivePort) — ไม่มี = null */
+async function runningChrome(profile: string): Promise<Browser | null> {
+  const file = join(profile, 'DevToolsActivePort');
+  if (!existsSync(file)) return null;
+  const port = Number(readFileSync(file, 'utf8').split(/\r?\n/)[0]);
+  if (!port) return null;
+  return chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 3_000 }).catch(() => null);
+}
+
+/** ปิด Chrome ของโปรไฟล์นี้จริง ๆ (close() ของการต่อแบบ CDP แค่ปล่อยการควบคุม) — ใช้ในเทสต์ */
+export async function closeNetbayChrome(profile: string) {
+  const browser = await runningChrome(profile);
+  if (!browser) return;
+  const cdp = await browser.newBrowserCDPSession();
+  await cdp.send('Browser.close').catch(() => {});
+}
+
+/** ลิงก์หน้ารายการใบขนจาก login ครั้งล่าสุดของโปรไฟล์นี้ — ใช้เข้าด้วย session เดิมโดยไม่ login */
+const LIST_URL_FILE = 'kola-list-url.txt';
 
 /**
- * ลิงก์ Ref No. บน ERP-KOLA: เปิด Chrome -> login -> Import -> ค้นหา Reference No. -> เปิดใบขนนั้น
+ * เข้าหน้ารายการใบขนด้วย session เดิม — เห็นช่องค้นหา Reference No. = ยังใช้ได้ ไม่ต้อง login
+ * เห็นช่อง user (หน้า login) หรือรอแล้วไม่ขึ้นอะไร = session หลุด (เช่นบัญชีนี้ถูก login จากที่อื่น) คืน null
+ */
+async function resumeSession(page: Page, profile: string): Promise<string | null> {
+  const file = join(profile, LIST_URL_FILE);
+  const listUrl = existsSync(file) ? readFileSync(file, 'utf8').trim() : '';
+  if (!listUrl) return null;
+  try {
+    await page.goto(listUrl);
+    await page.locator(`${SEARCH_REF}, #user`).first().waitFor({ state: 'visible', timeout: 10_000 });
+    return (await page.locator(SEARCH_REF).count()) ? listUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Chrome ของโปรไฟล์ประจำบัญชี — เปิดค้างอยู่แล้วต่อเข้าไปแล้วเปิดหน้าต่างใหม่ (session เดียวกัน)
+ * ยังไม่เปิดก็เปิดใหม่ด้วยโปรไฟล์เดิม (port 0 = ให้ Chrome เลือกเอง แล้วอ่านจาก DevToolsActivePort)
+ */
+async function netbayChrome(s: NetbaySettings, profile: string, keep: boolean) {
+  const running = await runningChrome(profile);
+  if (running) {
+    const context = running.contexts()[0];
+    const opened = context.waitForEvent('page', { timeout: 15_000 });
+    const cdp = await running.newBrowserCDPSession();
+    await cdp.send('Target.createTarget', { url: 'about:blank', newWindow: true });
+    return { browser: running, page: await opened, proc: null };
+  }
+
+  rmSync(join(profile, 'DevToolsActivePort'), { force: true });     // ของรอบก่อนที่ Chrome ปิดไปแล้ว
+  // หน้าต่างเต็มจอ ไม่มีแถบ tab/ช่อง URL (--app) — เห็นการทำงานตั้งแต่ login ค้นหา จนเปิดใบขน
+  const args = ['--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+    `--unsafely-treat-insecure-origin-as-secure=${s.url}`,
+    ...(s.headless ? ['--headless=new', 'about:blank']
+      : ['--start-maximized', `--force-device-scale-factor=${s.zoom}`, '--app=about:blank'])];
+  const proc = spawn(chromePath(), args, { stdio: 'ignore', detached: keep });    // ค้างหน้าต่างไว้หลังสคริปต์จบ
+  if (keep) proc.unref();
+  let browser: Browser | null = null;
+  for (let i = 0; i < 60 && !browser; i++) {
+    browser = await runningChrome(profile);
+    if (!browser) await sleep(250);
+  }
+  if (!browser) {
+    if (!keep) proc.kill();
+    throw new NetbayError('เปิด Chrome ไม่สำเร็จ');
+  }
+  const context = browser.contexts()[0];
+  return { browser, page: context.pages()[0] ?? await context.newPage(), proc };
+}
+
+/**
+ * ลิงก์ Ref No. บน ERP-KOLA: เปิด Chrome -> (login) -> Import -> ค้นหา Reference No. -> เปิดใบขนนั้น
  *
- * เปิด Chrome ธรรมดา (โปรไฟล์ชั่วคราว) แล้วต่อเข้าไปคุมเฉพาะตอน login และค้นหา
- * เสร็จแล้วปล่อย — หน้าต่างเป็น Chrome ปกติ คนตรวจใช้ต่อได้ทุกอย่าง (dialog ยืนยันของ NETBAY ขึ้นตามปกติ)
+ * กดครั้งแรก login แล้วจำ session ไว้ในโปรไฟล์ Chrome ประจำบัญชี (netbayProfileDir)
+ * กดครั้งต่อไปเปิดหน้าต่างใหม่ใน Chrome ตัวเดิม แล้วเข้าหน้ารายการด้วย session เดิม ข้ามการ login
+ * เดิมเปิดโปรไฟล์ใหม่แล้ว login ทุกครั้ง — NETBAY ให้บัญชีเดียว login ได้ทีละที่ หน้าต่างที่เปิดอยู่ก่อนจึงหลุดทุกครั้งที่กดใบถัดไป
+ * session หลุด (บัญชีนี้ถูก login จากที่อื่น เช่น worker สร้าง Draft) ก็ login ใหม่ให้เอง
+ *
+ * หน้าต่างเป็น Chrome ปกติ คนตรวจใช้ต่อได้ทุกอย่าง (dialog ยืนยันของ NETBAY ขึ้นตามปกติ)
  * ลิงก์ตรงไปหน้าใบขนใช้ไม่ได้ เพราะ NETBAY ผูก session ไว้กับเบราว์เซอร์ที่ login (UCODE ใน localStorage)
  * คืนเลขภายในของใบขน หรือ null ถ้าไม่พบ (หน้ารายการขึ้นแถบแจ้งให้เห็น)
  */
@@ -448,35 +521,30 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
   const log = opts.log ?? (() => {});
   const profiles = opts.profilesDir ?? join(tmpdir(), 'kola-netbay');
   mkdirSync(profiles, { recursive: true });
-  for (const name of readdirSync(profiles)) {          // โปรไฟล์ของรอบก่อน ๆ ที่เกิน 1 วัน
+  for (const name of readdirSync(profiles)) {          // โปรไฟล์ชั่วคราวของรุ่นก่อน (p-…) ที่เกิน 1 วัน
+    if (!name.startsWith('p-')) continue;
     const p = join(profiles, name);
     try { if (statSync(p).mtimeMs < Date.now() - 86_400_000) rmSync(p, { recursive: true, force: true }); } catch { /* ใช้อยู่ */ }
   }
-  const profile = mkdtempSync(join(profiles, 'p-'));
-  const port = await freePort();
-  // หน้าต่างเต็มจอ ไม่มีแถบ tab/ช่อง URL (--app) — เห็นการทำงานตั้งแต่ login ค้นหา จนเปิดใบขน
-  const args = [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
-    `--unsafely-treat-insecure-origin-as-secure=${s.url}`,
-    ...(s.headless ? ['--headless=new', 'about:blank']
-      : ['--start-maximized', `--force-device-scale-factor=${s.zoom}`, '--app=about:blank'])];
-  const keep = opts.keepOpen !== false;          // ค้างหน้าต่างไว้หลังสคริปต์จบ — แยก process ออกไป
-  const proc = spawn(chromePath(), args, { stdio: 'ignore', detached: keep });
-  if (keep) proc.unref();
+  const profile = netbayProfileDir(profiles, s.username);
+  mkdirSync(profile, { recursive: true });
+  const keep = opts.keepOpen !== false;
 
   let browser: Browser | null = null;
   let page: Page | null = null;
+  let proc: ReturnType<typeof spawn> | null = null;
   try {
-    for (let i = 0; i < 60 && !browser; i++) {
-      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null);
-      if (!browser) await sleep(250);
-    }
-    if (!browser) throw new NetbayError('เปิด Chrome ไม่สำเร็จ');
-    const context = browser.contexts()[0];
-    context.setDefaultTimeout(30_000);
-    page = context.pages()[0] ?? await context.newPage();
+    ({ browser, page, proc } = await netbayChrome(s, profile, keep));
+    page.context().setDefaultTimeout(30_000);
     if (!s.headless) await maximize(page);
-    log('login NETBAY ...');
-    const listUrl = await login(page, s);
+    let listUrl = await resumeSession(page, profile);
+    if (listUrl) {
+      log('ใช้ session เดิม (ไม่ต้อง login)');
+    } else {
+      log('login NETBAY ...');
+      listUrl = await login(page, s);
+      writeFileSync(join(profile, LIST_URL_FILE), listUrl);
+    }
     log(`ค้นหา Reference No. ${ref} ...`);
     const id = await findDeclaration(page, listUrl, ref);
     if (id) {
@@ -494,6 +562,6 @@ export async function openDeclaration(ref: string, s: NetbaySettings, opts: { lo
   } finally {
     // ต่อแบบ CDP: close() แค่ปล่อยการควบคุม หน้าต่าง Chrome ยังเปิดอยู่
     if (browser) await browser.close().catch(() => {});
-    if (!keep) proc.kill();
+    if (!keep) proc?.kill();
   }
 }

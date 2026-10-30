@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import ExcelJS from 'exceljs';
 import { loadDraftData } from '../src/lib/draft/csv';
 import { processTask, type Api, type Deps, type Task } from '../scripts/draft-task';
-import { netbaySettings, openDeclaration, setImportTimeout } from '../scripts/netbay-kola';
+import { closeNetbayChrome, netbayProfileDir, netbaySettings, openDeclaration, setImportTimeout } from '../scripts/netbay-kola';
 import { parseRef } from '../scripts/netbay-open';
 import { REF_NO, startMockNetbay } from './draft-mock-netbay';
 
@@ -136,11 +136,30 @@ async function main() {
     assert.equal(parseRef('kola-netbay://open?ref=qenx000000020'), 'QENX000000020');
     assert.equal(parseRef(' QELS100015902 '), 'QELS100015902');
     for (const bad of ['', 'kola-netbay://open', "QENX'; alert(1)//", 'A'.repeat(60)]) assert.throws(() => parseRef(bad));
+    /*
+     * กดครั้งแรก login แล้วจำ session ไว้ · ครั้งต่อไปใช้ Chrome/session เดิม ไม่ login ซ้ำ
+     * (login ซ้ำด้วยบัญชีเดิม = หน้าต่างที่เปิดอยู่ก่อนหลุด) · session หลุดเพราะ login จากที่อื่น → login ใหม่เอง
+     * หน้าต่างค้างไว้ (keepOpen) แบบที่ใช้จริง แล้วปิด Chrome เองตอนจบเทสต์
+     */
+    mock.state.requireSession = true;
     const profilesDir = mkdtempSync(join(tmpdir(), 'netbay-open-'));
-    assert.equal(await openDeclaration('QENX000000042', netbay, { keepOpen: false, profilesDir }), '16300');
-    assert.equal(await openDeclaration('QENX000000777', netbay, { keepOpen: false, profilesDir }), null);
-    assert.deepEqual(mock.state.searched, ['QENX000000042', 'QENX000000777']);
-    console.log('✓ เปิดใบขนจาก Reference No.');
+    const keep = { keepOpen: true, profilesDir };
+    const base = mock.state.logins;               // เทสต์สร้าง Draft ด้านบน login ไปแล้ว
+    const searchedBefore = mock.state.searched.length;
+    try {
+      assert.equal(await openDeclaration('QENX000000042', netbay, keep), '16300');
+      assert.equal(mock.state.logins - base, 1, 'กดครั้งแรก login');
+      assert.equal(await openDeclaration('QENX000000777', netbay, keep), null);
+      assert.equal(await openDeclaration('QENX000000099', netbay, keep), '16399');
+      assert.equal(mock.state.logins - base, 1, 'กดครั้งต่อไปใช้ session เดิม ไม่ login ซ้ำ');
+      mock.state.epoch += 1;                        // บัญชีนี้ถูก login จากที่อื่น
+      assert.equal(await openDeclaration('QENX000000042', netbay, keep), '16300');
+      assert.equal(mock.state.logins - base, 2, 'session หลุด → login ใหม่เอง');
+      assert.deepEqual(mock.state.searched.slice(searchedBefore), ['QENX000000042', 'QENX000000777', 'QENX000000099', 'QENX000000042']);
+    } finally {
+      await closeNetbayChrome(netbayProfileDir(profilesDir, netbay.username));
+    }
+    console.log('✓ เปิดใบขนจาก Reference No. — จำ session ข้ามครั้ง · หลุดแล้ว login ใหม่เอง');
 
     console.log('ผ่านทั้งหมด');
   } finally {
