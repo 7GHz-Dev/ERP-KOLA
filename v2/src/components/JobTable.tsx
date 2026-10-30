@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { LiveSearch } from '@/components/LiveSearch';
 import { TableInteractions } from '@/components/TableInteractions';
+import { ColumnFilterButton, TableFilterScope } from '@/components/TableFilter';
 import type { JobRow } from '@/lib/queries/jobs';
 
 /**
@@ -107,6 +108,8 @@ export function JobTable({
       {/* ดับเบิลคลิกแถวเพื่อเปิด Drawer และเก็บลำดับแถวให้ปุ่ม ◀ ▶ ใช้ */}
       <TableInteractions ids={rows.map((r) => r.id)} />
 
+      {/* ตัวกรองหัวคอลัมน์ + เลือกคอลัมน์ — จำแยกตามหน้าและแท็บ */}
+      <TableFilterScope storageKey={`${basePath}?tab=${carry.tab ?? ''}&sub=${carry.sub ?? ''}`}>
       <div className="table-wrap">
         <table className="data">
           <thead>
@@ -115,10 +118,12 @@ export function JobTable({
               {columns.map((c) => (
                 <th
                   key={c.label}
+                  data-col={c.label || undefined}
                   className={[c.kind === 'actions' ? 'col-actions' : null, c.className]
                     .filter(Boolean).join(' ') || undefined}
                   style={c.align ? { textAlign: c.align } : undefined}
                 >
+                  <div className="th-cell">
                   {c.header ?? (c.sortKey ? (
                     <Link
                       className="sort-link"
@@ -133,8 +138,11 @@ export function JobTable({
                       </i>
                     </Link>
                   ) : (
-                    c.label
+                    <span>{c.label}</span>
                   ))}
+                  {/* คอลัมน์ปุ่มกรองไม่ได้ — ในช่องมีแต่ข้อความบนปุ่ม */}
+                  {c.label && !c.header && c.kind !== 'actions' ? <ColumnFilterButton col={c.label} /> : null}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -175,9 +183,9 @@ export function JobTable({
                 >
                   <td className="col-no">
                     {/* ยังเป็นลิงก์อยู่ เผื่อเบราว์เซอร์ที่ปิด JavaScript จะได้ยังเปิดสรุปงานได้ */}
-                    <Link className="row-open" href={`/job/${row.id}`} title={`เปิดสรุปงาน ${row.jobNo}`}>
-                      {index + 1}
-                    </Link>
+                    {/* เลขลำดับมาจาก CSS counter (.rowno) — นับใหม่เองเมื่อกรองแถวออก */}
+                    <Link className="row-open rowno" href={`/job/${row.id}`} title={`เปิดสรุปงาน ${row.jobNo}`}
+                      aria-label={`ลำดับ ${index + 1} เปิดสรุปงาน ${row.jobNo}`} />
                   </td>
                   {columns.map((c) => (
                     <td
@@ -199,12 +207,16 @@ export function JobTable({
           </tbody>
         </table>
       </div>
+      </TableFilterScope>
 
+      {rows.length < total ? (
+        <p className="notice">แสดง {rows.length} รายการแรกจาก {total} — ค้นหาในช่องใต้หัวคอลัมน์เพื่อให้แคบลง</p>
+      ) : null}
       <p className="meta">
         <b>{total}</b> รายการ
         {' · ดับเบิลคลิกแถวเพื่อดู Container, File และ Timeline ใน Drawer'}
         {hasSearch ? ' · พิมพ์ในช่องใต้หัวคอลัมน์เพื่อค้นหาทันที' : ''}
-        {' · คลิกหัวคอลัมน์เพื่อเรียงลำดับ'}
+        {' · คลิกหัวคอลัมน์เพื่อเรียงลำดับ · ปุ่มกรวยที่หัวคอลัมน์เพื่อกรอง'}
         {hint ? ` · ${hint}` : ''}
       </p>
     </>

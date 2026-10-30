@@ -59,13 +59,29 @@ export function BulkBar({
    * ทาสถานะติ๊กกลับลงไปที่ช่องจริงใน DOM
    * ช่องพวกนี้อยู่ในตารางที่เซิร์ฟเวอร์เรนเดอร์ จึงคุมด้วย React state ตรง ๆ ไม่ได้
    */
+  /*
+   * ตัวกรองหัวคอลัมน์ซ่อนแถวไป — ทิ้งรายการที่เลือกไว้แต่มองไม่เห็นแล้ว
+   * ไม่งั้นกดส่งแล้วจะพารายการที่ถูกกรองออกไปด้วยโดยไม่รู้ตัว
+   */
+  useEffect(() => {
+    const prune = () => setPicked((cur) => {
+      const next = cur.filter((id) => {
+        const box = document.querySelector<HTMLInputElement>(`[data-pick="${CSS.escape(id)}"]`);
+        return box && !box.closest('tr[hidden]');
+      });
+      return next.length === cur.length ? cur : next;
+    });
+    document.addEventListener('kola:table-filtered', prune);
+    return () => document.removeEventListener('kola:table-filtered', prune);
+  }, []);
+
   useEffect(() => {
     document.querySelectorAll<HTMLInputElement>('[data-pick]').forEach((box) => {
       box.checked = picked.includes(box.dataset.pick ?? '');
     });
     const all = document.querySelector<HTMLInputElement>('[data-pick-all]');
     if (all) {
-      const boxes = document.querySelectorAll<HTMLInputElement>('[data-pick]');
+      const boxes = visibleBoxes();
       all.checked = boxes.length > 0 && picked.length === boxes.length;
       all.indeterminate = picked.length > 0 && picked.length < boxes.length;
     }
@@ -102,7 +118,8 @@ export function BulkBar({
       onChange={(e) => {
         const box = e.target as HTMLInputElement;
         if (box.dataset.pickAll !== undefined) {
-          const all = [...document.querySelectorAll<HTMLInputElement>('[data-pick]')]
+          // เลือกทั้งหมด = เฉพาะแถวที่มองเห็น (ไม่รวมแถวที่ตัวกรองซ่อนไว้)
+          const all = visibleBoxes()
             .map((b) => b.dataset.pick ?? '')
             .filter(Boolean);
           setPicked(box.checked ? all : []);
@@ -158,6 +175,11 @@ export function BulkBar({
       ) : null}
     </div>
   );
+}
+
+/** ช่องติ๊กของแถวที่มองเห็นอยู่ — แถวที่ตัวกรองหัวคอลัมน์ซ่อนไว้ (tr[hidden]) ไม่นับ */
+function visibleBoxes() {
+  return [...document.querySelectorAll<HTMLInputElement>('[data-pick]')].filter((b) => !b.closest('tr[hidden]'));
 }
 
 /** ช่องติ๊กในแถว — เป็น markup เปล่าที่ตารางฝั่งเซิร์ฟเวอร์เรนเดอร์ได้ */

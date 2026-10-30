@@ -34,7 +34,7 @@ export default async function OverviewPage({
   const { search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const [summary, { rows, total }] = await Promise.all([
     dashboardSummary(),
-    listJobs({ search, sortBy, sortDir, pageSize: 50 }),
+    listJobs({ search, sortBy, sortDir }),
   ]);
 
   return (

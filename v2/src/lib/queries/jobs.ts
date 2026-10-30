@@ -3,6 +3,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { db } from '@/db';
 import { formatDate } from '@/lib/format';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
+import { MAX_ROWS } from '@/lib/table-filter';
 
 /**
  * ตัวดึงรายการงานกลางที่ทุกหน้าใช้ร่วมกัน
@@ -145,7 +146,11 @@ export async function listJobs(filter: JobFilter = {}) {
 
   const sortColumn = SORTABLE[filter.sortBy ?? 'createdAt'] ?? jobs.createdAt;
   const order = filter.sortDir === 'asc' ? asc(sortColumn) : desc(sortColumn);
-  const pageSize = Math.min(Math.max(filter.pageSize ?? 100, 1), 300);
+  /*
+   * แสดงครบทุกรายการ ตัวกรองหัวคอลัมน์ทำงานในหน้าเว็บกับแถวที่ได้มา (components/TableFilter)
+   * เดิมตัดที่ 100 โดยไม่มีปุ่มหน้าถัดไป งานที่เกินจึงหายไปเงียบ ๆ · เพดาน 5,000 กันหน้าใหญ่เกิน
+   */
+  const pageSize = Math.min(Math.max(filter.pageSize ?? MAX_ROWS, 1), MAX_ROWS);
   const page = Math.max(filter.page ?? 1, 1);
   const where = and(...(conditions.filter(Boolean) as SQL[]));
 

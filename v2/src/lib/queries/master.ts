@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { and, asc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { masterRecords } from '@/db/schema';
+import { MAX_ROWS } from '@/lib/table-filter';
 
 export const MASTER_TYPES = [
   { key: 'shippers', label: 'Shipper' },
@@ -34,7 +35,7 @@ export async function listMaster(type: string, search?: string) {
     .from(masterRecords)
     .where(and(...conditions))
     .orderBy(asc(masterRecords.code), asc(masterRecords.name))
-    .limit(500);
+    .limit(MAX_ROWS);
 }
 
 /** cache ไว้ต่อ request เพราะทุกหน้าในหมวด Master Data เรียกเหมือนกันหมด */

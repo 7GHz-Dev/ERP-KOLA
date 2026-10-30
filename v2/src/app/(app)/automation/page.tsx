@@ -4,7 +4,9 @@ import { automationTasks, jobs } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
 import { FileChip, Tabs } from '@/components/JobTable';
 import { CustomsMonitorBar } from '@/components/CustomsMonitor';
+import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { MAX_ROWS } from '@/lib/table-filter';
 import { netbayStatusLabel, netbayStatusTone } from '@/lib/customs-status';
 import { CUSTOMS_WORKER_MODE, DRAFT_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 
@@ -77,7 +79,7 @@ export default async function AutomationPage({
         : tab === 'done' ? eq(automationTasks.status, 'DONE') : undefined,
     ))
     .orderBy(tab === 'done' ? desc(automationTasks.completedAt) : desc(automationTasks.createdAt))
-    .limit(100);
+    .limit(MAX_ROWS);
 
   const pending = rows.filter((r) => r.status === 'QUEUED' || r.status === 'PROCESSING').length;
   const [drafters, monitors] = await Promise.all([
@@ -119,14 +121,15 @@ export default async function AutomationPage({
         </>
       ) : null}
 
+      <TableFilterScope storageKey={`/automation?tab=${tab}`}>
       <div className="table-wrap">
         <table className="data">
           {tab === 'draft' ? (
             <>
               <thead>
                 <tr>
-                  <th className="col-no">No.</th><th>เวลา</th><th>Job No.</th><th>ไฟล์ Final Invoice</th>
-                  <th>สถานะ</th><th>Ref No.</th><th>ครั้งที่</th><th>ทำโดย</th><th>ข้อผิดพลาด</th>
+                  <th className="col-no">No.</th><FilterTh label="เวลา" /><FilterTh label="Job No." /><FilterTh label="ไฟล์ Final Invoice" />
+                  <FilterTh label="สถานะ" /><FilterTh label="Ref No." /><FilterTh label="ครั้งที่" /><FilterTh label="ทำโดย" /><FilterTh label="ข้อผิดพลาด" />
                 </tr>
               </thead>
               <tbody>
@@ -134,7 +137,7 @@ export default async function AutomationPage({
                   <tr><td className="empty" colSpan={9}>ยังไม่มีงานในแถบนี้</td></tr>
                 ) : rows.map((r, i) => (
                   <tr key={r.id}>
-                    <td>{i + 1}</td>
+                    <td><span className="rowno" /></td>
                     <td>{formatDate(r.createdAt)}</td>
                     <td>{r.jobNo ?? '-'}</td>
                     <td>{r.inputFileName ?? '-'}</td>
@@ -151,8 +154,8 @@ export default async function AutomationPage({
             <>
               <thead>
                 <tr>
-                  <th className="col-no">No.</th><th>เวลาที่กด</th><th>Job No.</th><th>Ref No.</th>
-                  <th>สถานะใน NETBAY</th><th>เช็กล่าสุด</th><th>หมายเหตุ</th>
+                  <th className="col-no">No.</th><FilterTh label="เวลาที่กด" /><FilterTh label="Job No." /><FilterTh label="Ref No." />
+                  <FilterTh label="สถานะใน NETBAY" /><FilterTh label="เช็กล่าสุด" /><FilterTh label="หมายเหตุ" />
                 </tr>
               </thead>
               <tbody>
@@ -160,7 +163,7 @@ export default async function AutomationPage({
                   <tr><td className="empty" colSpan={7}>ไม่มีใบขนรอ ACCEPT</td></tr>
                 ) : rows.map((r, i) => (
                   <tr key={r.id}>
-                    <td>{i + 1}</td>
+                    <td><span className="rowno" /></td>
                     <td>{formatDateTime(r.createdAt)}</td>
                     <td>{r.jobId ? <a href={`/job/${r.jobId}`}>{r.jobNo}</a> : '-'}</td>
                     <td><RefLink refNo={r.draftRefNo ?? payloadRef(r.payload)} /></td>
@@ -179,8 +182,8 @@ export default async function AutomationPage({
             <>
               <thead>
                 <tr>
-                  <th className="col-no">No.</th><th>ACCEPT เมื่อ</th><th>Job No.</th><th>Ref No.</th>
-                  <th>Customs No.</th><th>ไฟล์ใบขนสินค้า</th>
+                  <th className="col-no">No.</th><FilterTh label="ACCEPT เมื่อ" /><FilterTh label="Job No." /><FilterTh label="Ref No." />
+                  <FilterTh label="Customs No." /><FilterTh label="ไฟล์ใบขนสินค้า" />
                 </tr>
               </thead>
               <tbody>
@@ -188,7 +191,7 @@ export default async function AutomationPage({
                   <tr><td className="empty" colSpan={6}>ยังไม่มีใบขนที่เสร็จ</td></tr>
                 ) : rows.map((r, i) => (
                   <tr key={r.id}>
-                    <td>{i + 1}</td>
+                    <td><span className="rowno" /></td>
                     <td>{formatDateTime(r.completedAt)}</td>
                     <td>{r.jobId ? <a href={`/job/${r.jobId}`}>{r.jobNo}</a> : '-'}</td>
                     <td><RefLink refNo={r.draftRefNo ?? payloadRef(r.payload)} /></td>
@@ -205,6 +208,7 @@ export default async function AutomationPage({
           )}
         </table>
       </div>
+      </TableFilterScope>
     </>
   );
 }

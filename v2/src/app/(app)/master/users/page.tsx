@@ -6,6 +6,7 @@ import { MasterMenu, USERS_MENU_KEY } from '@/components/MasterMenu';
 import {
   CreateUserForm, EditUserForm, ResetPasswordForm, ToggleActiveForm,
 } from '@/components/UserForms';
+import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,17 +39,18 @@ export default async function UsersPage({
 
           {/* ใช้ตารางชุดเดียวกับหน้างาน (table.data) หัวตารางจึงติดอยู่กับที่
               และแถวสลับสีเหมือนกันทุกหน้า ไม่ต้องเรียนรู้ตารางใหม่ */}
+          <TableFilterScope storageKey={'/master/users'}>
           <div className="table-wrap">
             <table className="data user-table">
               <thead>
                 <tr>
                   <th className="col-no">No.</th>
-                  <th>ชื่อผู้ใช้</th>
-                  <th>ชื่อที่แสดง</th>
-                  <th>สังกัด</th>
-                  <th>แผนก / ตำแหน่ง</th>
-                  <th>สิทธิ์</th>
-                  <th>สถานะ</th>
+                  <FilterTh label="ชื่อผู้ใช้" />
+                  <FilterTh label="ชื่อที่แสดง" />
+                  <FilterTh label="สังกัด" />
+                  <FilterTh label="แผนก / ตำแหน่ง" />
+                  <FilterTh label="สิทธิ์" />
+                  <FilterTh label="สถานะ" />
                   <th className="col-actions">จัดการ</th>
                 </tr>
               </thead>
@@ -56,7 +58,7 @@ export default async function UsersPage({
                 {rows.map((u, index) => (
                   /* ผู้ใช้ที่ถูกระงับจางลง จะได้กวาดตาเห็นเฉพาะคนที่ยังใช้งานอยู่ */
                   <tr key={u.id} className={u.isActive ? undefined : 'user-off'}>
-                    <td>{index + 1}</td>
+                    <td><span className="rowno" /></td>
                     <td><b>{u.username}</b></td>
                     <td>{u.displayName}</td>
                     <td>{companyLabel(u.company)}</td>
@@ -91,6 +93,7 @@ export default async function UsersPage({
               </tbody>
             </table>
           </div>
+          </TableFilterScope>
         </div>
       </div>
     </>

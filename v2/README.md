@@ -66,6 +66,7 @@ v2/
 | ตัว monitor ใบขน: รอ ACCEPT แล้วดึงเลขใบขน + PDF จาก NETBAY (`npm run worker:customs` · ดู [docs/CUSTOMS-MONITOR.md](docs/CUSTOMS-MONITOR.md)) | เสร็จ (รอตรวจกับหน้าจริง: `npm run netbay:probe`) |
 | ส่งมอบคนเดินเอกสาร (หลายรายการ) → Upload ชุดปล่อย → ส่ง Partner | เสร็จ |
 | แพลนลากตู้ NAMKANG → MAY | เสร็จ (เชื่อม ERP SHIPME ภายหลัง) |
+| ทุกตารางแสดงครบทุกรายการ (เพดาน 5,000) · ปุ่มกรวยที่หัวคอลัมน์ (ติ๊กค่า / ช่วงวันที่) · เลือกคอลัมน์ · จำแยกหน้าในเครื่อง | เสร็จ |
 
 ### ความเร็วที่วัดได้
 
@@ -146,6 +147,7 @@ npm run test:all
 | `npm run test:session` | คุกกี้ปลอมไม่ได้ แก้ role ไม่ได้ หมดอายุแล้วใช้ไม่ได้ |
 | `npm run test:worker` | REST ของ Python ทำงานถูก และเรียกคำสั่งนอกขอบเขตไม่ได้ |
 | `npm run test:parser` | อ่าน PDF ตัวอย่างของทุกสายเรือได้ |
+| `npm run test:table-filter` | ตัวกรองตาราง: ค่าในช่อง · วันที่ · กรองหลายคอลัมน์ · นับค่า · ค่าที่จำไว้ |
 | `npm run test:customs` | ตัว monitor ใบขน: อ่านสถานะ · ACCEPT แล้วดาวน์โหลด zip ได้ PDF ที่ถูกใบ · เข้า NETBAY ไม่ได้ |
 
 ## อีกสองกติกาที่เจอตอนไล่ปัญหา

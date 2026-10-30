@@ -2,6 +2,7 @@ import { requireUserReady } from '@/lib/auth';
 import { listMaster, masterCounts, MASTER_TYPES } from '@/lib/queries/master';
 import { MasterRecordForm } from '@/components/ActionForms';
 import { MasterMenu } from '@/components/MasterMenu';
+import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,15 +39,16 @@ export default async function MasterPage({
             <MasterRecordForm type={type} typeLabel={typeLabel} isSettings={isSettings} />
           </div>
 
+          <TableFilterScope storageKey={`/master?type=${type}`}>
           <div className="table-wrap">
             <table className="data">
               <thead>
                 <tr>
                   <th className="col-no">No.</th>
-                  <th>รหัส</th>
-                  <th>ชื่อ</th>
-                  <th>{isSettings ? 'ค่า' : 'รายละเอียด'}</th>
-                  <th>สถานะ</th>
+                  <FilterTh label="รหัส" />
+                  <FilterTh label="ชื่อ" />
+                  <FilterTh label={isSettings ? 'ค่า' : 'รายละเอียด'} />
+                  <FilterTh label="สถานะ" />
                   <th className="col-actions">จัดการ</th>
                 </tr>
               </thead>
@@ -55,7 +57,7 @@ export default async function MasterPage({
                   <tr><td className="empty" colSpan={6}>ยังไม่มีข้อมูล กดปุ่มเพิ่มด้านบนได้เลย</td></tr>
                 ) : rows.map((r, i) => (
                   <tr key={r.id}>
-                    <td>{i + 1}</td>
+                    <td><span className="rowno" /></td>
                     <td>{r.code ?? '-'}</td>
                     <td>{r.name}</td>
                     <td>{isSettings ? <b>{r.value ?? '-'}</b> : (r.description ?? r.country ?? r.roleName ?? '-')}</td>
@@ -80,6 +82,7 @@ export default async function MasterPage({
               </tbody>
             </table>
           </div>
+          </TableFilterScope>
           <p className="meta">{rows.length} รายการ</p>
         </div>
       </div>

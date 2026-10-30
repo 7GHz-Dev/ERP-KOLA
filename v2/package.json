@@ -49,7 +49,8 @@
     "worker:customs": "tsx --tsconfig tsconfig.json scripts/customs-monitor.ts",
     "netbay:probe": "tsx --tsconfig tsconfig.json scripts/netbay-probe.ts",
     "test:customs": "tsx --tsconfig tsconfig.json tests/customs-monitor.ts",
-    "migrate:customs-flow": "tsx scripts/migrate-customs-flow.ts"
+    "migrate:customs-flow": "tsx scripts/migrate-customs-flow.ts",
+    "test:table-filter": "tsx --tsconfig tsconfig.json tests/table-filter.ts"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.9.1",

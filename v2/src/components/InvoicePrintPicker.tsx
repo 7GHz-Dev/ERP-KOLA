@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 
 /**
  * เลือกเลข BL หลายใบแล้วเปิด Invoice DO รวมกันเพื่อสั่งพิมพ์
@@ -25,11 +26,28 @@ export function InvoicePrintPicker({ rows }: { rows: InvoiceRow[] }) {
   const toggle = (id: string) =>
     setPicked((cur) => (cur.includes(id) ? cur.filter((v) => v !== id) : [...cur, id]));
 
-  const allPicked = rows.length > 0 && picked.length === rows.length;
+  /*
+   * แถวที่มองเห็นหลังกรองหัวคอลัมน์ — เลือกทั้งหมดเลือกเฉพาะแถวที่เห็น
+   * และทิ้งใบที่เลือกไว้แต่ถูกกรองออก ไม่ให้ไปโผล่ในไฟล์รวมโดยมองไม่เห็นว่าเลือกไว้
+   */
+  const [shown, setShown] = useState<string[] | null>(null);
+  useEffect(() => {
+    const sync = () => {
+      const ids = rows.map((r) => r.fileId)
+        .filter((id) => !document.querySelector(`tr[data-file="${CSS.escape(id)}"]`)?.hasAttribute('hidden'));
+      setShown((cur) => (cur && cur.join() === ids.join() ? cur : ids));
+      setPicked((cur) => { const next = cur.filter((id) => ids.includes(id)); return next.length === cur.length ? cur : next; });
+    };
+    document.addEventListener('kola:table-filtered', sync);
+    return () => document.removeEventListener('kola:table-filtered', sync);
+  }, [rows]);
+  const visible = shown ?? rows.map((r) => r.fileId);
+  const allPicked = visible.length > 0 && visible.every((id) => picked.includes(id));
   const href = `/api/invoice-print?${picked.map((id) => `id=${encodeURIComponent(id)}`).join('&')}`;
 
   return (
     <>
+      <TableFilterScope storageKey="/account/invoice-print">
       <div className="table-wrap">
         <table className="data">
           <thead>
@@ -40,23 +58,23 @@ export function InvoicePrintPicker({ rows }: { rows: InvoiceRow[] }) {
                   className="pick-box"
                   aria-label="เลือกทั้งหมด"
                   checked={allPicked}
-                  onChange={(e) => setPicked(e.target.checked ? rows.map((r) => r.fileId) : [])}
+                  onChange={(e) => setPicked(e.target.checked ? visible : [])}
                 />
               </th>
-              <th>ลำดับพิมพ์</th>
-              <th>BL No.</th>
-              <th>Consignee</th>
-              <th>SHIPLINE</th>
-              <th>ETA</th>
-              <th>ไฟล์ Invoice DO</th>
-              <th>อัปโหลดเมื่อ</th>
+              <FilterTh label="ลำดับพิมพ์" filter={false} />
+              <FilterTh label="BL No." />
+              <FilterTh label="Consignee" />
+              <FilterTh label="SHIPLINE" />
+              <FilterTh label="ETA" />
+              <FilterTh label="ไฟล์ Invoice DO" />
+              <FilterTh label="อัปโหลดเมื่อ" />
             </tr>
           </thead>
           <tbody>
             {rows.length ? rows.map((r) => {
               const at = picked.indexOf(r.fileId);
               return (
-                <tr key={r.fileId} className={at >= 0 ? 'row-picked' : undefined}>
+                <tr key={r.fileId} data-file={r.fileId} className={at >= 0 ? 'row-picked' : undefined}>
                   <td className="col-pick">
                     <input
                       type="checkbox"
@@ -86,6 +104,7 @@ export function InvoicePrintPicker({ rows }: { rows: InvoiceRow[] }) {
           </tbody>
         </table>
       </div>
+      </TableFilterScope>
 
       {picked.length ? (
         <div className="bulk-bar" role="status">

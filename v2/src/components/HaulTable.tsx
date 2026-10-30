@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { PickAllBox, PickBox } from '@/components/BulkBar';
+import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
 import type { HaulRow, HaulView } from '@/lib/queries/haul';
 
@@ -12,22 +13,23 @@ export function HaulTable({ rows, view, pickable }: { rows: HaulRow[]; view: Hau
   const planned = view !== 'wait';
   const cols = 10 + (pickable ? 1 : 0) + (planned ? 1 : 0);
   return (
+    <TableFilterScope storageKey={`haul:${view}`}>
     <div className="table-wrap">
       <table className="data">
         <thead>
           <tr>
             {pickable ? <th className="col-pick"><PickAllBox /></th> : null}
             <th className="col-no">No.</th>
-            {planned ? <th>วันลากตู้</th> : null}
-            <th>Container No.</th>
-            <th>ประเภท</th>
-            <th>เลขประจำตู้</th>
-            <th>BL No.</th>
-            <th>Consignee</th>
-            <th>Terminal</th>
-            <th>ETA</th>
-            <th>Last Date of DEM</th>
-            <th>{{ wait: 'ส่ง Partner เมื่อ', sent: 'สถานะแพลน', new: 'ส่งแพลนเมื่อ', ack: 'รับแพลนเมื่อ' }[view]}</th>
+            {planned ? <FilterTh label="วันลากตู้" /> : null}
+            <FilterTh label="Container No." />
+            <FilterTh label="ประเภท" />
+            <FilterTh label="เลขประจำตู้" />
+            <FilterTh label="BL No." />
+            <FilterTh label="Consignee" />
+            <FilterTh label="Terminal" />
+            <FilterTh label="ETA" />
+            <FilterTh label="Last Date of DEM" />
+            <FilterTh label={{ wait: 'ส่ง Partner เมื่อ', sent: 'สถานะแพลน', new: 'ส่งแพลนเมื่อ', ack: 'รับแพลนเมื่อ' }[view]} />
           </tr>
         </thead>
         <tbody>
@@ -40,7 +42,7 @@ export function HaulTable({ rows, view, pickable }: { rows: HaulRow[]; view: Hau
           ) : rows.map((r, i) => (
             <tr key={r.containerId}>
               {pickable ? <td className="col-pick"><PickBox id={r.containerId} /></td> : null}
-              <td>{i + 1}</td>
+              <td><span className="rowno" /></td>
               {planned ? <td><b>{formatDate(r.haulDate)}</b></td> : null}
               <td><b>{r.containerNo ?? '-'}</b></td>
               <td>{r.containerType ?? '-'}</td>
@@ -65,6 +67,7 @@ export function HaulTable({ rows, view, pickable }: { rows: HaulRow[]; view: Hau
         </tbody>
       </table>
     </div>
+    </TableFilterScope>
   );
 }
 

@@ -21,7 +21,7 @@ export default async function MasterJobsPage({ searchParams }: {
   const tab = one('tab') === 'inactive' ? 'inactive' : 'active';
   const page = Math.max(1, Math.floor(Number(one('page')) || 1));
   const [{ rows, total, pageSize }, counts] = await Promise.all([
-    listJobs({ archived: tab === 'inactive', search, sortBy: sortBy ?? 'createdAt', sortDir, page, pageSize: 100 }),
+    listJobs({ archived: tab === 'inactive', search, sortBy: sortBy ?? 'createdAt', sortDir, page }),
     masterCounts(),
   ]);
   const columns: Column[] = [

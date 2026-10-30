@@ -77,7 +77,6 @@ export default async function JobsPage({
     search,
     sortBy: sortBy ?? 'jobNo',
     sortDir,
-    pageSize: 300,
   });
 
   const columns: Column[] = [

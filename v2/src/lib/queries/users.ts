@@ -1,6 +1,7 @@
 import { asc, ilike, or } from 'drizzle-orm';
 import { db } from '@/db';
 import { users } from '@/db/schema';
+import { MAX_ROWS } from '@/lib/table-filter';
 
 /**
  * รายชื่อผู้ใช้ทั้งหมดสำหรับหน้าจัดการผู้ใช้
@@ -29,7 +30,7 @@ export async function listUsers(search?: string) {
       ? or(ilike(users.username, like), ilike(users.displayName, like))
       : undefined)
     .orderBy(asc(users.username))
-    .limit(500);
+    .limit(MAX_ROWS);
 }
 
 export type UserRow = Awaited<ReturnType<typeof listUsers>>[number];

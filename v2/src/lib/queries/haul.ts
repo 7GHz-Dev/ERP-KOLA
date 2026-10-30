@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/db';
 import { containers, haulPlans, jobs, masterRecords } from '@/db/schema';
+import { MAX_ROWS } from '@/lib/table-filter';
 
 /**
  * รายการตู้สำหรับแพลนลากตู้ — แถวละตู้ ไม่ใช่แถวละงาน เพราะแพลนรถลากเป็นรายตู้
@@ -65,7 +66,7 @@ export async function listHaulRows(view: HaulView, q = '') {
     .leftJoin(sql`${masterRecords} as terminal`, sql`terminal.id = ${jobs.terminalId}`)
     .where(and(...conditions))
     .orderBy(...order)
-    .limit(500);
+    .limit(MAX_ROWS);
 }
 
 export type HaulRow = Awaited<ReturnType<typeof listHaulRows>>[number];

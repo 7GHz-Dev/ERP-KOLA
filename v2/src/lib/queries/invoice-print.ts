@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { files, jobs } from '@/db/schema';
+import { MAX_ROWS } from '@/lib/table-filter';
 
 /**
  * รายการ BL ที่มีไฟล์ Invoice DO ให้ฝ่ายบัญชีเลือกไปพิมพ์
@@ -66,7 +67,7 @@ export async function listInvoiceDoJobs(search?: string) {
         or(...terms.map((t) => sql`${jobs.blNo} ilike ${`%${t}%`}`)),
       ))
       .orderBy(desc(files.uploadedAt))
-      .limit(300);
+      .limit(MAX_ROWS);
   }
 
   const term = terms[0] ?? '';
@@ -95,7 +96,7 @@ export async function listInvoiceDoJobs(search?: string) {
         : undefined,
     ))
     .orderBy(desc(files.uploadedAt))
-    .limit(300);
+    .limit(MAX_ROWS);
 }
 
 /** ไฟล์ที่เลือกไว้ เรียงตามลำดับที่ผู้ใช้ติ๊ก เพื่อให้หน้าในไฟล์รวมเรียงตามที่เห็นบนจอ */

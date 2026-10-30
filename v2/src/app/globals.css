@@ -2159,3 +2159,63 @@ label.mini:has(.search-select) { overflow: visible; }
 .line-oa-form .button { align-self: flex-start; }
 .line-oa-steps { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .line-oa-steps code { font-size: 11px; word-break: break-all; color: var(--ink); }
+
+/* ---------- ตัวกรองตาราง (components/TableFilter.tsx) ---------- */
+
+/*
+  เลขลำดับแถวมาจาก CSS counter — แถวที่ถูกกรองซ่อน (hidden) ไม่นับ เลขจึงเรียงใหม่เองตามที่เห็น
+  ต้องบังคับ display:none ให้แถวที่ hidden เพราะกฎตารางบางตัวตั้ง display ให้ tr ไว้
+*/
+table.data tbody { counter-reset: rowno; }
+table.data tbody tr:not([hidden]) { counter-increment: rowno; }
+table.data .rowno::before { content: counter(rowno); }
+table.data tbody tr[hidden] { display: none; }
+
+/* หัวคอลัมน์: ชื่อ (ลิงก์เรียงลำดับ) ซ้าย · ปุ่มกรวยขวา */
+.th-cell { display: flex; align-items: center; gap: 4px; }
+.th-cell > a, .th-cell > span { flex: 1 1 auto; }
+.tf-btn {
+  flex: none; border: 0; background: transparent; color: rgba(255,255,255,.65);
+  cursor: pointer; line-height: 0; padding: 4px 5px; border-radius: 4px;
+}
+.tf-btn:hover { background: rgba(255,255,255,.16); color: #fff; }
+.tf-btn.on { background: #f5b84d; color: var(--navy); }
+/* คอลัมน์ที่มีตัวกรองอยู่ — เส้นสีเหลืองใต้หัว ให้เห็นว่าตารางนี้ไม่ได้แสดงครบ */
+table.data thead th[data-filtered] { background: var(--navy-2); box-shadow: inset 0 -3px 0 #f5b84d; }
+
+.tf-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.tf-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+  background: var(--amber-soft); color: var(--amber); border: 1px solid #f0d58a;
+  border-radius: 999px; padding: 3px 4px 3px 11px;
+}
+.tf-chip button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 5px; font-size: 11px; }
+.tf-count { color: var(--muted); font-size: 12px; }
+.button.tf-on { border-color: var(--amber); color: var(--amber); }
+
+/* เมนูลอยของหัวคอลัมน์ — fixed เพราะ portal ไปที่ body (กรอบตารางตัดของที่ล้นกรอบ) */
+.tf-menu {
+  position: fixed; z-index: 200; overflow: auto;
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); color: var(--ink); font-size: 13px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 11px;
+  box-shadow: 0 12px 30px rgba(24,50,71,.22);
+}
+.tf-menu input[type="search"], .tf-menu input[type="date"] {
+  width: 100%; padding: 6px 8px; font-size: 12px; font-family: inherit; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px;
+}
+.tf-menu input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+.tf-title { font-size: 12px; }
+.tf-list {
+  display: flex; flex-direction: column; max-height: 260px; overflow: auto;
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px;
+}
+.tf-list label { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.tf-list label:hover { background: var(--blue-soft); }
+.tf-list span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-list small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tf-blank span { color: var(--muted); font-style: italic; }
+.tf-empty { color: var(--muted); padding: 6px; }
+.tf-quick { display: flex; flex-wrap: wrap; gap: 5px; }
+.tf-actions { display: flex; justify-content: flex-end; gap: 6px; }
