@@ -7,8 +7,8 @@ import { automationTasks, customsEntries, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId, required, runAction } from './common';
-import { reuseOpenTask, TASK_TYPES } from '@/lib/automation';
-import { requestRefresh } from '@/lib/customs-monitor';
+import { completeTask, reuseOpenTask, TASK_TYPES } from '@/lib/automation';
+import { recordCustomsCheck, requestRefresh } from '@/lib/customs-monitor';
 import { netbayCredentials } from '@/lib/netbay-accounts';
 
 /**
@@ -101,6 +101,64 @@ export async function refreshCustoms(username: string) {
   } catch (error) {
     return { ok: false as const, reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * จำลอง ACCEPT (ทดสอบ) — ใช้ทดสอบทั้งเส้นทางด้วยไฟล์ทดสอบ ซึ่งส่ง Customs จริงไม่ได้ ตัว monitor จึงไม่มีวันเห็น ACCEPT
+ * ทำแบบเดียวกับที่ตัว monitor ทำตอนเจอ ACCEPT: บันทึกสถานะ แล้ว completeTask ด้วยเลขใบขน + PDF
+ * เลขใบขนขึ้นต้น A999 และ PDF เขียนชัดว่าเป็นเอกสารทดสอบ — งานเดินต่อไปเตรียมเอกสารเดิน E ได้ตามปกติ
+ * ADMIN เท่านั้น: กดกับงานจริงเท่ากับใส่เลขใบขนปลอมลงงาน
+ */
+async function simulateCustomsAcceptImpl(formData: FormData) {
+  const user = await requireActiveSession(['ADMIN']);
+  if (user.role !== 'ADMIN') throw new Error('จำลอง ACCEPT ได้เฉพาะ ADMIN');
+  const taskId = required(formData.get('taskId'), 'งานในคิว', 80);
+
+  const [task] = await db.select().from(automationTasks).where(eq(automationTasks.id, taskId)).limit(1);
+  if (!task || task.type !== TASK_TYPES.CUSTOMS) throw new Error('ไม่พบงานสร้างใบขนนี้ในคิว');
+  if (task.status !== 'QUEUED' && task.status !== 'PROCESSING') throw new Error('งานนี้ไม่ได้รอ ACCEPT แล้ว');
+  const [job] = task.jobId ? await db.select().from(jobs).where(eq(jobs.id, task.jobId)).limit(1) : [];
+  if (!job) throw new Error('ไม่พบงาน');
+
+  // A + 13 หลักตามรูปแบบเลขใบขน · A999 นำหน้าให้เห็นว่าเป็นเลขทดสอบ
+  const entryNo = `A999${String(Date.now()).slice(-10)}`;
+  const pdf = await testDeclarationPdf({ entryNo, refNo: job.draftRefNo ?? '', blNo: job.blNo ?? '', jobNo: job.jobNo ?? '' });
+
+  await recordCustomsCheck({ taskId, actorId: user.id, status: 'ACCEPT' });
+  await completeTask({
+    taskId, actorId: user.id, entryNo,
+    file: { name: `${entryNo}.pdf`, mimeType: 'application/pdf', body: pdf },
+  });
+  await logActivity(user.id, 'SIMULATE_CUSTOMS_ACCEPT', 'JOB', job.id, { taskId, entryNo });
+
+  revalidatePath('/automation');
+  revalidatePath('/fah/draft');
+  revalidatePath('/pending');
+}
+
+/** PDF ใบขนทดสอบ 1 หน้า — อักษรละตินล้วน ไม่ต้องใช้ฟอนต์ไทย */
+async function testDeclarationPdf(v: { entryNo: string; refNo: string; blNo: string; jobNo: string }) {
+  const { PDFDocument, StandardFonts, rgb } = await import('@cantoo/pdf-lib');
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595.28, 841.89]);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const red = rgb(0.75, 0.1, 0.1);
+  page.drawText('TEST IMPORT DECLARATION', { x: 60, y: 760, size: 24, font: bold });
+  page.drawText('SIMULATED - NOT A REAL CUSTOMS DOCUMENT', { x: 60, y: 730, size: 14, font: bold, color: red });
+  const rows = [
+    ['Declaration No.', v.entryNo], ['Reference No.', v.refNo || '-'], ['BL No.', v.blNo || '-'],
+    ['Job No.', v.jobNo || '-'], ['Status', 'Customs Accept (simulated)'], ['Created', new Date().toISOString()],
+  ];
+  rows.forEach(([k, val], i) => {
+    page.drawText(k, { x: 60, y: 680 - i * 26, size: 13, font: bold });
+    page.drawText(val, { x: 220, y: 680 - i * 26, size: 13, font });
+  });
+  return Buffer.from(await doc.save());
+}
+
+export async function simulateCustomsAccept(formData: FormData) {
+  return runAction(() => simulateCustomsAcceptImpl(formData));
 }
 
 /** ดึงผลกลับเข้า Job — เก็บไว้เผื่อกรณีที่ worker บันทึกผลแต่ Job ยังไม่อัปเดต */

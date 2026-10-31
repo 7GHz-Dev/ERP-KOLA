@@ -5,6 +5,7 @@ import { requireUserReady } from '@/lib/auth';
 import { FileChip, Tabs } from '@/components/JobTable';
 import { CustomsMonitorBar } from '@/components/CustomsMonitor';
 import { CustomsRefresh } from '@/components/CustomsRefresh';
+import { SimulateAcceptButton } from '@/components/SimulateAccept';
 import { StopWorkerButton } from '@/components/StopWorkerButton';
 import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -42,7 +43,9 @@ function RefLink({ refNo }: { refNo: string | null | undefined }) {
 export default async function AutomationPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUserReady(['PAINT', 'FAH']);
+  const user = await requireUserReady(['PAINT', 'FAH']);
+  // ทดสอบทั้งเส้นทางด้วยไฟล์ทดสอบ — ADMIN จำลอง ACCEPT ได้ (ไฟล์ทดสอบส่ง Customs จริงไม่ได้)
+  const canSimulate = user.role === 'ADMIN';
   const params = await searchParams;
   const raw = typeof params.tab === 'string' ? params.tab : '';
   const tab = TABS.some((t) => t.key === raw) ? raw : 'draft';
@@ -185,7 +188,11 @@ export default async function AutomationPage({
                         : <span className={`badge ${netbayStatusTone(r.externalStatus)}`}>{netbayStatusLabel(r.externalStatus)}</span>}
                     </td>
                     <td>{r.checkedAt ? formatDateTime(r.checkedAt) : '-'}</td>
-                    <td>{r.error ?? ''}</td>
+                    <td>
+                      {r.error ?? ''}
+                      {canSimulate && (r.status === 'QUEUED' || r.status === 'PROCESSING')
+                        ? <SimulateAcceptButton taskId={r.id} /> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

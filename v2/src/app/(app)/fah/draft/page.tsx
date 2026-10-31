@@ -7,6 +7,7 @@ import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RejectDraftButton } from '@/components/ActionForms';
 import { CustomsMonitorAutoLaunch, CustomsMonitorBar, SubmitCustomsDone } from '@/components/CustomsMonitor';
 import { CustomsRefresh } from '@/components/CustomsRefresh';
+import { SimulateAcceptButton } from '@/components/SimulateAccept';
 import { CUSTOMS_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 import { TASK_TYPES } from '@/lib/automation';
 import { netbayStatusLabel, netbayStatusTone } from '@/lib/customs-status';
@@ -26,10 +27,10 @@ const SEARCH_KEYS = ['shipper', 'blNo', 'refNo', 'consignee', 'entryNo'];
  * แท็บตรวจ Draft ใช้บอกว่างานถูกคืนมาเพราะใบขนถูกยกเลิกใน NETBAY (งานในคิวเป็น ERROR)
  */
 async function latestCustomsTasks(jobIds: string[]) {
-  const map = new Map<string, { status: string; externalStatus: string | null; error: string | null }>();
+  const map = new Map<string, { id: string; status: string; externalStatus: string | null; error: string | null }>();
   if (!jobIds.length) return map;
   const rows = await db.select({
-    jobId: automationTasks.jobId, status: automationTasks.status,
+    id: automationTasks.id, jobId: automationTasks.jobId, status: automationTasks.status,
     externalStatus: automationTasks.externalStatus, error: automationTasks.error,
   }).from(automationTasks)
     .where(and(eq(automationTasks.type, TASK_TYPES.CUSTOMS), inArray(automationTasks.jobId, jobIds)))
@@ -41,7 +42,8 @@ async function latestCustomsTasks(jobIds: string[]) {
 export default async function FahDraftPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUserReady(['FAH']);
+  const user = await requireUserReady(['FAH']);
+  const canSimulate = user.role === 'ADMIN';           // จำลอง ACCEPT สำหรับงานทดสอบ
   const params = await searchParams;
   const { one, search, sortBy, sortDir, carry } = readParams(params, SEARCH_KEYS);
   const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'review';
@@ -73,7 +75,13 @@ export default async function FahDraftPage({
            label: 'สถานะใน NETBAY',
            render: (r) => {
              const t = tasks.get(r.id);
-             return <span className={`badge ${netbayStatusTone(t?.externalStatus)}`}>{netbayStatusLabel(t?.externalStatus)}</span>;
+             return (
+               <div className="row-actions">
+                 <span className={`badge ${netbayStatusTone(t?.externalStatus)}`}>{netbayStatusLabel(t?.externalStatus)}</span>
+                 {canSimulate && t && (t.status === 'QUEUED' || t.status === 'PROCESSING')
+                   ? <SimulateAcceptButton taskId={t.id} /> : null}
+               </div>
+             );
            },
          }]
       : [col.shipper(), col.blNo(), col.refNo(), col.consignee(),
