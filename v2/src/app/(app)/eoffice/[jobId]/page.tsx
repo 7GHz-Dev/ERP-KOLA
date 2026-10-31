@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { eofficeRequests, files } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
 import { loadEofficeForm } from '@/lib/eoffice-form';
+import { officerLine, routeLine } from '@/lib/eoffice-officer';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,7 @@ export default async function EofficeRequestPage({
       .limit(1)
     : [];
   const [book, running] = (req.requestNo ?? '/').split('/');
+  const officer = officerLine(req.officerPrefix, req.attentionName, req.officerSurname);
 
   // ค่าที่ตั้งไว้เป็นพอยต์อยู่แล้ว ส่งเข้า CSS ตรง ๆ ได้เลย
   const pt = (key: string) => `${f.n(key)}pt`;
@@ -163,7 +165,7 @@ export default async function EofficeRequestPage({
 
         <div className="sign-area">
           <div className="sign-left">
-            <div>{[f.t('routeTo'), req.attentionName].filter(Boolean).join(' ')}</div>
+            <div>{routeLine(f.t('routeTo'), req.attentionName)}</div>
             <div className="indent">{f.t('routeNote')}</div>
           </div>
           <div className="sign-right">
@@ -181,9 +183,16 @@ export default async function EofficeRequestPage({
             </tr>
           </thead>
           <tbody>
-            <tr><td /><td /></tr>
+            <tr>
+              {/* เจ้าหน้าที่ชิดล่างของช่อง ด้านบนเว้นให้เซ็น */}
+              <td style={{ verticalAlign: 'bottom', textAlign: 'center' }}>
+                {officer ? <><div>{officer}</div><div>{req.officerPosition}</div></> : null}
+              </td>
+              <td />
+            </tr>
           </tbody>
         </table>
+        {req.sectionCode ? <div style={{ textAlign: 'right', paddingRight: 8 }}>{req.sectionCode}</div> : null}
       </div>
     </>
   );

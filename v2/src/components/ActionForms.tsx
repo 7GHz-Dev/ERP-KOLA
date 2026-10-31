@@ -7,6 +7,7 @@ import {
 import { acknowledgeInvoice, uploadJobFile } from '@/lib/actions/files';
 import { submitDraftTask } from '@/lib/actions/automation';
 import { createEofficeRequest } from '@/lib/actions/eoffice';
+import { DEFAULT_CURRENCY, DEFAULT_OFFICER_POSITION, DEFAULT_OFFICER_PREFIX, formatAmount, OFFICER_PREFIXES } from '@/lib/eoffice-officer';
 import { undoEofficeHandover } from '@/lib/actions/eoffice-handover';
 import { saveMasterRecord } from '@/lib/actions/master';
 import { ConfirmSubmit, PopoverCancel, PopoverHead } from '@/components/Interactions';
@@ -297,12 +298,16 @@ export function SubmitDraftTask({
 /* ---------- คำร้อง E-Office ---------- */
 
 export function EofficeRequestForm({
-  jobId, unitAmount, packageType, grossWeight, product, hasRequest, attentionName,
+  jobId, unitAmount, packageType, grossWeight, product, hasRequest, attentionName, officer, goodsValue, goodsCurrency,
 }: {
   jobId: string; unitAmount: string | null; packageType: string | null;
   grossWeight: string | null; product: string | null; hasRequest: boolean;
   /** ชื่อที่จ่าหน้าถึงของคำร้องใบก่อน เติมกลับให้ตอนออกใหม่ */
   attentionName: string | null;
+  /** เจ้าหน้าที่ + ฝ่ายของคำร้องใบก่อน */
+  officer?: { prefix: string | null; surname: string | null; position: string | null; section: string | null };
+  goodsValue?: string | null;
+  goodsCurrency?: string | null;
 }) {
   return (
     <details className="disclosure">
@@ -320,24 +325,47 @@ export function EofficeRequestForm({
         </label>
         <label className="mini">
           <span>น้ำหนักสุทธิ (ไม่ต้องใส่ KGM)</span>
-          <input name="netWeight" defaultValue={Number(grossWeight ?? 0) || ''} />
+          <input name="netWeight" defaultValue={formatAmount(Number(grossWeight ?? 0) || '')} />
         </label>
         <label className="mini">
           <span>ราคาของ</span>
-          <input name="goodsValue" placeholder="153,000" required />
+          <input name="goodsValue" placeholder="5,311,490" required
+            defaultValue={hasRequest && Number(goodsValue) ? formatAmount(Number(goodsValue)) : ''} />
         </label>
         <label className="mini">
           <span>สกุลเงิน</span>
-          <input name="goodsCurrency" defaultValue="USD" />
+          {/* คำร้องใหม่ตั้งต้นเป็น JPY · ออกใหม่ใช้สกุลเดิมของงาน */}
+          <input name="goodsCurrency" defaultValue={hasRequest && goodsCurrency ? goodsCurrency : DEFAULT_CURRENCY} />
         </label>
         <label className="mini">
           <span>ชนิดของ</span>
           <input name="goodsType" defaultValue={`${product ?? 'สินค้า'} (รายละเอียดตามใบขนฯ แนบ)`} />
         </label>
         <label className="mini">
-          <span>เรียน คุณ</span>
-          <input name="attentionName" defaultValue={attentionName ?? ''} placeholder="ชื่อเจ้าหน้าที่ที่จ่าหน้าถึง" />
+          <span>คำนำหน้า</span>
+          <select name="officerPrefix" defaultValue={officer?.prefix || DEFAULT_OFFICER_PREFIX}>
+            {OFFICER_PREFIXES.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
         </label>
+        <label className="mini">
+          <span>เรียน คุณ (ชื่อ)</span>
+          <input name="attentionName" defaultValue={attentionName ?? ''} placeholder="ฐานวีร์" />
+        </label>
+        <label className="mini">
+          <span>นามสกุล</span>
+          <input name="officerSurname" defaultValue={officer?.surname ?? ''} placeholder="จิโรชอภิวรรธน์" />
+        </label>
+        <label className="mini">
+          <span>ตำแหน่ง</span>
+          <input name="officerPosition" defaultValue={officer?.position || DEFAULT_OFFICER_POSITION} />
+        </label>
+        <label className="mini">
+          <span>ฝศ,สบศ (ว่าง = ตามท่าของงาน)</span>
+          <input name="sectionCode" defaultValue="" placeholder={officer?.section || 'เช่น 3,1'} />
+        </label>
+        <small className="muted">
+          ชื่อขึ้นสองที่: &quot;เรียน คุณ…&quot; และในช่องบันทึกการอนุญาตของพนักงานศุลกากร (ซ้ายล่าง) พร้อมคำนำหน้า นามสกุล และตำแหน่ง
+        </small>
         <ConfirmSubmit label="ออกคำร้อง" tone="primary"
           confirm="ออกเลขที่คำร้องสำหรับงานนี้ใช่ไหม"
           detail="ออกใหม่ได้ แต่เลขที่คำร้องเดิมจะถูกใช้ต่อ ไม่ออกเลขใหม่" />

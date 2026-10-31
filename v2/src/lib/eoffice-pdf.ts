@@ -6,6 +6,7 @@ import {
 import { downloadFile } from '@/lib/storage';
 import { clustersOf } from '@/lib/thai-text';
 import { drawCoordinateGrid } from '@/lib/pdf-grid';
+import { officerLine, routeLine } from '@/lib/eoffice-officer';
 
 /**
  * ออกไฟล์ PDF ของคำร้องขอนำของเข้าเขตปลอดอากร (ปะหน้าชุด E-Office)
@@ -73,6 +74,12 @@ export type EofficeRequestData = {
   goodsValue: string | null;
   goodsType: string | null;
   attentionName?: string | null;
+  /** เจ้าหน้าที่ในช่องบันทึกการอนุญาต (ชื่อใช้ attentionName) */
+  officerPrefix?: string | null;
+  officerSurname?: string | null;
+  officerPosition?: string | null;
+  /** ฝศ,สบศ ใต้ช่องเจ้าหน้าที่ มุมขวา */
+  sectionCode?: string | null;
 };
 
 export class MissingThaiFontError extends Error {
@@ -143,6 +150,9 @@ function overlayValues(req: EofficeRequestData) {
     goodsValue: req.goodsValue ?? '',
     goodsType: req.goodsType ?? '',
     attentionName: req.attentionName ?? '',
+    officerName: officerLine(req.officerPrefix, req.attentionName, req.officerSurname),
+    officerPosition: officerLine(req.officerPrefix, req.attentionName, req.officerSurname) ? req.officerPosition ?? '' : '',
+    sectionCode: req.sectionCode ?? '',
   } as Record<string, string>;
 }
 
@@ -451,7 +461,7 @@ async function renderDrawn(
   const rightX = A4.width / 2 + 20;
   const signTop = y;
   // ชื่อที่จ่าหน้าถึงกรอกใหม่ได้ทุกใบ ต่อท้ายข้อความคงที่ที่ตั้งไว้
-  draw([f.t('routeTo'), req.attentionName].filter(Boolean).join(' '));
+  draw(routeLine(f.t('routeTo'), req.attentionName));
   draw(f.t('regards'), { x: rightX + 60 });
   gap(lineGap * 0.92);
   draw(f.t('routeNote'), { x: marginX + 25 });
@@ -481,6 +491,20 @@ async function renderDrawn(
     const size = fit(label, half - 10, officerSize);
     put(label, bx + (half - width(label, size)) / 2, officerTop - headRow + officerSize * 0.38, size);
   }
+
+  // ช่องซ้าย: (นายชื่อ นามสกุล) แล้วตำแหน่งบรรทัดถัดไป ชิดล่างของช่อง — ด้านบนเว้นไว้ให้เจ้าหน้าที่เซ็น
+  const officer = officerLine(req.officerPrefix, req.attentionName, req.officerSurname);
+  if (officer) {
+    const rows = [officer, req.officerPosition ?? ''].filter(Boolean);
+    rows.forEach((text, i) => {
+      const size = fit(text, half - 16, bodySize);
+      const rowY = officerTop - officerH + lineGap * 0.45 + lineGap * 1.05 * (rows.length - 1 - i);
+      put(text, marginX + (half - width(text, size)) / 2, rowY, size);
+    });
+  }
+  // ใต้ช่องเจ้าหน้าที่ มุมขวา: ฝ่ายที่ส่ง E (ฝศ,สบศ) เช่น 2,1
+  const section = (req.sectionCode ?? '').trim();
+  if (section) put(section, A4.width - marginX - width(section, bodySize) - 6, officerTop - officerH - lineGap, bodySize);
 
   return Buffer.from(await doc.save());
 }

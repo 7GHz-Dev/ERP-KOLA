@@ -94,7 +94,7 @@ export const EOFFICE_FORM_FIELDS: FormField[] = [
   {
     key: 'routeTo', group: 'ท้ายเรื่องและลงชื่อ', kind: 'text',
     label: 'เรียนถึง (มุมซ้ายล่าง)', fallback: 'เรียน เรือตรี ชุมพล',
-    hint: 'ชื่อที่กรอกตอนสร้างคำร้องจะต่อท้ายบรรทัดนี้ ถ้าจะกรอกชื่อทุกใบให้ตั้งเป็น "เรียน คุณ"',
+    hint: 'ชื่อที่กรอกตอนสร้างคำร้องจะต่อท้ายบรรทัดนี้ ถ้าจะกรอกชื่อทุกใบให้ตั้งเป็น "เรียน คุณ" (ชื่อติดกับคำว่า คุณ)',
   },
   {
     key: 'routeNote', group: 'ท้ายเรื่องและลงชื่อ', kind: 'text',
@@ -230,9 +230,19 @@ export const OVERLAY_SLOTS: OverlaySlot[] = [
     x: 302, y: 385, w: 246, align: 'left',
   },
   {
-    key: 'attentionName', label: 'ชื่อที่จ่าหน้าถึง (เรียน คุณ ...)', sample: 'สมชาย ใจดี',
+    key: 'attentionName', label: 'ชื่อที่จ่าหน้าถึง (เรียน คุณ ...)', sample: 'ฐานวีร์',
     x: 108, y: 440, w: 0, align: 'left',
   },
+  // ช่องบันทึกการอนุญาตของพนักงานศุลกากร (ซ้ายล่าง) — ค่าเริ่มต้นกะจากแบบฟอร์มจริง ขยับได้ที่หน้าตั้งค่า
+  {
+    key: 'officerName', label: 'เจ้าหน้าที่ (คำนำหน้า ชื่อ นามสกุล)', sample: '(นายฐานวีร์ จิโรชอภิวรรธน์)',
+    x: 64, y: 664, w: 236, align: 'center',
+  },
+  {
+    key: 'officerPosition', label: 'ตำแหน่งเจ้าหน้าที่', sample: 'นักวิชาการศุลกากรชำนาญการ',
+    x: 64, y: 684, w: 236, align: 'center',
+  },
+  { key: 'sectionCode', label: 'ฝศ,สบศ (ใต้ช่องเจ้าหน้าที่ มุมขวา)', sample: '2,1', x: 530, y: 708, w: 0, align: 'left' },
 ];
 
 const SLOT_BY_KEY = new Map(OVERLAY_SLOTS.map((s) => [s.key, s]));

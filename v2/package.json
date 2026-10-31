@@ -51,6 +51,8 @@
     "test:customs": "tsx --tsconfig tsconfig.json tests/customs-monitor.ts",
     "migrate:customs-flow": "tsx scripts/migrate-customs-flow.ts",
     "migrate:partner-channels": "tsx scripts/migrate-partner-channels.ts",
+    "migrate:eoffice-officer": "tsx scripts/migrate-eoffice-officer.ts",
+    "test:eoffice": "tsx --tsconfig tsconfig.json tests/eoffice-officer.ts",
     "test:table-filter": "tsx --tsconfig tsconfig.json tests/table-filter.ts",
     "test:register": "tsx --tsconfig tsconfig.json tests/register-sheet.ts"
   },

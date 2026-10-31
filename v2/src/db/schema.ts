@@ -415,6 +415,12 @@ export const eofficeRequests = pgTable('eoffice_requests', {
   goodsType: text('goods_type'),
   /** ชื่อคนที่จ่าหน้าถึงในบรรทัด "เรียน คุณ ..." กรอกใหม่ได้ทุกใบ */
   attentionName: text('attention_name'),
+  /** เจ้าหน้าที่ในช่องบันทึกการอนุญาต (ซ้ายล่าง): (<คำนำหน้า><attentionName> <นามสกุล>) แล้วตำแหน่งบรรทัดถัดไป */
+  officerPrefix: text('officer_prefix'),
+  officerSurname: text('officer_surname'),
+  officerPosition: text('officer_position'),
+  /** ฝ่ายที่ส่ง E ตามท่าเรือ "ฝศ,สบศ" เช่น 3,1 (lib/eoffice-officer sectionForTerminal) */
+  sectionCode: text('section_code'),
   storageKey: text('storage_key'),
   fileRecordId: text('file_record_id'),
   createdBy: text('created_by'),

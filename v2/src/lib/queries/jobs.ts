@@ -257,6 +257,11 @@ export async function listJobs(filter: JobFilter = {}) {
       declarationNo: sql<string | null>`entry.declaration_no`,
       eofficeRequestNo: sql<string | null>`eof.request_no`,
       eofficeAttention: sql<string | null>`eof.attention_name`,
+      // คำร้องใบก่อน — เติมกลับให้ตอนออกใหม่
+      eofficeOfficerPrefix: sql<string | null>`eof.officer_prefix`,
+      eofficeOfficerSurname: sql<string | null>`eof.officer_surname`,
+      eofficeOfficerPosition: sql<string | null>`eof.officer_position`,
+      eofficeSection: sql<string | null>`eof.section_code`,
       anStatus: an.status,
       anId: an.id,
       anReason: an.reason,

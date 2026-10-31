@@ -19,11 +19,15 @@ const SAMPLE = {
   runningNo: '0028',
   requestDate: new Date().toISOString().slice(0, 10),
   entryNo: 'A26082875462',
-  packageCount: '4 UNIT',
-  netWeight: '5840 KGM',
-  goodsValue: '15 USD',
-  goodsType: 'USED CAR (รายละเอียดตามใบขนฯ แนบ)',
-  attentionName: 'สมชาย ใจดี',
+  packageCount: '4 UNITS',
+  netWeight: '13,360 KGM',
+  goodsValue: '5,311,490 JPY',
+  goodsType: 'รถบรรทุกเก่าใช้แล้ว (รายละเอียดตามใบขนฯ แนบ)',
+  attentionName: 'ฐานวีร์',
+  officerPrefix: 'นาย',
+  officerSurname: 'จิโรชอภิวรรธน์',
+  officerPosition: 'นักวิชาการศุลกากรชำนาญการ',
+  sectionCode: '2,1',
 };
 
 export async function GET(request: Request) {

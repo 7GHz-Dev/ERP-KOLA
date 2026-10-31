@@ -4,10 +4,13 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { customsEntries, eofficeRequests, jobSequences, jobs } from '@/db/schema';
+import { customsEntries, eofficeRequests, jobSequences, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { storeRequestPdf } from '@/lib/eoffice-bundle';
 import { loadEofficeForm } from '@/lib/eoffice-form';
+import {
+  DEFAULT_CURRENCY, DEFAULT_OFFICER_POSITION, DEFAULT_OFFICER_PREFIX, formatAmount, OFFICER_PREFIXES, sectionForTerminal,
+} from '@/lib/eoffice-officer';
 import { logActivity, newId, number, required, runAction, text } from './common';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -55,17 +58,31 @@ async function createEofficeRequestImpl(formData: FormData) {
   const entryNo = entry?.declarationNo ?? '';
   if (!entryNo) throw new Error('ต้องมีเลขใบขนสินค้าขาเข้าก่อนออกคำร้อง');
 
-  const goodsValue = text(formData.get('goodsValue'), 60);
-  const goodsCurrency = text(formData.get('goodsCurrency'), 10).toUpperCase() || 'USD';
+  // พิมพ์มามีจุลภาคก็ได้ เก็บตัวเลขล้วนไว้ที่งาน ส่วนบนกระดาษคั่นหลักพันเสมอ (5,311,490 JPY)
+  const goodsValue = text(formData.get('goodsValue'), 60).replace(/,/g, '');
+  const goodsCurrency = text(formData.get('goodsCurrency'), 10).toUpperCase() || DEFAULT_CURRENCY;
   if (!goodsValue) throw new Error('กรุณาระบุราคาของ');
 
-  const packageCount = `${number(formData.get('packageCount'), Number(job.unitAmount ?? 0))} ${
+  const packageCount = `${formatAmount(number(formData.get('packageCount'), Number(job.unitAmount ?? 0)))} ${
     text(formData.get('packageType'), 20) || job.packageType || 'UNITS'
   }`.trim();
-  const netWeight = `${text(formData.get('netWeight'), 40) || Number(job.grossWeight ?? 0)} KGM`;
+  const netWeight = `${formatAmount(text(formData.get('netWeight'), 40) || Number(job.grossWeight ?? 0))} KGM`;
   const goodsType = text(formData.get('goodsType'), 200)
     || `${job.product ?? 'สินค้า'} (รายละเอียดตามใบขนฯ แนบ)`;
+  // ชื่อเดียวใช้สองที่: "เรียน คุณ<ชื่อ>" และ "(<คำนำหน้า><ชื่อ> <นามสกุล>)" ในช่องเจ้าหน้าที่ซ้ายล่าง
   const attentionName = text(formData.get('attentionName'), 120);
+  const prefixInput = text(formData.get('officerPrefix'), 40);
+  const officerPrefix = (OFFICER_PREFIXES as readonly string[]).includes(prefixInput) ? prefixInput : DEFAULT_OFFICER_PREFIX;
+  const officerSurname = text(formData.get('officerSurname'), 120);
+  const officerPosition = text(formData.get('officerPosition'), 120) || DEFAULT_OFFICER_POSITION;
+
+  // ฝศ,สบศ ตามท่าเรือของงาน — กรอกเองได้ ไม่กรอกระบบหาจากตารางท่า
+  let sectionCode = text(formData.get('sectionCode'), 40);
+  if (!sectionCode && job.terminalId) {
+    const [terminal] = await db.select({ code: masterRecords.code, name: masterRecords.name })
+      .from(masterRecords).where(eq(masterRecords.id, job.terminalId)).limit(1);
+    sectionCode = sectionForTerminal(terminal);
+  }
 
   // เล่มที่ของคำร้องมาจากหน้าตั้งค่าฟอร์มปะหน้า ด่านเปลี่ยนเล่มทีก็แก้ตรงนั้น
   const bookNo = (await loadEofficeForm()).t('bookNo');
@@ -85,9 +102,9 @@ async function createEofficeRequestImpl(formData: FormData) {
       runningNo: existing?.runningNo ?? running,
       requestDate: new Date().toISOString().slice(0, 10),
       entryNo, packageCount, netWeight,
-      goodsValue: `${goodsValue} ${goodsCurrency}`,
+      goodsValue: `${formatAmount(goodsValue)} ${goodsCurrency}`,
       goodsType,
-      attentionName,
+      attentionName, officerPrefix, officerSurname, officerPosition, sectionCode,
       createdBy: user.id,
       updatedAt: new Date(),
     };

@@ -146,6 +146,12 @@ function columnsFor(
               product={r.product}
               hasRequest={Boolean(r.eofficeRequestNo)}
               attentionName={r.eofficeAttention}
+              officer={{
+                prefix: r.eofficeOfficerPrefix, surname: r.eofficeOfficerSurname,
+                position: r.eofficeOfficerPosition, section: r.eofficeSection,
+              }}
+              goodsValue={r.goodsValue}
+              goodsCurrency={r.goodsCurrency}
             />
           </div>
         ),
