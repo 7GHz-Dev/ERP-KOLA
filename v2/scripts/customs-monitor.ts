@@ -5,8 +5,9 @@
  * หน้าเว็บเปิดลิงก์ kola-worker://customs ให้ตัวเปิดในเครื่องรัน npm run worker:customs
  * เครื่องที่กดล่าสุดรับหน้าที่ต่อ (บัญชี monitor login ได้ทีละที่) ตัวเก่าเห็นในรอบถัดไปแล้วปิดตัวเอง
  *
- * ทุก 30 วินาทีถาม ERP ว่ายังมีรายการค้างไหม (ไม่แตะ NETBAY)
+ * ทุก 10 วินาทีถาม ERP ว่ายังมีรายการค้างไหม (ไม่แตะ NETBAY)
  *   ไม่เหลือ                     -> ปิดตัว (ACCEPT ครบแล้ว)
+ *   มีคนกด Refresh บนหน้าเว็บ     -> เช็กทุกรายการทันที ด้วย NETBAY user ที่ผู้กดเลือก แล้วบอก ERP ว่าเสร็จ
  *   มีรายการใหม่ที่ยังไม่เคยเช็ก -> เช็กทันที
  *   ครบรอบ (ค่าตั้งต้น 5 นาที)   -> เช็กทุกรายการ (scripts/customs-check.ts)
  *
@@ -23,7 +24,8 @@ import { join } from 'node:path';
 import type { Page } from 'playwright-core';
 import { loadEnv } from '../src/lib/env';
 import { checkRound, type MonitorTask } from './customs-check';
-import { netbaySettings } from './netbay-kola';
+import { netbaySettings, type NetbaySettings } from './netbay-kola';
+import { AGENT_VERSION } from '../src/lib/agent-version';
 
 loadEnv();
 
@@ -35,7 +37,7 @@ const WORKER = `customs@${hostname()}`;
 const LEASE = `${WORKER}#${process.pid}#${Date.now()}`;
 const ONCE = process.argv.includes('--once');
 const ROUND_MS = Math.max(1, Number(process.env.CUSTOMS_MONITOR_MINUTES ?? 5) || 5) * 60_000;
-const TICK_MS = 30_000;
+const TICK_MS = 10_000;                     // กด Refresh แล้วเริ่มเช็กภายใน 10 วินาที
 const MIN_GAP_MS = 60_000;                  // รายการใหม่เช็กทันที แต่ไม่ถี่กว่านาทีละครั้ง กัน ERP ล่มแล้ววนเร็ว
 const BEAT_MS = 15_000;                     // ERP ถือว่าออฟไลน์ถ้าเงียบเกิน 70 วินาที
 const WORK_DIR = process.env.CUSTOMS_MONITOR_DIR ?? join(homedir(), '.kola-customs-monitor');
@@ -65,7 +67,8 @@ async function api<T = unknown>(fn: string, args: Record<string, unknown> = {}):
 
 async function heartbeat(extra: { shot?: string; offline?: boolean } = {}) {
   await api('heartbeat', {
-    worker: WORKER, busy, mode: MODE, platform: process.platform, headless: true, log: recent, ...extra,
+    worker: WORKER, busy, mode: MODE, platform: process.platform, headless: true, version: AGENT_VERSION,
+    log: recent, ...extra,
   }).catch((e) => console.log('heartbeat:', e instanceof Error ? e.message : e));
 }
 
@@ -82,7 +85,7 @@ async function main() {
     ...netbaySettings({ ...process.env, NETBAY_USER: account.username, NETBAY_PASSWORD: account.password }),
     headless: process.env.CUSTOMS_MONITOR_SHOW !== '1',
   };
-  log(`ตัว monitor ใบขน ${WORKER} · ERP ${ERP_URL} · NETBAY ${netbay.url} (บัญชี ${account.username}) · เช็กทุก ${ROUND_MS / 60_000} นาที`);
+  log(`ตัว monitor ใบขน ${WORKER} v${AGENT_VERSION} · ERP ${ERP_URL} · NETBAY ${netbay.url} (บัญชี ${account.username}) · เช็กทุก ${ROUND_MS / 60_000} นาที`);
 
   const beat = setInterval(() => { void heartbeat(); }, BEAT_MS);
   let stop = false;
@@ -90,10 +93,16 @@ async function main() {
   process.on('SIGTERM', () => { stop = true; });
 
   let lastRound = 0;
+  let handledRefresh = '';
+  const withAccount = (a: { username: string; password: string }): NetbaySettings =>
+    ({ ...netbay, username: a.username, password: a.password });
   try {
     await heartbeat();
     while (!stop) {
-      let state: { owner: boolean; by?: string; tasks: MonitorTask[] };
+      let state: {
+        owner: boolean; by?: string; tasks: MonitorTask[];
+        refresh?: { at: string; account: { username: string; password: string } } | null;
+      };
       try {
         state = await api('customsMonitorTasks', { lease: LEASE });
       } catch (error) {
@@ -108,21 +117,33 @@ async function main() {
           : `เครื่อง ${state.by ?? 'อื่น'} รับหน้าที่ monitor ต่อแล้ว — ปิดตัวนี้`);
         break;
       }
-      if (!state.tasks.length) { log('ACCEPT ครบทุกรายการแล้ว — ปิดตัว monitor'); break; }
+      // คำขอ Refresh ที่ยังไม่เสร็จ — รวมคำขอที่ทำให้ตัวนี้ถูกเปิดขึ้นมา (ERP ไม่ส่งคำขอที่ค้างเกิน 10 นาที)
+      const refresh = state.refresh && state.refresh.at !== handledRefresh ? state.refresh : null;
+      if (!state.tasks.length) {
+        if (refresh) await api('customsRefreshDone', { at: refresh.at, worker: WORKER, result: null }).catch(() => {});
+        log('ACCEPT ครบทุกรายการแล้ว — ปิดตัว monitor');
+        break;
+      }
 
       const since = Date.now() - lastRound;
       const fresh = state.tasks.some((t) => !t.checkedAt);
-      if (since >= ROUND_MS || (fresh && since >= MIN_GAP_MS)) {
+      if (refresh || since >= ROUND_MS || (fresh && since >= MIN_GAP_MS)) {
         lastRound = Date.now();
-        busy = `เช็กใบขน ${state.tasks.length} รายการ`;
-        log(`เช็ก ${state.tasks.length} รายการ ...`);
+        if (refresh) handledRefresh = refresh.at;
+        const account = refresh ? withAccount(refresh.account) : netbay;
+        busy = `เช็กใบขน ${state.tasks.length} รายการ${refresh ? ' (กด Refresh)' : ''}`;
+        log(refresh
+          ? `กด Refresh — เช็ก ${state.tasks.length} รายการทันที ด้วย NETBAY user ${account.username} ...`
+          : `เช็ก ${state.tasks.length} รายการ ...`);
         await heartbeat();
+        let result: { accepted: number; waiting: number; failed: number } | null = null;
         try {
-          const r = await checkRound(state.tasks, { api, netbay, workDir: WORK_DIR, log, onStep: snap });
-          log(`จบรอบ: ACCEPT ${r.accepted} · รอ ${r.waiting} · ผิดพลาด ${r.failed}`);
+          result = await checkRound(state.tasks, { api, netbay: account, workDir: WORK_DIR, log, onStep: snap });
+          log(`จบรอบ: ACCEPT ${result.accepted} · รอ ${result.waiting} · ผิดพลาด ${result.failed}`);
         } catch (error) {
           log(`รอบนี้ไม่สำเร็จ: ${error instanceof Error ? error.message : error} — ลองใหม่รอบหน้า`);
         }
+        if (refresh) await api('customsRefreshDone', { at: refresh.at, worker: WORKER, result }).catch(() => {});
         busy = null;
         await heartbeat();
         if (ONCE) break;

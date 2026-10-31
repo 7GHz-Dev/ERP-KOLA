@@ -4,7 +4,8 @@
  *   createDraft()      worker สร้าง Draft ใบขน: login -> New (610) -> กรอกหัวใบขน -> Add Invoice -> Import CSV
  *                      จบทันทีที่ NETBAY ขึ้น "success please check your invoice" — ไม่กด Save / Send to Customs
  *   openDeclaration()  ลิงก์ Ref No. บน ERP: login -> Import -> ค้นหา Reference No. -> เปิดใบขนนั้นค้างไว้ให้ตรวจ
- *   readDeclaration()  ตัว monitor ใบขน: ค้นหา Reference No. -> อ่านสถานะ (รูปป้าย) + DECLARATION NO
+ *   readDeclaration()  ตัว monitor ใบขน: ค้นหา Reference No. -> อ่านสถานะ (รูปป้าย)
+ *                      -> เปิดใบขนอ่านเลขใบขนจากแถบเขียวด้านบน (Decl …) · คอลัมน์ DECLARATION NO เป็นทางสำรอง
  *   downloadDeclarationPdf()  ติ๊กแถว -> ชื่อไฟล์ = เลขที่ใบขน -> Save PDF -> แตก zip เอา <เลขใบขน>.pdf
  *
  * XPath ยกมาจากโปรแกรมเดิม (Selenium) และตรวจกับหน้าจริงแล้ว
@@ -18,7 +19,9 @@ import { join } from 'node:path';
 import JSZip from 'jszip';
 import { chromium, type Browser, type Download, type Frame, type FrameLocator, type Locator, type Page } from 'playwright-core';
 import type { Totals } from '../src/lib/draft/csv';
-import { DECLARATION_NO, parseStatusImage, statusFromImageHash, type NetbayStatusCode } from '../src/lib/customs-status';
+import {
+  DECLARATION_NO, parseDeclarationHeader, parseStatusImage, statusFromImageHash, statusGroup, type NetbayStatusCode,
+} from '../src/lib/customs-status';
 
 export type NetbaySettings = {
   url: string; username: string; password: string; declarationType: string;
@@ -289,14 +292,47 @@ export type DeclarationRow = {
   status: NetbayStatusCode | null;
   /** ชื่อไฟล์รูปป้ายสถานะ (หรือ title) ไว้แสดงเมื่ออ่านไม่ออก จะได้รู้ว่า NETBAY มีสถานะใหม่ */
   image: string;
-  /** คอลัมน์ DECLARATION NO — มีเฉพาะใบที่กรมศุลฯ รับแล้ว */
+  /** เลขใบขน — มีเฉพาะใบที่กรมศุลฯ รับแล้ว */
   declarationNo: string | null;
+  /** ได้เลขใบขนมาจากไหน: header = แถบเขียวในหน้าใบขน (Decl …) · list = คอลัมน์ DECLARATION NO */
+  declarationFrom?: 'header' | 'list' | null;
 };
+
+/**
+ * เปิดใบขน (editID เหมือนคลิกป้ายสถานะ) แล้วอ่านแถบเขียวด้านบน "REF … Decl <เลขใบขน> Status <สถานะ>"
+ * รอจนหน้าใบขนขึ้น (เห็น Ref No. หรือเลขใบขนในหน้า) ไม่เกิน 15 วินาที · อ่านทุก frame เพราะแถบอาจอยู่ใน detailfrm
+ */
+export async function readDeclarationHeader(page: Page, id: string, ref: string) {
+  await page.evaluate((x) => (window as unknown as { editID(id: string): void }).editID(x), id);
+  await page.locator('#detailfrm').waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {});
+  const flatRef = ref.replace(/\s+/g, '');
+  let last = { declarationNo: null as string | null, status: null as NetbayStatusCode | null };
+  let loadedAt = 0;
+  for (const until = Date.now() + 15_000; Date.now() < until;) {
+    for (const fr of page.frames() as Frame[]) {
+      // ห้ามประกาศฟังก์ชันที่มีชื่อในนี้ — tsx ใส่ตัวช่วย __name ให้ ซึ่งไม่มีในหน้าเว็บ
+      const seen = await fr.evaluate(() => ({
+        text: document.body?.innerText ?? '',
+        inputs: Array.from(document.querySelectorAll('input')).map((i) => [i.id || i.name || '', i.value] as [string, string]),
+      })).catch(() => null);
+      if (!seen) continue;
+      const got = parseDeclarationHeader(seen.text, seen.inputs);
+      if (got.declarationNo) return got;
+      if (got.status) last = got;
+      const values = seen.inputs.map(([, v]) => v).join(' ');
+      if (!loadedAt && `${seen.text} ${values}`.replace(/\s+/g, '').includes(flatRef)) loadedAt = Date.now();
+    }
+    // หน้าใบขนขึ้นแล้วแต่ไม่มีเลขใบขน (ยังไม่ ACCEPT) — รออีกนิดเผื่อแถบโหลดทีหลัง แล้วเลิก
+    if (loadedAt && Date.now() - loadedAt > 2_000) break;
+    await sleep(500);
+  }
+  return last;
+}
 
 /** ค้นหา Ref No. แล้วอ่านแถวนั้น: รูปป้ายในคอลัมน์ STATUS กับคอลัมน์ DECLARATION NO */
 export async function readDeclaration(page: Page, listUrl: string, ref: string): Promise<DeclarationRow> {
   const id = await findDeclaration(page, listUrl, ref);
-  if (!id) return { found: false, status: null, image: '', declarationNo: null };
+  if (!id) return { found: false, status: null, image: '', declarationNo: null, declarationFrom: null };
   // ห้ามประกาศฟังก์ชันที่มีชื่อในนี้ — tsx ใส่ตัวช่วย __name ให้ ซึ่งไม่มีในหน้าเว็บ
   const info = await page.locator(`img[id="statusPic${id}"]`).first().evaluate((img) => {
     const el = img as HTMLImageElement;
@@ -318,9 +354,20 @@ export async function readDeclaration(page: Page, listUrl: string, ref: string):
   }
   const atHeader = info.col >= 0 ? info.cells[info.col] ?? '' : '';
   // หัวตารางกับแถวข้อมูลนับคอลัมน์ไม่ตรงกันได้ (colspan) — ถอยไปหาช่องที่หน้าตาเหมือนเลขใบขน
-  const declarationNo = DECLARATION_NO.test(atHeader) ? atHeader : info.cells.find((c) => DECLARATION_NO.test(c)) ?? null;
+  const inList = DECLARATION_NO.test(atHeader) ? atHeader : info.cells.find((c) => DECLARATION_NO.test(c)) ?? null;
   const image = (info.src ?? '').split(/[?#]/)[0].split('/').pop() || info.title || info.alt || '';
-  return { found: true, status: byImage ?? parseStatusImage(info), image, declarationNo };
+  let status = byImage ?? parseStatusImage(info);
+
+  // ACCEPT แล้ว (หรืออ่านป้ายไม่ออก) — เปิดใบขนเอาเลขจากแถบเขียว "Decl …" ซึ่งเป็นตำแหน่งที่คนดู
+  // ใบที่ยังไม่ ACCEPT ไม่มีเลขใบขน ไม่ต้องเปิดให้เสียเวลา
+  let header: { declarationNo: string | null; status: NetbayStatusCode | null } = { declarationNo: null, status: null };
+  if (!status || statusGroup(status) === 'done') {
+    header = await readDeclarationHeader(page, id, ref).catch(() => header);
+    status ??= header.status;
+  }
+  const declarationNo = header.declarationNo ?? inList;
+  const declarationFrom = header.declarationNo ? 'header' : inList ? 'list' : null;
+  return { found: true, status, image, declarationNo, declarationFrom };
 }
 
 /**

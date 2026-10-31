@@ -19,6 +19,14 @@ export const NETBAY_ACCOUNT_TYPE = 'netbayAccount';
 
 export type NetbayAccount = { username: string; password: string };
 
+/** บัญชี NETBAY ของตัว monitor ใบขน — ค่าบน Vercel รูปแบบ "user:pass" แยกจากชุดบัญชีประจำเครื่อง */
+export function monitorAccount(env: Record<string, string | undefined> = process.env): NetbayAccount {
+  const raw = (env.NETBAY_MONITOR_ACCOUNT ?? '').trim();
+  const i = raw.indexOf(':');
+  if (i <= 0) throw new Error('ยังไม่ได้ตั้ง NETBAY_MONITOR_ACCOUNT (รูปแบบ user:pass) บน Vercel');
+  return { username: raw.slice(0, i), password: raw.slice(i + 1) };
+}
+
 export function accountPool(env: Record<string, string | undefined> = process.env): NetbayAccount[] {
   const raw = (env.NETBAY_ACCOUNT_POOL ?? '').trim();
   if (raw) {
@@ -71,4 +79,37 @@ export async function assignNetbayAccount(machineName: string): Promise<NetbayAc
     if (row) return { ...account, reused: false };
   }
   throw new Error(`บัญชี NETBAY ถูกใช้ครบ ${pool.length} เครื่องแล้ว — เพิ่มบัญชีใน NETBAY_ACCOUNT_POOL หรือคืนบัญชีของเครื่องที่เลิกใช้`);
+}
+
+export type NetbayChoice = { username: string; kind: 'monitor' | 'pool'; machine: string };
+
+/**
+ * บัญชีที่ให้เลือกก่อนกด "สร้าง Draft" / "Refresh" — ไม่มีรหัสผ่าน (ส่งให้หน้าเว็บ)
+ * บอกเครื่องที่จองบัญชีนั้นไว้ด้วย เลือกบัญชีของเครื่องที่กำลังใช้อยู่ = เครื่องนั้นหลุดจาก NETBAY
+ */
+export async function netbayChoices(): Promise<NetbayChoice[]> {
+  const taken = await netbayAssignments();
+  const out: NetbayChoice[] = [];
+  try {
+    out.push({ username: monitorAccount().username, kind: 'monitor', machine: '' });
+  } catch { /* ยังไม่ได้ตั้งบัญชี monitor — เลือกได้แค่ชุดประจำเครื่อง */ }
+  for (const a of accountPool()) {
+    if (out.some((o) => o.username === a.username)) continue;
+    out.push({ username: a.username, kind: 'pool', machine: taken.find((t) => t.username === a.username)?.machine ?? '' });
+  }
+  return out;
+}
+
+/**
+ * รหัสผ่านของบัญชีที่ผู้ใช้เลือก — ส่งให้ worker ผ่าน /api/worker เท่านั้น (ไม่ส่งให้หน้าเว็บ)
+ * รับเฉพาะบัญชีในชุดที่ตั้งไว้ (monitor + NETBAY_ACCOUNT_POOL) ชื่ออื่นไม่ให้
+ */
+export function netbayCredentials(username: string | null | undefined): NetbayAccount | null {
+  const name = String(username ?? '').trim();
+  if (!name) return null;
+  try {
+    const m = monitorAccount();
+    if (m.username === name) return m;
+  } catch { /* ไม่มีบัญชี monitor */ }
+  return accountPool().find((a) => a.username === name) ?? null;
 }

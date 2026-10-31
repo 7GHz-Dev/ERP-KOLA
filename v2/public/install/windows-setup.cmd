@@ -24,6 +24,8 @@ $repo = 'https://github.com/7GHz-Dev/ERP-KOLA.git'
 $root = Join-Path $env:USERPROFILE 'ERP-KOLA'
 $v2 = Join-Path $root 'v2'
 $netbayUrl = 'http://192.168.1.123/kola/spn'
+# เวอร์ชันล่าสุดตอนดาวน์โหลด (AGENT_VERSION ใน src\lib\agent-version.ts — /api/install/windows ใส่ให้)
+$setupVersion = '__KOLA_AGENT_VERSION__'
 # ERP ใส่คีย์ตรงนี้ตอนดาวน์โหลด (/api/install/windows) — ไฟล์ใน git / ลิงก์สาธารณะยังเป็นข้อความแทนที่อยู่
 $embeddedKey = '__KOLA_WORKER_API_KEY__'
 
@@ -55,7 +57,8 @@ function Read-Secret($prompt) {
 }
 
 try {
-  Write-Host 'ติดตั้ง ERP-KOLA สำหรับเปิดใบขน NETBAY / สร้าง Draft ใบขน' -ForegroundColor Green
+  $label = if ($setupVersion -notlike '__KOLA*') { " v$setupVersion" } else { '' }
+  Write-Host "ติดตั้ง ERP-KOLA$label สำหรับเปิดใบขน NETBAY / สร้าง Draft ใบขน" -ForegroundColor Green
 
   Step '1/6 ตรวจว่าเปิด NETBAY ได้'
   try {
@@ -113,11 +116,23 @@ try {
   Step '6/6 ลงทะเบียนลิงก์ (ปุ่มเปิด worker · เลข Ref No.)'
   & (Join-Path $v2 'scripts\install\windows-worker-launcher.ps1')
 
+  # เวอร์ชันของโค้ดที่ดึงมา — รายงานให้ ERP (หน้าติดตั้งแสดงว่าเครื่องไหนล่าสุดแล้ว) และบอกว่าล่าสุดหรือยัง
+  $local = if ([IO.File]::ReadAllText((Join-Path $v2 'src\lib\agent-version.ts')) -match "AGENT_VERSION = '([0-9.]+)'") { $Matches[1] } else { '0' }
+  $state = ''
+  try {
+    $erp = if ($current['ERP_URL']) { $current['ERP_URL'].TrimEnd('/') } else { 'https://erp-kola.vercel.app' }
+    $key = if ($set['WORKER_API_KEY']) { $set['WORKER_API_KEY'] } else { $current['WORKER_API_KEY'] }
+    $json = @{ key = $key; fn = 'agentCheck'; args = @{ machine = $env:COMPUTERNAME; version = $local; status = 'ติดตั้ง/อัปเดตด้วย windows-setup.cmd' } } | ConvertTo-Json -Depth 4
+    $r = (Invoke-RestMethod -Method Post -Uri "$erp/api/worker" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 10).data
+    $state = if ($r.upToDate) { ' — ล่าสุดแล้ว ✓' } else { " — ยังไม่ล่าสุด (ล่าสุด v$($r.latest)) รอ push โค้ดขึ้น git แล้วเครื่องจะอัปเดตเอง" }
+  } catch { $state = ' (ถาม ERP ไม่ได้ว่าล่าสุดหรือยัง)' }
+
   Write-Host ''
-  Write-Host '✅ ติดตั้งเสร็จ' -ForegroundColor Green
+  Write-Host "✅ ติดตั้งเสร็จ v$local$state" -ForegroundColor Green
+  Write-Host '   จากนี้เครื่องอัปเดตเองเบื้องหลัง ตอนเปิด Windows และทุกครั้งที่กดปุ่ม/ลิงก์บน ERP — ไม่ต้องรันไฟล์นี้ซ้ำ'
   Write-Host '   เปิด ERP -> กดเลข Ref No. -> เบราว์เซอร์ถามว่าจะเปิด KOLA Worker ไหม -> ติ๊ก "อนุญาตเสมอ" แล้วกดเปิด'
   Write-Host '   สร้าง Draft: กด "สร้าง Draft" ที่ งานคงค้าง -> 3. Draft ใบขน แล้วเครื่องนี้จะเปิด NETBAY ทำให้เอง'
-  Write-Host "   log: $env:LOCALAPPDATA\KOLA\   ·   อัปเดตภายหลัง: ดับเบิลคลิกไฟล์นี้อีกครั้ง"
+  Write-Host "   log: $env:LOCALAPPDATA\KOLA\ (การอัปเดต: update.log)   ·   อัปเดตเองไม่สำเร็จ: ดับเบิลคลิกไฟล์นี้อีกครั้ง"
 } catch {
   Write-Host ''
   Write-Host "❌ ติดตั้งไม่สำเร็จ: $($_.Exception.Message)" -ForegroundColor Red

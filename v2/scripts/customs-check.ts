@@ -3,7 +3,7 @@
  *
  *   ไม่พบแถว           -> สถานะ NOT_FOUND (ป้ายแดงในคิว) เช็กต่อรอบหน้า
  *   ยังไม่ ACCEPT       -> ส่งสถานะที่เห็นเข้า ERP เช็กต่อรอบหน้า (REJECT ฯลฯ ก็เช็กต่อ รอ FAH แก้แล้วส่งใหม่)
- *   ACCEPT (หรือ Audit Loaded/Checked) + มีเลขใบขน -> ดาวน์โหลด PDF (Save PDF -> zip) แล้ว completeTask: เลขใบขน + PDF
+ *   ACCEPT (หรือ Audit Loaded/Checked) + มีเลขใบขน (แถบ Decl ในหน้าใบขน) -> ดาวน์โหลด PDF (Save PDF -> zip) แล้ว completeTask: เลขใบขน + PDF
  *                         ERP ตั้งงานเป็น FILED งานจึงไปที่ งานคงค้าง > 4. เตรียมเอกสารเดิน E เอง
  *
  * รายการไหนพังไม่ลามไปรายการอื่น — บันทึกข้อผิดพลาดไว้ที่แถวนั้นแล้วรอบหน้าลองใหม่
@@ -82,13 +82,14 @@ export async function checkRound(tasks: MonitorTask[], deps: Deps) {
           continue;
         }
         if (!row.declarationNo) {
-          await report(t.id, { status, error: `${status} แล้วแต่คอลัมน์ DECLARATION NO ยังว่าง — รอบหน้าเช็กใหม่` });
+          await report(t.id, { status, error: `${status} แล้วแต่ยังไม่เห็นเลขใบขน (แถบ Decl ในหน้าใบขน และคอลัมน์ DECLARATION NO ว่าง) — รอบหน้าเช็กใหม่` });
           log(`  ${label}: ${status} แต่ยังไม่มีเลขใบขน`);
           result.waiting += 1;
           continue;
         }
 
-        log(`  ${label}: ${status} เลขใบขน ${row.declarationNo} — ดาวน์โหลด PDF ...`);
+        const from = row.declarationFrom === 'header' ? 'แถบ Decl ในหน้าใบขน' : 'คอลัมน์ DECLARATION NO';
+        log(`  ${label}: ${status} เลขใบขน ${row.declarationNo} (จาก${from}) — ดาวน์โหลด PDF ...`);
         const pdf = await downloadDeclarationPdf(page, listUrl, t.refNo, row.declarationNo, deps.workDir);
         await report(t.id, { status });
         await api('completeTask', {

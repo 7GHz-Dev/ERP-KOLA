@@ -4,6 +4,7 @@ import { automationTasks, jobs } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
 import { FileChip, Tabs } from '@/components/JobTable';
 import { CustomsMonitorBar } from '@/components/CustomsMonitor';
+import { CustomsRefresh } from '@/components/CustomsRefresh';
 import { StopWorkerButton } from '@/components/StopWorkerButton';
 import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -94,9 +95,13 @@ export default async function AutomationPage({
 
   return (
     <>
-      <div className="page-head">
-        <h1>คิวงาน Automation</h1>
-        <p>งานที่รอโปรแกรม automate ประมวลผล{tab === 'done' ? '' : ` · ค้างอยู่ ${pending} รายการ`}</p>
+      <div className="page-head with-action">
+        <div>
+          <h1>คิวงาน Automation</h1>
+          <p>งานที่รอโปรแกรม automate ประมวลผล{tab === 'done' ? '' : ` · ค้างอยู่ ${pending} รายการ`}</p>
+        </div>
+        {/* เช็กใบขนที่ค้างใน NETBAY ตอนนี้เลย ไม่รอรอบ 5 นาที */}
+        <CustomsRefresh />
       </div>
 
       <Tabs basePath="/automation" items={TABS} active={tab} />

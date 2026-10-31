@@ -23,7 +23,9 @@ import { createDraft, type DraftInfo, type NetbaySettings } from './netbay-kola'
 export type Api = <T = unknown>(fn: string, args?: Record<string, unknown>) => Promise<T>;
 export type Task = {
   id: string; jobId: string | null; inputFileName: string | null; hasInputFile: boolean;
-  data: { jobNo?: string; blNo?: string };
+  data: { jobNo?: string; blNo?: string; netbayUser?: string };
+  /** บัญชี NETBAY ที่ผู้กด "สร้าง Draft" เลือกไว้ — null = ใช้บัญชีประจำเครื่อง (.env.local) */
+  netbay?: { username: string; password: string } | null;
 };
 export type Deps = {
   api: Api; data: DraftData; netbay: NetbaySettings; workDir: string;

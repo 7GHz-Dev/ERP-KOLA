@@ -5,6 +5,7 @@ import { submitCustomsTask } from '@/lib/actions/automation';
 import { ConfirmSubmit } from '@/components/Interactions';
 import type { OnlineWorker } from '@/lib/worker-status';
 import { StopWorkerButton } from '@/components/StopWorkerButton';
+import { AgentVersionBadge } from '@/components/AgentVersion';
 
 /**
  * ตัว monitor ใบขน — เช็กสถานะใบขนใน NETBAY จน ACCEPT แล้วดึงเลขใบขน + PDF ให้เอง
@@ -103,6 +104,7 @@ export function CustomsMonitorBar({ initial, pending }: { initial: OnlineWorker[
       ) : (
         <span className="badge neutral">● ปิดอยู่ — ไม่มีรายการค้าง</span>
       )}
+      {worker ? <AgentVersionBadge version={worker.version} /> : null}
       {worker ? (
         <button type="button" className="button tiny" onClick={() => setWatching((w) => !w)}>
           {watching ? 'ซ่อนการทำงาน' : 'ดูการทำงาน'}

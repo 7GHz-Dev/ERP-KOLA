@@ -6,6 +6,7 @@ import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RejectDraftButton } from '@/components/ActionForms';
 import { CustomsMonitorAutoLaunch, CustomsMonitorBar, SubmitCustomsDone } from '@/components/CustomsMonitor';
+import { CustomsRefresh } from '@/components/CustomsRefresh';
 import { CUSTOMS_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 import { TASK_TYPES } from '@/lib/automation';
 import { netbayStatusLabel, netbayStatusTone } from '@/lib/customs-status';
@@ -96,9 +97,13 @@ export default async function FahDraftPage({
   return (
     <>
       <CustomsMonitorAutoLaunch latestTaskId={latest?.id ?? null} />
-      <div className="page-head">
-        <h1>ตรวจ Draft / ทำใบขนสินค้า</h1>
-        <p>ตรวจ Draft → กด SEND TO CUSTOMS ใน NETBAY → กด &quot;สร้างใบขนแล้ว&quot; → ระบบรอ ACCEPT แล้วดึงเลขใบขน + PDF ให้</p>
+      <div className="page-head with-action">
+        <div>
+          <h1>ตรวจ Draft / ทำใบขนสินค้า</h1>
+          <p>ตรวจ Draft → กด SEND TO CUSTOMS ใน NETBAY → กด &quot;สร้างใบขนแล้ว&quot; → ระบบรอ ACCEPT แล้วดึงเลขใบขน + PDF ให้</p>
+        </div>
+        {/* ตรวจ Draft · รอไฟล์และเลขใบขน — กดแล้วเช็กใน NETBAY ทันที */}
+        {tab !== 'done' ? <CustomsRefresh /> : null}
       </div>
       <Tabs basePath="/fah/draft" items={TABS} active={tab} carry={carry} />
       {tab === 'waiting' ? <CustomsMonitorBar initial={monitors} pending={total} /> : null}
@@ -108,7 +113,7 @@ export default async function FahDraftPage({
         rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
         empty={tab === 'done' ? 'ยังไม่มีใบขนที่เสร็จ' : tab === 'waiting' ? 'ไม่มีงานรอผล' : 'ยังไม่มี Draft ส่งมาตรวจ'}
         hint={tab === 'waiting'
-          ? 'ตัว monitor เช็กใน NETBAY ทุก 5 นาที · ดูรายละเอียดที่ คิวงาน Automation → รอสร้างใบขน'
+          ? 'ตัว monitor เช็กใน NETBAY ทุก 5 นาที (กด Refresh = เช็กตอนนี้) · ดูรายละเอียดที่ คิวงาน Automation → รอสร้างใบขน'
           : 'งานที่ได้เลขใบขนแล้วจะไปแสดงที่ งานคงค้าง → 4. เตรียมเอกสารเดิน E'}
       />
     </>

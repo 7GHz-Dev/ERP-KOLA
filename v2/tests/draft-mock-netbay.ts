@@ -20,6 +20,10 @@ export type MockStatus = {
   code: string; image: string; declarationNo?: string;
   /** ไฟล์รูปจริงที่เสิร์ฟที่ image (assets/netbay/status/*.gif) — ไม่ใส่ = รูปโหลดไม่ได้ (404) */
   file?: string;
+  /** คอลัมน์ DECLARATION NO ในหน้ารายการว่าง (แบบที่เจอในหน้าจริง) — เลขใบขนมีแค่ในแถบ Decl ของหน้าใบขน */
+  hideInList?: boolean;
+  /** ข้อความหลัง Status บนแถบเขียวของหน้าใบขน (ไม่ใส่ = Customs Accept ถ้ามีเลขใบขน) */
+  headerStatus?: string;
 };
 
 export type MockState = {
@@ -166,7 +170,7 @@ export async function startMockNetbay(): Promise<{ url: string; state: MockState
           const st = statusOf(r);
           return `<tr><td><input type="checkbox" name="sel" value="${id}"><img src="/images/print.gif"></td>`
             + `<td><img id="statusPic${id}" value="${r}" src="${st.image}" onclick="editID('${id}')"></td>`
-            + `<td><a href="#">${r}</a></td><td></td><td>${st.declarationNo ?? ''}</td></tr>`;
+            + `<td><a href="#">${r}</a></td><td></td><td>${st.hideInList ? '' : st.declarationNo ?? ''}</td></tr>`;
         }).join('');
       const codes = ['ACCEPT', 'CANCEL_REJECT', 'CANCELED', 'ERROR', 'IMPREJECT', 'PREPARE', 'REJECT', 'SEND', 'SEND_CANCEL', 'VALIDATED', 'DRAFT_CANCEL'];
       /*
@@ -211,7 +215,18 @@ function savePdf() {
       const id = (url.searchParams.get('SELITEM') ?? '').split(':')[1];
       return html(`<html><body><div id="outLineTree">ROOT</div><iframe id="detailfrm" name="detailfrm" src="/edit?ImDclCtrl=${id}"></iframe></body></html>`);
     }
-    if (p === '/edit') return html(`<html><body><input id="referenceNo" value="${state.declarations[url.searchParams.get('ImDclCtrl') ?? '']}"></body></html>`);
+    if (p === '/edit') {
+      // หน้าใบขน: แถบเขียวด้านบน REF · Decl · Status แบบหน้าจริง (ตัวอักษรห่าง) + เลขหน้าตาเหมือนเลขใบขนที่ไม่ใช่ (Export Tax ID)
+      const ref = state.declarations[url.searchParams.get('ImDclCtrl') ?? ''] ?? '';
+      const st = statusOf(ref);
+      const spaced = (t: string) => t.split('').join(' ');
+      const label = st.headerStatus ?? (st.declarationNo ? 'Customs Accept' : 'Draft Document');
+      return html(`<html><body><b>Declaration Control</b>
+<table><tr style="background:#0f0;letter-spacing:4px"><td>REF</td><td>${spaced(ref)}</td><td>Decl</td>
+<td>${st.declarationNo ? spaced(st.declarationNo) : ''}</td><td>${spaced(`Status ${label}`)}</td><td>Job No.</td></tr></table>
+<input id="referenceNo" value="${ref}"> Export Tax Incentives ID <input id="exportTaxId" value="F5306349580001">
+</body></html>`);
+    }
     if (p === '/save') { state.saved += 1; return html('ok'); }
     if (p === '/send_customs') { state.sentToCustoms = true; return html('ok'); }
     if (p.startsWith('/images/')) {

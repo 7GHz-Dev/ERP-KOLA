@@ -137,3 +137,31 @@ export function parseStatusImage(img: { src?: string | null; title?: string | nu
 
 /** เลขใบขนขาเข้า เช่น A0300691008769 — ตัวอักษร 1 ตัวตามด้วยตัวเลข 13 หลัก */
 export const DECLARATION_NO = /^[A-Z]\d{13}$/;
+
+/**
+ * แถบเขียวด้านบนของหน้าใบขน (เปิดจากหน้ารายการ) — "REF QELS100015985  Decl A0310691002615  Status Customs Accept  Job No."
+ * เลขใบขนเอาจากตรงนี้: คอลัมน์ DECLARATION NO ในหน้ารายการว่างได้แม้กรมศุลฯ รับแล้ว
+ *
+ * ตัวอักษรบนแถบห่างกันมาก (อาจเป็นช่องว่างจริง) จึงตัดช่องว่างทิ้งทั้งหมดก่อนแล้วหาเลขที่ตามหลัง "Decl" ทันที
+ * ต้องติดกับ "Decl" เท่านั้น — หน้าเดียวกันมีเลขรูปแบบเดียวกันที่ไม่ใช่เลขใบขน (Export Tax Incentives ID F5306349580001)
+ * "Declaration Control" (ชื่อหน้า) ไม่ติดเลขจึงไม่ถูกจับ · ถ้าเลขอยู่ในช่อง input ดูช่องที่ชื่อมี decl/dcl
+ */
+export function parseDeclarationHeader(text: string, inputs: [string, string][] = []): {
+  declarationNo: string | null; status: NetbayStatusCode | null;
+} {
+  const flat = text.replace(/\s+/g, '');
+  const m = /Decl(?:No)?\.?:?([A-Z]\d{13})(?!\d)/.exec(flat);
+  const fromInput = inputs.find(([name, value]) => /decl|dcl/i.test(name) && !/type/i.test(name) && DECLARATION_NO.test(value.trim()));
+  const declarationNo = m?.[1] ?? fromInput?.[1].trim() ?? null;
+
+  // ยาวก่อนสั้น เหมือนรูปป้าย · หน้าอาจมีคำว่า Status หลายที่ — เอาที่แรกที่ตามด้วยชื่อสถานะที่รู้จัก
+  const labels = (Object.keys(NETBAY_STATUS) as NetbayStatusCode[])
+    .sort((a, b) => NETBAY_STATUS[b].length - NETBAY_STATUS[a].length)
+    .map((code) => [code, NETBAY_STATUS[code].replace(/\s+/g, '').toLowerCase()] as const);
+  let status: NetbayStatusCode | null = null;
+  for (let at = flat.indexOf('Status'); at >= 0 && !status; at = flat.indexOf('Status', at + 1)) {
+    const after = flat.slice(at + 'Status'.length).replace(/^:/, '').toLowerCase();
+    status = labels.find(([, label]) => after.startsWith(label))?.[0] ?? null;
+  }
+  return { declarationNo, status };
+}

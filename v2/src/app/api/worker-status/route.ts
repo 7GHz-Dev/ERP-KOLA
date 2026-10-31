@@ -3,6 +3,7 @@ import { currentUser } from '@/lib/auth';
 import {
   CUSTOMS_WORKER_MODE, DRAFT_WORKER_MODE, getWorkerSettings, NON_WEB_MODES, onlineWorkers,
 } from '@/lib/worker-status';
+import { readRefresh } from '@/lib/customs-monitor';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,9 +17,11 @@ export async function GET(request: Request) {
    */
   const mode = new URL(request.url).searchParams.get('mode');
   const own = mode === DRAFT_WORKER_MODE || mode === CUSTOMS_WORKER_MODE ? mode : null;
-  const [workers, settings] = await Promise.all([
+  const [workers, settings, refresh] = await Promise.all([
     onlineWorkers(own ? { mode: own } : { exceptMode: NON_WEB_MODES }),
     getWorkerSettings(),
+    // ตัว monitor: คำขอ Refresh ล่าสุด — ปุ่ม Refresh ดูว่าเช็กเสร็จหรือยัง
+    own === CUSTOMS_WORKER_MODE ? readRefresh() : Promise.resolve(null),
   ]);
-  return NextResponse.json({ ok: true, workers, settings }, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ ok: true, workers, settings, refresh }, { headers: { 'Cache-Control': 'no-store' } });
 }

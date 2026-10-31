@@ -1,9 +1,11 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { automationTasks, jobs, masterRecords } from '@/db/schema';
 import { logActivity, newId, recordStatus } from '@/lib/actions/common';
 import { TASK_TYPES } from '@/lib/automation';
 import { isStatusCode, netbayStatusLabel, NOT_FOUND, statusGroup } from '@/lib/customs-status';
+import { monitorAccount, netbayCredentials, type NetbayAccount } from '@/lib/netbay-accounts';
+import { onlineWorkers } from '@/lib/worker-status';
 
 /**
  * ฝั่ง ERP ของตัว monitor ใบขน (scripts/customs-monitor.ts)
@@ -23,13 +25,7 @@ const LEASE_CODE = 'lease';
 
 type Lease = { worker: string; lease: string; since: string };
 
-/** บัญชี NETBAY ของตัว monitor — ค่าบน Vercel รูปแบบ "user:pass" แยกจากชุดบัญชีประจำเครื่อง */
-export function monitorAccount(env: Record<string, string | undefined> = process.env) {
-  const raw = (env.NETBAY_MONITOR_ACCOUNT ?? '').trim();
-  const i = raw.indexOf(':');
-  if (i <= 0) throw new Error('ยังไม่ได้ตั้ง NETBAY_MONITOR_ACCOUNT (รูปแบบ user:pass) บน Vercel');
-  return { username: raw.slice(0, i), password: raw.slice(i + 1) };
-}
+export { monitorAccount } from '@/lib/netbay-accounts';
 
 async function readLease(): Promise<Lease | null> {
   const [row] = await db.select({ value: masterRecords.value }).from(masterRecords)
@@ -75,7 +71,11 @@ export type MonitorTask = {
  * Ref No. เอาจากงานปัจจุบัน ไม่ใช่ค่าที่จำไว้ตอนกด เผื่อ PAINT สร้าง Draft ใหม่ได้เลขใหม่
  * งานที่ได้เลขใบขนไปแล้วทางอื่น (customs_status = FILED) ปิดทิ้ง ไม่งั้นค้างในคิวตลอดไป
  */
-export async function monitorTasks(lease: string): Promise<{ owner: boolean; by?: string; tasks: MonitorTask[] }> {
+export async function monitorTasks(lease: string): Promise<{
+  owner: boolean; by?: string; tasks: MonitorTask[];
+  /** มีคนกด Refresh ที่ยังไม่ได้เช็ก — ตัว monitor เช็กทันทีด้วยบัญชีที่ผู้กดเลือก */
+  refresh?: { at: string; account: NetbayAccount } | null;
+}> {
   const current = await readLease();
   if (current && current.lease !== lease) return { owner: false, by: current.worker, tasks: [] };
 
@@ -109,7 +109,7 @@ export async function monitorTasks(lease: string): Promise<{ owner: boolean; by?
       checkedAt: r.checkedAt?.toISOString() ?? null, externalStatus: r.externalStatus,
     };
   });
-  return { owner: true, tasks };
+  return { owner: true, tasks, refresh: await pendingRefresh() };
 }
 
 /**
@@ -150,4 +150,81 @@ export async function recordCustomsCheck(input: {
     checkedAt: now, error, updatedAt: now,
   }).where(eq(automationTasks.id, task.id));
   return { closed: false, known: status === NOT_FOUND || isStatusCode(status) };
+}
+
+/* ---------------- ปุ่ม Refresh: เช็กใน NETBAY ทันที ---------------- */
+
+const REFRESH_CODE = 'refresh';
+/** กด Refresh ได้ครั้งละหนึ่งนาที (รวมทุกคน) — แต่ละครั้งเปิด Chrome login NETBAY ใหม่ กดถี่บัญชีชนกันเอง */
+export const REFRESH_COOLDOWN_MS = 60_000;
+/** คำขอที่ค้างเกินนี้ไม่มีตัวไหนรับ (เช่นเครื่องปิดไป) — ไม่ให้ตัว monitor ที่เปิดทีหลังมาเช็กตามคำขอเก่า */
+const REFRESH_STALE_MS = 10 * 60_000;
+
+export type RefreshResult = { accepted: number; waiting: number; failed: number };
+export type RefreshState = {
+  at: string; by: string; username: string;
+  doneAt: string | null; worker: string | null; result: RefreshResult | null;
+};
+
+export async function readRefresh(): Promise<RefreshState | null> {
+  const [row] = await db.select({ value: masterRecords.value }).from(masterRecords)
+    .where(and(eq(masterRecords.type, LEASE_TYPE), eq(masterRecords.code, REFRESH_CODE))).limit(1);
+  try { return JSON.parse(row?.value ?? 'null'); } catch { return null; }
+}
+
+async function writeRefresh(state: RefreshState) {
+  const value = JSON.stringify(state);
+  await db.insert(masterRecords)
+    .values({ id: newId('CMR'), type: LEASE_TYPE, code: REFRESH_CODE, name: 'Refresh ใบขน', value })
+    .onConflictDoUpdate({ target: [masterRecords.type, masterRecords.code], set: { value, updatedAt: new Date() } });
+}
+
+async function pendingRefresh() {
+  const r = await readRefresh();
+  if (!r || r.doneAt || Date.now() - Date.parse(r.at) > REFRESH_STALE_MS) return null;
+  const account = netbayCredentials(r.username);
+  return account ? { at: r.at, account } : null;
+}
+
+/**
+ * กด Refresh — ให้ตัว monitor เช็กทุกรายการที่ค้างใน NETBAY ทันที (ไม่รอครบ 5 นาที) ด้วยบัญชีที่เลือก
+ *
+ * ตัว monitor ที่ออนไลน์อยู่ (เครื่องไหนก็ได้) เห็นคำขอภายใน 10 วินาที
+ * ไม่มีตัวไหนออนไลน์ = online:false หน้าเว็บเปิดตัว monitor บนเครื่องที่กด ตัวนั้นเห็นคำขอแล้วเช็กทันที
+ */
+export async function requestRefresh(input: { by: string; username?: string | null }): Promise<
+  | { ok: true; at: string; online: boolean; pending: number }
+  | { ok: false; reason: string; waitSec?: number }
+> {
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(automationTasks)
+    .where(and(eq(automationTasks.type, TASK_TYPES.CUSTOMS), inArray(automationTasks.status, ['QUEUED', 'PROCESSING'])));
+  if (!count) return { ok: false, reason: 'ไม่มีใบขนรอเช็กใน NETBAY' };
+
+  const prev = await readRefresh();
+  const since = prev ? Date.now() - Date.parse(prev.at) : Infinity;
+  if (since < REFRESH_COOLDOWN_MS) {
+    const waitSec = Math.ceil((REFRESH_COOLDOWN_MS - since) / 1000);
+    return { ok: false, reason: `เพิ่งกด Refresh ไป${prev?.by ? ` (${prev.by})` : ''} — รออีก ${waitSec} วินาที`, waitSec };
+  }
+
+  const wanted = String(input.username ?? '').trim();
+  const username = wanted || monitorAccount().username;
+  if (!netbayCredentials(username)) throw new Error(`ไม่รู้จักบัญชี NETBAY "${username}"`);
+
+  const at = new Date().toISOString();
+  await writeRefresh({ at, by: input.by.slice(0, 80), username, doneAt: null, worker: null, result: null });
+  const online = (await onlineWorkers({ mode: CUSTOMS_MONITOR_MODE })).length > 0;
+  return { ok: true, at, online, pending: count };
+}
+
+/** ตัว monitor เช็กตามคำขอ Refresh เสร็จแล้ว — หน้าเว็บที่กดเห็นแล้วโหลดข้อมูลใหม่ */
+export async function finishRefresh(input: { at: string; worker: string; result?: Partial<RefreshResult> | null }) {
+  const r = await readRefresh();
+  if (!r || r.at !== input.at) return { ok: false };
+  const n = (v: unknown) => Math.max(0, Math.round(Number(v) || 0));
+  await writeRefresh({
+    ...r, doneAt: new Date().toISOString(), worker: input.worker.slice(0, 80),
+    result: input.result ? { accepted: n(input.result.accepted), waiting: n(input.result.waiting), failed: n(input.result.failed) } : null,
+  });
+  return { ok: true };
 }

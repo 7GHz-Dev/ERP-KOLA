@@ -24,6 +24,7 @@ import { WEB_TASK, type JobVars, type WebTemplateDefinition } from '../src/lib/w
 import { RecorderHub } from './web-recorder-session';
 import { recordWithCodegen } from './codegen-recorder';
 import { runTemplate } from './web-template-runner';
+import { AGENT_VERSION } from '../src/lib/agent-version';
 
 loadEnv();
 
@@ -226,7 +227,7 @@ async function main() {
     }
     const res = await api<{ settings?: { background?: boolean; stopAt?: string | null } }>('heartbeat', {
       worker: WORKER, busy, mode: AUTO_SUBMIT || headlessNow ? 'auto' : 'review', platform: process.platform,
-      headless: headlessNow, log: recent, shot,
+      headless: headlessNow, version: AGENT_VERSION, log: recent, shot,
     }).catch(() => null);
     const settings = res?.settings;
     if (!settings) return;

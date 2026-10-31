@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { submitDraftTask } from '@/lib/actions/automation';
 import { ConfirmSubmit } from '@/components/Interactions';
+import { useNetbayUser } from '@/components/NetbayUser';
 
 /**
  * สร้าง Draft บนเครื่องที่กด — ไม่ส่งไปให้ worker เครื่องอื่นทำ
@@ -14,6 +15,8 @@ import { ConfirmSubmit } from '@/components/Interactions';
 const flagKey = (jobId: string) => `kola-draft-local:${jobId}`;
 
 export function SubmitDraftLocal({ jobId, label }: { jobId: string; label?: string }) {
+  // บัญชีที่เลือกไว้ที่แถบ "สร้าง Draft อัตโนมัติ" ด้านบน (ว่าง = บัญชีประจำเครื่อง)
+  const netbayUser = useNetbayUser('draft');
   return (
     <form
       action={submitDraftTask}
@@ -23,11 +26,12 @@ export function SubmitDraftLocal({ jobId, label }: { jobId: string; label?: stri
       }}
     >
       <input type="hidden" name="jobId" value={jobId} />
+      <input type="hidden" name="netbayUser" value={netbayUser} />
       <ConfirmSubmit
         label={label ?? 'สร้าง Draft'}
         tone="primary"
-        confirm="สร้าง Draft ใบขนบนเครื่องนี้ใช่ไหม"
-        detail="เครื่องนี้จะเปิด NETBAY สร้างใบขนจาก Final Invoice ให้ (ต้องติดตั้งตัวติดตั้ง ERP-KOLA บนเครื่องนี้แล้ว)"
+        confirm={`สร้าง Draft ใบขนบนเครื่องนี้ด้วย NETBAY user ${netbayUser || 'ประจำเครื่อง'} ใช่ไหม`}
+        detail="เครื่องนี้จะเปิด NETBAY สร้างใบขนจาก Final Invoice ให้ (ต้องติดตั้งตัวติดตั้ง ERP-KOLA บนเครื่องนี้แล้ว) · เปลี่ยนบัญชีได้ที่ช่อง NETBAY user ด้านบน"
       />
     </form>
   );

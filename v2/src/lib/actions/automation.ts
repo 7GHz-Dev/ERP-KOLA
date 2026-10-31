@@ -8,6 +8,8 @@ import { requireActiveSession } from '@/lib/auth';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId, required, runAction } from './common';
 import { reuseOpenTask, TASK_TYPES } from '@/lib/automation';
+import { requestRefresh } from '@/lib/customs-monitor';
+import { netbayCredentials } from '@/lib/netbay-accounts';
 
 /**
  * คิวงาน automation
@@ -21,6 +23,9 @@ import { reuseOpenTask, TASK_TYPES } from '@/lib/automation';
 async function submitDraftTaskImpl(formData: FormData) {
   const user = await requireActiveSession(['PAINT']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  // บัญชี NETBAY ที่เลือกไว้ก่อนกด — ว่าง = บัญชีประจำเครื่องที่กด (.env.local)
+  const netbayUser = String(formData.get('netbayUser') ?? '').trim().slice(0, 80);
+  if (netbayUser && !netbayCredentials(netbayUser)) throw new Error(`ไม่รู้จักบัญชี NETBAY "${netbayUser}"`);
 
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
@@ -38,14 +43,16 @@ async function submitDraftTaskImpl(formData: FormData) {
     await db.insert(automationTasks).values({
       id, type: TASK_TYPES.DRAFT, status: 'QUEUED', jobId,
       // local: ให้เครื่องที่กดเป็นคนทำ (ปุ่มเปิดลิงก์ kola-worker://draft?task=…) worker กลางไม่หยิบ
-      payload: JSON.stringify({ jobNo: job.jobNo, blNo: job.blNo, local: true, requestedBy: user.id }),
+      payload: JSON.stringify({
+        jobNo: job.jobNo, blNo: job.blNo, local: true, requestedBy: user.id, ...(netbayUser ? { netbayUser } : {}),
+      }),
       inputStorageKey: invoice.storageKey,
       inputFileName: invoice.fileName,
     });
     await db.update(jobs)
       .set({ draftTaskId: id, draftStatus: 'SENT_TO_HUB', updatedBy: user.id, updatedAt: new Date() })
       .where(eq(jobs.id, jobId));
-    await logActivity(user.id, 'SUBMIT_DRAFT_TASK', 'JOB', jobId, { taskId: id });
+    await logActivity(user.id, 'SUBMIT_DRAFT_TASK', 'JOB', jobId, { taskId: id, netbayUser: netbayUser || null });
   }
 
   revalidatePath('/pending');
@@ -79,6 +86,21 @@ async function submitCustomsTaskImpl(formData: FormData) {
 
   revalidatePath('/fah/draft');
   revalidatePath('/automation');
+}
+
+/**
+ * ปุ่ม Refresh (ตรวจ Draft · รอไฟล์และเลขใบขน · คิว Automation) — เช็กใบขนที่ค้างใน NETBAY ทันที ด้วยบัญชีที่เลือก
+ * คืนผลให้ปุ่มเอง (ไม่ใช่ฟอร์ม) ปุ่มจึงรู้ว่าต้องเปิดตัว monitor บนเครื่องนี้ไหม และต้องรออีกกี่วินาที
+ */
+export async function refreshCustoms(username: string) {
+  try {
+    const user = await requireActiveSession(['PAINT', 'FAH']);
+    const result = await requestRefresh({ by: user.displayName || user.username, username: String(username ?? '').slice(0, 80) });
+    if (result.ok) await logActivity(user.id, 'REFRESH_CUSTOMS', 'WORKER', 'customs', { username, at: result.at });
+    return result;
+  } catch (error) {
+    return { ok: false as const, reason: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /** ดึงผลกลับเข้า Job — เก็บไว้เผื่อกรณีที่ worker บันทึกผลแต่ Job ยังไม่อัปเดต */

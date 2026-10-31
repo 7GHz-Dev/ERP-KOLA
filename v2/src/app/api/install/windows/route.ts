@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { logActivity } from '@/lib/actions/common';
+import { AGENT_VERSION } from '@/lib/agent-version';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,8 @@ export async function GET(request: Request) {
 
   const res = await fetch(new URL('/install/windows-setup.cmd', request.url), { cache: 'no-store' });
   if (!res.ok) return new NextResponse('โหลดไฟล์ติดตั้งไม่สำเร็จ', { status: 502 });
-  const script = (await res.text()).replaceAll('__KOLA_WORKER_API_KEY__', key);
+  const script = (await res.text()).replaceAll('__KOLA_WORKER_API_KEY__', key)
+    .replaceAll('__KOLA_AGENT_VERSION__', AGENT_VERSION);
 
   await logActivity(user.id, 'DOWNLOAD_WINDOWS_SETUP', 'WORKER', 'draft', {});
   return new NextResponse(script, {

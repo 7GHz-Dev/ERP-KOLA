@@ -3,7 +3,7 @@
  * ไม่ต่อฐานข้อมูล ไม่ออกเน็ต
  *
  *   1. อ่านรหัสจากรูปป้ายสถานะ — ยาวก่อนสั้น (CANCEL_REJECT ไม่กลายเป็น REJECT, IMPREJECT ไม่กลายเป็น REJECT)
- *   2. แตก zip จาก Save PDF แล้วได้ <เลขใบขน>.pdf
+ *   2. อ่านเลขใบขนจากแถบ Decl ในหน้าใบขน · แตก zip จาก Save PDF แล้วได้ <เลขใบขน>.pdf
  *   3. เช็ก 1 รอบ: ACCEPT -> ติ๊กแถวเดียว + ชื่อไฟล์ = เลขที่ใบขน + Save PDF -> completeTask (เลข + PDF)
  *      ยังไม่ ACCEPT / ไม่พบ / REJECT -> ส่งสถานะอย่างเดียว · อ่านป้ายไม่ออกแต่มีเลขใบขน -> ถามช่อง Status
  *      ACCEPT แต่ยังไม่มีเลขใบขน -> บอกข้อผิดพลาด ไม่ปิดงาน
@@ -18,7 +18,7 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import JSZip from 'jszip';
-import { NOT_FOUND, parseStatusImage, statusFromImageHash, statusGroup } from '../src/lib/customs-status';
+import { NOT_FOUND, parseDeclarationHeader, parseStatusImage, statusFromImageHash, statusGroup } from '../src/lib/customs-status';
 import { checkRound, type Api, type MonitorTask } from '../scripts/customs-check';
 import { netbaySettings, pdfFromDownload } from '../scripts/netbay-kola';
 import { mockPdf, startMockNetbay } from './draft-mock-netbay';
@@ -67,6 +67,18 @@ async function testStatusImage() {
   console.log('✓ อ่านรหัสจากรูปป้ายสถานะ (เนื้อรูป + ชื่อไฟล์)');
 }
 
+async function testHeader() {
+  // แถบเขียวของหน้าจริง: ตัวอักษรห่าง · มีเลข Export Tax ID รูปแบบเดียวกันอยู่ในหน้า
+  const bar = 'Declaration Control\nREF   Q E L S 1 0 0 0 1 5 9 8 5     Decl    A 0 3 1 0 6 9 1 0 0 2 6 1 5   S t a t u s  C u s t o m s  A c c e p t   Job No.\n'
+    + 'Export Tax Incentives ID F5306349580001';
+  assert.deepEqual(parseDeclarationHeader(bar), { declarationNo: 'A0310691002615', status: 'ACCEPT' });
+  assert.deepEqual(parseDeclarationHeader('REF QELS1 Decl  Status Draft Document  Export Tax Incentives ID F5306349580001'),
+    { declarationNo: null, status: 'PREPARE' });
+  assert.deepEqual(parseDeclarationHeader('Status Customs Reject'), { declarationNo: null, status: 'REJECT' });
+  assert.equal(parseDeclarationHeader('', [['exportTaxId', 'F5306349580001'], ['declNo', 'A0300691008769']]).declarationNo, 'A0300691008769');
+  console.log('✓ อ่านเลขใบขนจากแถบ Decl ในหน้าใบขน (ไม่จับเลข Export Tax ID)');
+}
+
 async function testZip() {
   const direct = await pdfFromDownload(mockPdf('x'), 'A0300691008769');
   assert.equal(direct.name, 'A0300691008769.pdf');
@@ -95,7 +107,8 @@ async function testRound() {
   const gif = (code: string) => join(STATUS_GIFS, `${code}.gif`);
   mock.state.statuses = {
     // ชื่อไฟล์รูปไม่บอกอะไร — ต้องจำได้จากเนื้อรูป (รูปจริงของ NETBAY)
-    QELS100015966: { code: 'ACCEPT', image: '/images/b/14.gif', file: gif('ACCEPT'), declarationNo: 'A0300691008769' },
+    // คอลัมน์ DECLARATION NO ว่างแบบหน้าจริง — เลขต้องมาจากแถบ Decl ในหน้าใบขน
+    QELS100015966: { code: 'ACCEPT', image: '/images/b/14.gif', file: gif('ACCEPT'), declarationNo: 'A0300691008769', hideInList: true },
     QELS100015965: { code: 'VALIDATED', image: '/images/b/9.gif', file: gif('VALIDATED') },
     // Audit Checked 03 = เสร็จเหมือน Customs Accept
     QELS100015909: { code: 'AUDIT', image: '/images/b/8.gif', file: gif('AUDIT_CHECKED'), declarationNo: 'A0290691012214' },
@@ -121,7 +134,8 @@ async function testRound() {
     assert.deepEqual(erp.statusOf('T3'), [{ taskId: 'T3', status: NOT_FOUND }], why);
     assert.deepEqual(erp.statusOf('T4'), [{ taskId: 'T4', status: 'REJECT' }], why);
     assert.equal(erp.statusOf('T6')[0].status, 'ACCEPT');
-    assert.match(erp.statusOf('T6')[0].error, /DECLARATION NO ยังว่าง/);
+    assert.match(erp.statusOf('T6')[0].error, /ยังไม่เห็นเลขใบขน/);
+    assert.match(why, /A0300691008769 \(จากแถบ Decl ในหน้าใบขน\)/);
 
     const done = erp.completed();
     assert.deepEqual(done.map((d) => [d.taskId, d.entryNo, d.file.name]), [
@@ -156,6 +170,7 @@ async function testRound() {
 
 async function main() {
   await testStatusImage();
+  await testHeader();
   await testZip();
   await testRound();
   console.log('\nผ่านทั้งหมด');

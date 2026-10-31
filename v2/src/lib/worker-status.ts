@@ -83,6 +83,8 @@ export type WorkerInfo = {
   shot?: unknown;
   /** worker กำลังปิดตัว — ให้หน้าเว็บเห็นว่าปิดทันที ไม่ต้องรอสัญญาณหมดอายุ */
   offline?: boolean;
+  /** AGENT_VERSION ของโค้ดที่ worker รันอยู่ — หน้าเว็บบอกว่าล่าสุดหรือยัง */
+  version?: unknown;
 };
 
 const shotKey = (worker: string) => `workers/${safeName(worker)}/live.jpg`;
@@ -108,6 +110,7 @@ export async function recordHeartbeat(worker: string, info: WorkerInfo) {
     mode: String(info.mode ?? '').slice(0, 20),
     platform: String(info.platform ?? '').slice(0, 20),
     headless: Boolean(info.headless),
+    version: info.version ? String(info.version).slice(0, 40) : null,
     log, shotAt,
   });
   await db.insert(masterRecords)
@@ -128,6 +131,8 @@ export async function workerShot(worker: string) {
 export type OnlineWorker = {
   name: string; busy: string | null; mode: string; platform: string; headless: boolean;
   log: string[]; shotAt: string | null; seenAt: string;
+  /** null = worker รุ่นก่อนมีเลขเวอร์ชัน */
+  version: string | null;
 };
 
 export async function onlineWorkers(
@@ -151,6 +156,7 @@ export async function onlineWorkers(
       headless: Boolean(info.headless),
       log: Array.isArray(info.log) ? (info.log as string[]) : [],
       shotAt: (info.shotAt as string | null) ?? null,
+      version: (info.version as string | null) ?? null,
       seenAt: r.updatedAt.toISOString(),
     };
   }).filter((w) => (!filter.mode || w.mode === filter.mode)

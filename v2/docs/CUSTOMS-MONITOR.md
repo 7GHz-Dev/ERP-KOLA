@@ -25,14 +25,21 @@ MAY › แพลนลากตู้ › "รับแพลน"   (เชื�
 - **เปิดเอง** เมื่อ FAH กด "สร้างใบขนแล้ว" — หน้าเว็บเปิดลิงก์ `kola-worker://customs` หลังงานเข้าคิวแล้ว
   ปิดเครื่องไปก่อน ACCEPT ครบ → คิว Automation › รอสร้างใบขน มีปุ่ม **เปิดตัว monitor บนเครื่องนี้**
 - **เครื่องที่กดล่าสุดรับหน้าที่** และเช็ก*ทุก*รายการที่ค้าง (ไม่ใช่แค่รายการที่ตัวเองกด)
-  บัญชี monitor login ได้ทีละที่ ตัวเก่าเห็นใน 30 วินาทีว่ามีเครื่องอื่นรับไปแล้วก็ปิดตัวเอง (lease ใน `master_records` type `customsMonitor`)
-  บนเครื่องเดียวกันถ้าเปิดอยู่แล้ว ตัวเปิดไม่เปิดซ้ำ — ตัวที่เปิดอยู่เห็นงานใหม่ภายในครึ่งนาทีแล้วเช็กทันที
+  บัญชี monitor login ได้ทีละที่ ตัวเก่าเห็นใน 10 วินาทีว่ามีเครื่องอื่นรับไปแล้วก็ปิดตัวเอง (lease ใน `master_records` type `customsMonitor`)
+  บนเครื่องเดียวกันถ้าเปิดอยู่แล้ว ตัวเปิดไม่เปิดซ้ำ — ตัวที่เปิดอยู่เห็นงานใหม่ภายใน 10 วินาทีแล้วเช็กทันที
+- **ปุ่ม ↻ Refresh** ที่หัวหน้า FAH › ตรวจ Draft / รอไฟล์และเลขใบขน และคิวงาน Automation = เข้าไปเช็กใน NETBAY ตอนกดเลย
+  เลือก **NETBAY user** ข้างปุ่มก่อนกด (ค่าตั้งต้น = บัญชี monitor · จำค่าไว้ในเบราว์เซอร์) — ใช้บัญชีนี้เฉพาะรอบที่กด รอบปกติยังใช้บัญชี monitor
+  ตัว monitor ออนไลน์อยู่ (เครื่องไหนก็ได้) รับไปเช็กภายใน 10 วินาที · ไม่มี = เปิดตัว monitor บนเครื่องที่กด · เช็กเสร็จหน้าโหลดข้อมูลใหม่เอง
+  **กดได้ครั้งละ 1 นาที รวมทุกคน** (เซิร์ฟเวอร์กัน · ปุ่มนับถอยหลัง) · คำขอเก็บที่ `master_records` type `customsMonitor` code `refresh`
 - **ปิดเอง** ได้จากปุ่ม **ปิดเช็คสถานะ** บนแถบสถานะ (คิว Automation › รอสร้างใบขน และ FAH › ตรวจ Draft › แท็บรอผล)
   ระบบยึด lease ไว้ ตัว monitor ปิดหลังจบรอบที่เช็กอยู่ (ตัวรุ่นเก่าก็ปิดตาม) · รายการค้างยังอยู่ในคิว กดเปิดใหม่เมื่อไรก็เช็กต่อ
 - **ไม่มีหน้าต่าง** (เช็กซ้ำระหว่างที่ FAH ใช้เครื่อง) — ดู log + ภาพหน้าจอได้ที่ **ดูการทำงาน** บนแถบสถานะ
 - **ปิดตัวเองเมื่อ ACCEPT ครบทุกรายการ**
 
-ต่อ 1 รายการ: ค้น Reference No. → อ่านรูปป้ายในคอลัมน์ STATUS + คอลัมน์ DECLARATION NO
+ต่อ 1 รายการ: ค้น Reference No. → อ่านรูปป้ายในคอลัมน์ STATUS
+→ ป้าย ACCEPT (หรืออ่านไม่ออก) **เปิดใบขนแล้วเอาเลขใบขนจากแถบเขียวด้านบน** `REF … Decl A0310691002615 Status Customs Accept`
+(คอลัมน์ DECLARATION NO ในหน้ารายการว่างได้แม้ ACCEPT แล้ว — ใช้เป็นทางสำรอง) · เลขต้องติดคำว่า Decl
+ไม่จับเลขรูปแบบเดียวกันอื่นในหน้า (เช่น Export Tax Incentives ID) · Status บนแถบใช้แทนเมื่ออ่านรูปป้ายไม่ออก
 
 | สถานะใน NETBAY | ระบบทำ |
 |---|---|
@@ -41,7 +48,7 @@ MAY › แพลนลากตู้ › "รับแพลน"   (เชื�
 | `REJECT` · `IMPREJECT` · `ERROR` · `CANCEL_REJECT` | ป้ายแดง เช็กต่อ — แก้ใน NETBAY แล้ว Send ใหม่ จน ACCEPT ระบบดึงให้เอง |
 | `CANCELED` · `DRAFT_CANCEL` | หยุดเช็ก คืนงานไป FAH › ตรวจ Draft (ขึ้นป้าย "ใบขนถูกยกเลิกใน NETBAY") |
 | ไม่พบ Ref No. | ป้ายแดง "ไม่พบใน NETBAY" เช็กต่อ |
-| อ่านรูปป้ายไม่ออก | ถ้ามีเลขใบขนแล้ว ถามช่อง Status = ACCEPT ของ NETBAY ตรง ๆ · ไม่งั้นขึ้น "ไม่รู้จักสถานะ (ชื่อรูป)" |
+| อ่านรูปป้ายไม่ออก | ดู Status บนแถบเขียวของหน้าใบขน · ไม่ได้อีกและมีเลขใบขน ถามช่อง Status = ACCEPT ของ NETBAY · ไม่งั้นขึ้น "ไม่รู้จักสถานะ (ชื่อรูป)" |
 
 รหัสสถานะทั้งหมดอยู่ที่ `src/lib/customs-status.ts` (ตรงกับ `<option value>` ของช่อง Status ใน NETBAY)
 
@@ -50,7 +57,7 @@ MAY › แพลนลากตู้ › "รับแพลน"   (เชื�
 1. รันฐานข้อมูลก่อน deploy: `npm run migrate:customs-flow`
 2. Vercel: `NETBAY_MONITOR_ACCOUNT=monitorerpkola:<รหัส>` (บัญชีแยกจากชุดบัญชีประจำเครื่อง)
 3. เครื่อง FAH: **รันตัวติดตั้งซ้ำหนึ่งครั้ง** (`windows-setup.cmd` หรือ `mac-worker-launcher.sh`) ให้ตัวเปิดรู้จัก `kola-worker://customs`
-   (ตัวติดตั้งดึงโค้ดจาก git — push ก่อน)
+   (ตัวติดตั้งดึงโค้ดจาก git — push ก่อน) · หลังจากนั้นเครื่อง Windows อัปเดตเองเบื้องหลัง (ดู DRAFT-WORKER.md › เวอร์ชัน / อัปเดตอัตโนมัติ)
 
 ค่าในเครื่อง (ไม่ต้องตั้งก็ได้): `CUSTOMS_MONITOR_MINUTES` (ค่าตั้งต้น 5) · `CUSTOMS_MONITOR_SHOW=1` แสดงหน้าต่าง Chrome
 log: Windows `%LOCALAPPDATA%\KOLA\customs-monitor.log` · Mac `~/Library/Logs/KOLA/customs-monitor.log`
@@ -87,12 +94,13 @@ npm run netbay:probe -- QELS100015966 QELS100015970
 ## โค้ด
 
 ```
-src/lib/customs-status.ts      รหัสสถานะ NETBAY · กลุ่ม/สีป้าย · อ่านรหัสจากรูปป้าย
-src/lib/customs-monitor.ts     ฝั่ง ERP: lease · รายการที่ค้าง · บันทึกผลเช็ก/คืนงานที่ถูกยกเลิก
+src/lib/customs-status.ts      รหัสสถานะ NETBAY · กลุ่ม/สีป้าย · อ่านรหัสจากรูปป้าย · parseDeclarationHeader (แถบ Decl)
+src/lib/customs-monitor.ts     ฝั่ง ERP: lease · รายการที่ค้าง · บันทึกผลเช็ก/คืนงานที่ถูกยกเลิก · คำขอ Refresh
+src/components/CustomsRefresh.tsx   ปุ่ม Refresh + ช่อง NETBAY user (src/components/NetbayUser.tsx)
 scripts/customs-monitor.ts     ตัววน (worker:customs)      scripts/customs-check.ts  เช็ก 1 รอบ
-scripts/netbay-kola.ts         readDeclaration · acceptedByFilter · downloadDeclarationPdf · pdfFromDownload
+scripts/netbay-kola.ts         readDeclaration · readDeclarationHeader · acceptedByFilter · downloadDeclarationPdf · pdfFromDownload
 scripts/netbay-probe.ts        อ่านหน้าจริงแบบไม่กดอะไร
 src/lib/actions/eoffice-handover.ts   ส่งมอบ / คืน      src/lib/actions/haul-plan.ts   ส่งแพลน / รับแพลน
 ```
 
-เทสต์: `npm run test:customs` (NETBAY จำลองใน `tests/draft-mock-netbay.ts` มีป้ายสถานะ ช่อง Status ติ๊กแถว ชื่อไฟล์ และ Save PDF ที่ได้ zip)
+เทสต์: `npm run test:customs` (NETBAY จำลองใน `tests/draft-mock-netbay.ts` มีป้ายสถานะ แถบ Decl ในหน้าใบขน ช่อง Status ติ๊กแถว ชื่อไฟล์ และ Save PDF ที่ได้ zip)

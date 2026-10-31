@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { OnlineWorker } from '@/lib/worker-status';
 import { StopWorkerButton } from '@/components/StopWorkerButton';
+import { NetbayUserPicker } from '@/components/NetbayUser';
+import { AgentVersionBadge, AgentVersions } from '@/components/AgentVersion';
 
 /**
  * แผงสถานะ worker สร้าง Draft ใบขนบนแท็บ 3. Draft ใบขน — สถานะ · เปิด · ดูการทำงาน (log + ภาพหน้าจอสด)
@@ -41,6 +43,8 @@ export function DraftWorkerBar({ initial }: { initial: OnlineWorker[] }) {
   return (
     <div className="worker-launcher">
       <span className="filter-label">สร้าง Draft อัตโนมัติ</span>
+      {/* เลือกก่อนกด "สร้าง Draft" — ปุ่มทุกแถวใช้บัญชีนี้ */}
+      <NetbayUserPicker purpose="draft" />
       {worker ? (
         <span className="badge approved" title={worker.name}>
           ● worker ออนไลน์ · {worker.busy ? `กำลังทำ ${worker.busy}` : 'ว่าง'}
@@ -54,6 +58,7 @@ export function DraftWorkerBar({ initial }: { initial: OnlineWorker[] }) {
           </a>
         </>
       )}
+      {worker ? <AgentVersionBadge version={worker.version} /> : null}
       {worker ? (
         <button type="button" className="button tiny" onClick={() => setWatching((w) => !w)}>
           {watching ? 'ซ่อนการทำงาน' : 'ดูการทำงาน'}
@@ -98,6 +103,7 @@ export function DraftWorkerBar({ initial }: { initial: OnlineWorker[] }) {
             แล้วดับเบิลคลิก — ติดตั้ง Git / Node.js / Chrome ที่ยังไม่มี ดึงโค้ด ใส่คีย์ และจองบัญชี NETBAY ประจำเครื่องให้เอง
             ไม่ต้องกรอกอะไร (ถ้า Windows ขึ้นว่า &quot;ป้องกันพีซีของคุณ&quot; กด ข้อมูลเพิ่มเติม → เรียกใช้)
             · ไฟล์นี้มีคีย์ของระบบ อย่าส่งต่อให้คนนอก</p>
+          <AgentVersions />
           <p><b>Mac:</b> มีโค้ด ERP-KOLA กับ Node.js แล้ว ใส่ <code>WORKER_API_KEY</code> ใน <code>v2/.env.local</code>
             แล้วรัน <code>bash scripts/install/mac-worker-launcher.sh</code> ในโฟลเดอร์ v2 (จองบัญชี NETBAY ให้เอง)</p>
         </div>

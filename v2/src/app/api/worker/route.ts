@@ -4,10 +4,11 @@ import { db } from '@/db';
 import { automationTasks } from '@/db/schema';
 import { downloadFile } from '@/lib/storage';
 import { completeTask, CUSTOMS_TASK_TYPES, failTask, TASK_TYPES } from '@/lib/automation';
-import { monitorTasks, recordCustomsCheck, takeMonitorLease } from '@/lib/customs-monitor';
+import { finishRefresh, monitorTasks, recordCustomsCheck, takeMonitorLease } from '@/lib/customs-monitor';
 import { downloadTaskFile, saveRecording } from '@/lib/web-template-store';
 import { recordHeartbeat } from '@/lib/worker-status';
-import { assignNetbayAccount } from '@/lib/netbay-accounts';
+import { assignNetbayAccount, netbayCredentials } from '@/lib/netbay-accounts';
+import { recordAgentVersion } from '@/lib/agent-machines';
 import { engineLookup, issueEngineNumbers } from '@/lib/engine-numbers';
 
 /**
@@ -23,6 +24,19 @@ const WORKER_ACTOR = 'WORKER';
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: 'UNAUTHORIZED|API key ไม่ถูกต้อง' }, { status: 401 });
+}
+
+function taskPayload(raw: string | null): Record<string, unknown> {
+  try { return JSON.parse(raw ?? '{}') ?? {}; } catch { return {}; }
+}
+
+/**
+ * บัญชี NETBAY ที่ผู้กด "สร้าง Draft" เลือกไว้ (payload.netbayUser) — ไม่ได้เลือก = null ให้ worker ใช้บัญชีประจำเครื่อง
+ * รหัสผ่านไม่อยู่ใน payload ดึงจากชุดบัญชีบนเซิร์ฟเวอร์ตอนส่งงานให้ worker
+ * บัญชีที่เลือกถูกถอดออกจากชุดไปแล้วก็ได้ null เหมือนกัน (worker เห็น data.netbayUser แล้วบอกใน log)
+ */
+function taskNetbay(payload: Record<string, unknown>) {
+  return netbayCredentials(typeof payload.netbayUser === 'string' ? payload.netbayUser : '');
 }
 
 /** งานถัดไปในคิว — งานที่ค้าง PROCESSING เกินเวลาถือว่า worker ตาย ปล่อยให้ตัวอื่นรับต่อ */
@@ -59,14 +73,13 @@ async function claimNext(args: any) {
     attempts: task.attempts + 1, updatedAt: new Date(),
   }).where(eq(automationTasks.id, task.id));
 
-  let payload: unknown = {};
-  try { payload = JSON.parse(task.payload ?? '{}'); } catch { payload = {}; }
+  const payload = taskPayload(task.payload);
 
   return {
     task: {
       id: task.id, type: task.type, jobId: task.jobId, data: payload,
       hasInputFile: Boolean(task.inputStorageKey), inputFileName: task.inputFileName,
-      attempts: task.attempts + 1,
+      attempts: task.attempts + 1, netbay: taskNetbay(payload),
     },
   };
 }
@@ -90,13 +103,12 @@ async function claimTask(args: any) {
     .returning({ id: automationTasks.id });
   if (!claimed) throw new Error('งานนี้ถูกหยิบไปพร้อมกันพอดี');
 
-  let payload: unknown = {};
-  try { payload = JSON.parse(task.payload ?? '{}'); } catch { payload = {}; }
+  const payload = taskPayload(task.payload);
   return {
     task: {
       id: task.id, type: task.type, jobId: task.jobId, data: payload,
       hasInputFile: Boolean(task.inputStorageKey), inputFileName: task.inputFileName,
-      attempts: task.attempts + 1,
+      attempts: task.attempts + 1, netbay: taskNetbay(payload),
     },
   };
 }
@@ -147,6 +159,11 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
     return assignNetbayAccount(String(args?.machine ?? ''));
   },
 
+  // ตัวเปิดบน Windows ถามว่าโค้ดในเครื่องล่าสุดหรือยัง — เก่ากว่า = อัปเดตตัวเองเบื้องหลัง (start-worker.ps1)
+  async agentCheck(args: any) {
+    return recordAgentVersion(String(args?.machine ?? ''), String(args?.version ?? ''), String(args?.status ?? ''));
+  },
+
   // Template กรอกเว็บ — ไฟล์ของงานตามหมวดที่ Template แนบ และขั้นตอนที่บันทึกมา
   async downloadTaskFile(args: any) {
     return downloadTaskFile(String(args?.taskId ?? ''), String(args?.category ?? ''));
@@ -155,7 +172,7 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
   async heartbeat(args: any) {
     const settings = await recordHeartbeat(String(args?.worker ?? ''), {
       busy: args?.busy, mode: args?.mode, platform: args?.platform, headless: args?.headless,
-      log: args?.log, shot: args?.shot, offline: Boolean(args?.offline),
+      log: args?.log, shot: args?.shot, offline: Boolean(args?.offline), version: args?.version,
     });
     // ตอบค่าตั้งที่ ANN สั่งจากหน้าเว็บกลับไป (ทำงานเบื้องหลัง · ปิด worker)
     return { settings };
@@ -192,6 +209,10 @@ const HANDLERS: Record<string, (args: any) => Promise<unknown>> = {
   },
   async customsMonitorTasks(args: any) {
     return monitorTasks(String(args?.lease ?? ''));
+  },
+  // กด Refresh: ตัว monitor เช็กตามคำขอเสร็จแล้ว หน้าเว็บที่กดโหลดข้อมูลใหม่
+  async customsRefreshDone(args: any) {
+    return finishRefresh({ at: String(args?.at ?? ''), worker: String(args?.worker ?? ''), result: args?.result });
   },
   async customsStatus(args: any) {
     return recordCustomsCheck({
