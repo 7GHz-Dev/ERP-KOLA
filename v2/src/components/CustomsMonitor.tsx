@@ -18,22 +18,33 @@ import { AgentVersionBadge } from '@/components/AgentVersion';
 const FLAG = 'kola-customs-monitor';
 export const MONITOR_LINK = 'kola-worker://customs';
 
-export function SubmitCustomsDone({ jobId }: { jobId: string }) {
+export function SubmitCustomsDone({ jobId, simulate = false }: { jobId: string; simulate?: boolean }) {
   return (
     <form
       action={submitCustomsTask}
       className="inline-form"
       onSubmit={() => {
+        // โหมดจำลองได้เลขใบขนทันที ไม่ต้องเปิดตัว monitor
+        if (simulate) return;
         try { sessionStorage.setItem(FLAG, String(Date.now())); } catch { /* ใช้ปุ่มเปิดที่คิว Automation แทน */ }
       }}
     >
       <input type="hidden" name="jobId" value={jobId} />
-      <ConfirmSubmit
-        label="สร้างใบขนแล้ว"
-        tone="primary"
-        confirm="กด SEND TO CUSTOMS ใน NETBAY แล้วใช่ไหม"
-        detail="เครื่องนี้จะเปิดตัว monitor เช็กสถานะใน NETBAY ทุก 5 นาที เมื่อ ACCEPT จะดึงเลขใบขน + PDF ให้ และงานไปที่ 4. เตรียมเอกสารเดิน E เอง (ต้องติดตั้งตัวเปิดของ ERP-KOLA บนเครื่องนี้แล้ว)"
-      />
+      {simulate ? (
+        <ConfirmSubmit
+          label="สร้างใบขนแล้ว (จำลอง)"
+          tone="danger"
+          confirm="สร้างใบขนแบบจำลองให้งานนี้ใช่ไหม"
+          detail="โหมดจำลองเปิดอยู่ — ระบบใส่เลขใบขนทดสอบ (A999…) + PDF ทดสอบทันที ไม่ผ่าน NETBAY แล้วงานไปที่ 4. เตรียมเอกสารเดิน E · ห้ามใช้กับงานจริง"
+        />
+      ) : (
+        <ConfirmSubmit
+          label="สร้างใบขนแล้ว"
+          tone="primary"
+          confirm="กด SEND TO CUSTOMS ใน NETBAY แล้วใช่ไหม"
+          detail="เครื่องนี้จะเปิดตัว monitor เช็กสถานะใน NETBAY ทุก 5 นาที เมื่อ ACCEPT จะดึงเลขใบขน + PDF ให้ และงานไปที่ 4. เตรียมเอกสารเดิน E เอง (ต้องติดตั้งตัวเปิดของ ERP-KOLA บนเครื่องนี้แล้ว)"
+        />
+      )}
     </form>
   );
 }

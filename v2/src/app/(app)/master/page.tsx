@@ -4,7 +4,8 @@ import { MasterRecordForm } from '@/components/ActionForms';
 import { MasterMenu } from '@/components/MasterMenu';
 import { FilterTh, TableFilterScope } from '@/components/TableFilter';
 import { ConfirmSubmit } from '@/components/Interactions';
-import { saveGmail, testPartnerChannels } from '@/lib/actions/master';
+import { saveGmail, testPartnerChannels, toggleCustomsSimulation } from '@/lib/actions/master';
+import { isCustomsSimulation } from '@/lib/customs-simulation';
 import { isShipmePartner, parseEmails } from '@/lib/partner-message';
 import { gmailSender, hasChannel, recentLineGroups } from '@/lib/partner-notify';
 
@@ -19,7 +20,7 @@ export default async function MasterPage({
 
   const type = MASTER_TYPES.some((t) => t.key === one('type')) ? one('type') : 'shippers';
   const q = one('q');
-  const [rows, counts] = await Promise.all([listMaster(type, q), masterCounts()]);
+  const [rows, counts, simulation] = await Promise.all([listMaster(type, q), masterCounts(), isCustomsSimulation()]);
   const isSettings = type === 'settings';
   const isPartners = type === 'partners';
   const typeLabel = MASTER_TYPES.find((t) => t.key === type)?.label ?? type;
@@ -51,6 +52,27 @@ export default async function MasterPage({
             </form>
             <MasterRecordForm type={type} typeLabel={typeLabel} isSettings={isSettings} />
           </div>
+
+          {/* โหมดจำลองสร้างใบขน — ทดสอบทั้งเส้นทางด้วยไฟล์ทดสอบที่ส่ง Customs จริงไม่ได้ */}
+          <form action={toggleCustomsSimulation} className={`notice simulation-toggle${simulation ? ' on' : ''}`}>
+            <input type="hidden" name="on" value={simulation ? '0' : '1'} />
+            <span>
+              <b>โหมดจำลองสร้างใบขน</b>{' '}
+              {simulation
+                ? <span className="badge rejected">เปิดอยู่</span>
+                : <span className="badge neutral">ปิด</span>}
+              {' '}— เปิดแล้ว FAH กด &quot;สร้างใบขนแล้ว&quot; จะได้เลขใบขนทดสอบ (A999…) + PDF ทดสอบทันที ไม่ผ่าน NETBAY ·
+              ใช้กับงานทดสอบเท่านั้น
+            </span>
+            <ConfirmSubmit
+              label={simulation ? 'ปิดโหมดจำลอง' : 'เปิดโหมดจำลอง'}
+              tone={simulation ? 'primary' : 'danger'}
+              confirm={simulation ? 'ปิดโหมดจำลองสร้างใบขนใช่ไหม' : 'เปิดโหมดจำลองสร้างใบขนใช่ไหม'}
+              detail={simulation
+                ? 'กลับไปสร้างใบขนผ่าน NETBAY ตามปกติ — ตัว monitor รอ ACCEPT แล้วดึงเลขใบขนจริง'
+                : 'ระหว่างเปิด ทุกงานที่กด "สร้างใบขนแล้ว" จะได้เลขใบขนปลอม (A999…) — ห้ามเปิดทิ้งไว้ตอนทำงานจริง'}
+            />
+          </form>
 
           {isPartners ? (
             <div className="notice partner-channels">

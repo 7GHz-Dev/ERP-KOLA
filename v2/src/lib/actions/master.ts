@@ -7,6 +7,7 @@ import { masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { MASTER_TYPES } from '@/lib/queries/master';
 import { isShipmePartner, parseEmails } from '@/lib/partner-message';
+import { setCustomsSimulation } from '@/lib/customs-simulation';
 import { clearGmailSender, describeResults, partnerById, saveGmailSender, testPartner } from '@/lib/partner-notify';
 import { backWithOk, logActivity, newId, required, runAction, text } from './common';
 
@@ -117,6 +118,24 @@ async function saveMasterRecordImpl(formData: FormData) {
 
 export async function saveMasterRecord(formData: FormData) {
   return runAction(() => saveMasterRecordImpl(formData));
+}
+
+/* ---------- โหมดจำลองสร้างใบขน ---------- */
+
+async function toggleCustomsSimulationImpl(formData: FormData) {
+  const user = await requireActiveSession(['ADMIN']);
+  const on = text(formData.get('on'), 4) === '1';
+  await setCustomsSimulation(on);
+  await logActivity(user.id, 'SET_CUSTOMS_SIMULATION', 'SETTING', 'customsSimulation', { on });
+  revalidatePath('/master');
+  revalidatePath('/fah/draft');
+  return backWithOk(on
+    ? 'เปิดโหมดจำลองแล้ว — กด "สร้างใบขนแล้ว" จะได้เลขใบขนทดสอบ (A999…) ทันที ไม่ผ่าน NETBAY'
+    : 'ปิดโหมดจำลองแล้ว — สร้างใบขนผ่าน NETBAY ตามปกติ');
+}
+
+export async function toggleCustomsSimulation(formData: FormData) {
+  return runAction(() => toggleCustomsSimulationImpl(formData));
 }
 
 /* ---------- Port Release Partner: บัญชี Gmail ที่ใช้ส่ง · ทดสอบช่องทาง ---------- */

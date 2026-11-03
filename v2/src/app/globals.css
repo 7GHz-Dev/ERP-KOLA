@@ -406,6 +406,10 @@ a.file-link:hover { text-decoration: underline; }
   margin-top: 12px; padding: 9px 12px; border-radius: 6px;
   background: var(--blue-soft); color: var(--blue); font-size: 12px; font-weight: 600;
 }
+/* โหมดจำลองสร้างใบขน — Master Data (ปุ่มเปิด/ปิด) · ตรวจ Draft (แถบเตือนตอนเปิด) */
+.simulation-toggle { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.simulation-toggle > span { flex: 1; }
+.simulation-toggle.on { background: var(--red-soft); color: var(--red); }
 .form-actions { margin-top: 14px; display: flex; gap: 8px; }
 .form-actions .button { min-height: 36px; padding: 8px 20px; font-size: 13px; }
 

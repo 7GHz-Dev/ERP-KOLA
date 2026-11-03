@@ -10,6 +10,7 @@ import { CustomsRefresh } from '@/components/CustomsRefresh';
 import { SimulateAcceptButton } from '@/components/SimulateAccept';
 import { CUSTOMS_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 import { TASK_TYPES } from '@/lib/automation';
+import { isCustomsSimulation } from '@/lib/customs-simulation';
 import { netbayStatusLabel, netbayStatusTone } from '@/lib/customs-status';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
 
@@ -53,12 +54,13 @@ export default async function FahDraftPage({
     : tab === 'done' ? QUEUE.fahDraftDone()
     : QUEUE.fahDraftReview();
 
-  const [{ rows, total }, [latest]] = await Promise.all([
+  const [{ rows, total }, [latest], simulation] = await Promise.all([
     listJobs({ where, search, sortBy, sortDir }),
     // งานสร้างใบขนล่าสุดในคิว — เปลี่ยนเมื่อกด "สร้างใบขนแล้ว" สำเร็จ ใช้กระตุ้นการเปิดตัว monitor
     db.select({ id: automationTasks.id }).from(automationTasks)
       .where(eq(automationTasks.type, TASK_TYPES.CUSTOMS))
       .orderBy(desc(automationTasks.createdAt)).limit(1),
+    isCustomsSimulation(),
   ]);
   const [tasks, monitors] = await Promise.all([
     tab === 'done' ? new Map() : latestCustomsTasks(rows.map((r) => r.id)),
@@ -95,7 +97,7 @@ export default async function FahDraftPage({
                  {t?.status === 'ERROR' && t.error
                    ? <span className="badge rejected" title={t.error}>ใบขนถูกยกเลิกใน NETBAY</span>
                    : null}
-                 <SubmitCustomsDone jobId={r.id} />
+                 <SubmitCustomsDone jobId={r.id} simulate={simulation} />
                  <RejectDraftButton jobId={r.id} />
                </div>
              );
@@ -113,6 +115,14 @@ export default async function FahDraftPage({
         {/* ตรวจ Draft · รอไฟล์และเลขใบขน — กดแล้วเช็กใน NETBAY ทันที */}
         {tab !== 'done' ? <CustomsRefresh /> : null}
       </div>
+      {simulation ? (
+        <div className="notice simulation-toggle on">
+          <span>
+            <b>โหมดจำลองสร้างใบขนเปิดอยู่</b> — กด &quot;สร้างใบขนแล้ว (จำลอง)&quot; ได้เลขใบขนทดสอบ (A999…) + PDF ทดสอบทันที ไม่ผ่าน NETBAY ·
+            ADMIN ปิดได้ที่ Master Data
+          </span>
+        </div>
+      ) : null}
       <Tabs basePath="/fah/draft" items={TABS} active={tab} carry={carry} />
       {tab === 'waiting' ? <CustomsMonitorBar initial={monitors} pending={total} /> : null}
       <JobTable
