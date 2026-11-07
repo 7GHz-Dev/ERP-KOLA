@@ -5,7 +5,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
-import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
+import { storeJobFileVersion } from '@/lib/job-files';
 import { storeInvoicePdf } from '@/lib/eoffice-bundle';
 import { DO_DOC_CATEGORIES, DO_SLIP_CATEGORIES, isDoMultiCategory } from '@/lib/do-attachments';
 import { logActivity, newId, recordStatus, required, runAction, text } from './common';
@@ -62,45 +62,25 @@ async function uploadJobFileImpl(formData: FormData) {
    * หมวดอื่นยังเป็นแบบเดิม ใบใหม่แทนใบเก่าและเก็บใบเก่าเป็นเวอร์ชันก่อนหน้า
    */
   const multi = isDoMultiCategory(category);
-  const [current] = multi ? [] : await db
-    .select()
+  const [existing] = multi ? [] : await db
+    .select({ id: files.id })
     .from(files)
     .where(and(eq(files.jobId, jobId), eq(files.category, category), eq(files.isCurrent, true)))
     .limit(1);
 
   const changeReason = text(formData.get('changeReason'), 500);
   // เปลี่ยนไฟล์ Invoice สินค้าต้องบอกเหตุผลเสมอ เพราะกระทบยอดที่ฝ่ายอื่นใช้ไปแล้ว
-  if (category === 'INVOICE_GOODS' && current && !changeReason) {
+  if (category === 'INVOICE_GOODS' && existing && !changeReason) {
     throw new Error('การเปลี่ยนไฟล์ Invoice ต้องระบุเหตุผล');
   }
 
-  const id = newId('FIL');
-  const version = (current?.version ?? 0) + 1;
-  const key = buildKey(jobId, category, id, blob.name);
-
   const bytes = Buffer.from(await blob.arrayBuffer());
-  await ensureBucket();
-  await uploadFile(key, bytes, blob.type);
-
-  await db.insert(files).values({
-    id, jobId, category, version,
-    storageKey: key,
-    fileName: blob.name,
-    mimeType: blob.type || 'application/octet-stream',
-    sizeBytes: blob.size,
-    note: text(formData.get('note'), 500),
-    changeReason: current ? changeReason : '',
-    isCurrent: true,
+  const { id, version, current } = await storeJobFileVersion({
+    jobId, category, bytes, fileName: blob.name, mimeType: blob.type,
+    userId: user.id, note: text(formData.get('note'), 500), changeReason, multi,
     // Invoice ที่เปลี่ยนใหม่ต้องมีคนกดรับทราบก่อน แถวจึงจะหายแดง
-    isAcknowledged: !(category === 'INVOICE_GOODS' && Boolean(current)),
-    uploadedBy: user.id,
+    isAcknowledged: !(category === 'INVOICE_GOODS' && Boolean(existing)),
   });
-
-  if (current) {
-    await db.update(files)
-      .set({ isCurrent: false, supersededBy: id })
-      .where(eq(files.id, current.id));
-  }
 
   if (category === 'INVOICE_GOODS' && current) {
     await db.update(jobs)

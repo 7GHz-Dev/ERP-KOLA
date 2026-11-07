@@ -171,7 +171,15 @@ function displayText(cell: any): string {
   }
   const n = numberIn(cell);
   if (n !== null) return formatNumber(n, cell.numFmt);
-  return String(cell.text ?? '').trim();
+  /*
+   * ช่องในกลุ่มผสานที่ช่องหลักว่าง — ExcelJS โยน error ตอนอ่าน .text (MergeValue.toString ของ null)
+   * ไฟล์ Invoice ของ AICHI และ JAN TRADING มีช่องแบบนี้ทุกใบ เดิมแปลงเป็น PDF ไม่ได้เลยทั้งสองรูปแบบ
+   */
+  try {
+    return String(cell.text ?? '').trim();
+  } catch {
+    return '';
+  }
 }
 
 /**

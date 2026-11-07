@@ -69,6 +69,12 @@ export async function loadDraftData(dir = DATA_DIR): Promise<DraftData> {
 
 /** คืน [พิกัด, หมายเหตุ]  หมายเหตุว่าง = เจอพิกัดเดียว */
 export function lookupTariff(rows: TariffRow[], car: Car): [string, string] {
+  /*
+   * พิกัดเต็ม 12 หลักใน AF = คนเลือกไว้แล้วที่หน้า Create Cargo Invoice (lib/cargo-invoice)
+   * ใช้ค่านั้นเลย ไม่ค้นตารางซ้ำ — ตารางในไฟล์อาจเก่ากว่า หรือรถรุ่นนั้นตรงหลายพิกัดแล้วคนเลือกให้แล้ว
+   * ไฟล์แบบเดิมมี AF = XXXX จึงยังค้นตารางเหมือนเดิมทุกอย่าง
+   */
+  if (/^0000\d{8}$/.test(car.tariff_cell)) return [car.tariff_cell, ''];
   const key = tariffKey(car.brand, car.model, car.fuel);
   const w = car.weight.toNumber();
   const hits = rows.filter((t) => t[2] === key && t[3] <= car.cc && car.cc <= t[4] && t[5] <= w && w <= t[6]);

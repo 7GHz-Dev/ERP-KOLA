@@ -45,6 +45,7 @@ const NAV: NavGroup[] = [
       { href: '/intake/an', label: 'Arrival Notice BL' },
       { href: '/intake/bl', label: 'BL Waiting Confirm' },
       { href: '/pending', label: 'งานคงค้าง', count: 'openJobs' },
+      { href: '/paint/cargo-invoice', label: 'Create Cargo Invoice' },
       { href: '/paint/eoffice-signed', label: 'Upload ชุดปล่อย E-Office / ส่ง Partner', count: 'eofficeSignedWait' },
       { href: '/automation', label: 'คิว Automation', count: 'queue' },
     ],

@@ -2531,3 +2531,76 @@ table.data td.col-lib { min-width: 300px; }
   .ov-person-cards { grid-template-columns: 1fr; }
   .ov-list-head { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------- Create Cargo Invoice ---------- */
+.cgi { display: grid; gap: 12px; }
+.cgi-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.cgi-steps li {
+  display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 13px;
+}
+.cgi-steps li b {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--canvas); color: var(--muted); font-size: 12px;
+}
+.cgi-steps li.now { border-color: var(--blue); color: var(--ink); font-weight: 600; }
+.cgi-steps li.now b { background: var(--blue); color: #fff; }
+.cgi-steps li.done { color: var(--green); }
+.cgi-steps li.done b { background: var(--green); color: #fff; }
+.cgi-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+.cgi-card h2 { margin: 0; font-size: 15px; }
+.cgi-upload { display: flex; gap: 10px; align-items: stretch; }
+.cgi-drop {
+  flex: 1; display: grid; gap: 3px; padding: 16px; border: 2px dashed var(--line); border-radius: 10px;
+  cursor: pointer; background: var(--canvas); text-align: center;
+}
+.cgi-drop:hover { border-color: var(--blue); }
+.cgi-drop input { display: none; }
+.cgi-drop b { font-size: 14px; color: var(--blue); }
+.cgi-drop small { color: var(--muted); }
+.cgi-busy { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; color: var(--muted); }
+.cgi-error { margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; background: var(--red-soft); color: var(--red); }
+.cgi-error p { margin: 0; }
+.cgi-head { display: grid; gap: 10px 18px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 12px; }
+.cgi-head > div { display: grid; gap: 2px; }
+.cgi-head span { font-size: 11px; color: var(--muted); }
+.cgi-head b { font-size: 15px; }
+.cgi-head small { color: var(--muted); font-size: 11px; }
+.cgi-job { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.cgi-job select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.cgi-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.cgi-checks li { font-size: 13px; padding: 4px 8px; border-radius: 6px; }
+.cgi-checks li.ok { background: var(--green-soft); color: var(--green); }
+.cgi-checks li.bad { background: var(--amber-soft); color: #7a5200; font-weight: 600; }
+.cgi-ok { color: var(--green); font-weight: 600; }
+.cgi-bad { color: var(--red); font-weight: 600; }
+.cgi-warn { color: #7a5200; font-weight: 600; }
+.cgi-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.cgi-bar h2 { flex: 1; }
+.cgi-tsum { display: flex; gap: 8px; font-size: 12px; }
+.cgi-tsum b { padding: 2px 9px; border-radius: 999px; }
+.cgi-tsum .ok { background: var(--green-soft); color: var(--green); }
+.cgi-tsum .warn { background: var(--amber-soft); color: #7a5200; }
+.cgi-tsum .bad { background: var(--red-soft); color: var(--red); }
+.cgi-table td, .cgi-table th { white-space: nowrap; }
+.cgi-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.cgi-table tr.cgi-box td { background: var(--blue-soft); font-size: 12px; }
+.cgi-table tr.cgi-badrow td { background: var(--red-soft); color: var(--red); }
+.cgi-tariff select { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; max-width: 260px; }
+.cgi-tariff select.pick { border-color: #c98a00; background: var(--amber-soft); }
+.cgi-add { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); white-space: normal; max-width: 880px; }
+.cgi-add p { margin: 0; font-size: 12px; color: var(--muted); }
+.cgi-add-grid { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 640px) { .cgi-add-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cgi-add-grid label { display: grid; gap: 3px; font-size: 11px; color: var(--muted); font-weight: 600; }
+.cgi-add-grid input { font: inherit; font-size: 13px; color: var(--ink); padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; }
+.cgi-similar { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); }
+.cgi-add > .button { justify-self: start; }
+.cgi-save { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.cgi-save p { margin: 0; color: var(--muted); }
+.cgi-done { display: grid; gap: 6px; }
+.cgi-done b { color: var(--green); font-size: 15px; }
+.cgi-done span { color: var(--muted); font-size: 12px; }
+.cgi-done div { display: flex; gap: 8px; margin-top: 4px; }
+.cgi-rules > summary { cursor: pointer; font-weight: 600; color: var(--blue); }
+.cgi-rules .table-wrap { margin-top: 10px; }

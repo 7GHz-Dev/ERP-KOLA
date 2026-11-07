@@ -11,7 +11,8 @@ export default {
    * รูปในแบบฟอร์ม (โลโก้บนใบลากตู้ EVERGREEN) อ่านแบบเดียวกัน จึงต้องขนไปด้วย
    */
   outputFileTracingIncludes: {
-    '/**': ['./assets/fonts/**', './assets/forms/**'],
+    // ตารางพิกัดหลักของหน้า Create Cargo Invoice (assets/netbay/DATA TARIFF.xlsx) อ่านตอนรันเหมือนกัน
+    '/**': ['./assets/fonts/**', './assets/forms/**', './assets/netbay/**'],
   },
 
   experimental: {

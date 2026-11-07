@@ -21,7 +21,7 @@ function resolveTarget(target: string) {
 }
 
 /** ตำแหน่งไฟล์ XML ของชีตแรกที่เป็น worksheet */
-async function firstSheetPath(zip: JSZip) {
+export async function firstSheetPath(zip: JSZip) {
   const wbXml = await zip.file('xl/workbook.xml')!.async('string');
   const relsXml = await zip.file('xl/_rels/workbook.xml.rels')!.async('string');
   const rels: Record<string, { target: string; type: string }> = {};
