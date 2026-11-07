@@ -6,37 +6,42 @@ import { col, readParams } from '@/lib/columns';
 import { fileLabel } from '@/lib/file-categories';
 import { formatDateTime } from '@/lib/format';
 import { JobTable, type Column } from '@/components/JobTable';
+import { PickAllBox, PickBox } from '@/components/BulkBar';
+import { LibraryDownload, type ZipEntry } from '@/components/LibraryDownload';
 import { listJobs } from '@/lib/queries/jobs';
 import {
-  LIBRARY_GROUPS, groupOf, hasFilesIn, libraryCategoryCounts, libraryFiles, parseCategories, sortCategories,
+  LIBRARY_GROUPS, groupCategories, hasFilesIn, libraryCategoryCounts, libraryFiles, resolveFilter, sortCategories,
   type LibraryFile,
 } from '@/lib/queries/library';
 
 export const dynamic = 'force-dynamic';
-const SEARCH_KEYS = ['jobNo', 'blNo', 'person', 'shipper', 'consignee', 'vessel', 'container'];
-/** เลือกไม่เกินเท่านี้ แยกหมวดละคอลัมน์ให้ไล่ดูเป็นตารางได้ เกินกว่านั้นรวมเป็นคอลัมน์เดียว ไม่งั้นตารางกว้างล้นจอ */
-const SPLIT_LIMIT = 6;
+const SEARCH_KEYS = ['jobNo', 'blNo', 'person', 'shipper', 'vessel', 'container'];
+
+/** ชื่อไฟล์/โฟลเดอร์ใน ZIP ห้ามมีอักขระพวกนี้ (Windows เข้มที่สุด) */
+const clean = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim();
 
 /**
- * ลิงก์เปิดไฟล์ (กางแผงดูไฟล์ทับหน้าเดิม)
- * `label` = ใช้ชื่อหมวดแทนชื่อไฟล์ — มุมดูทุกหมวดมีหลายไฟล์ต่องาน ชื่อไฟล์ยาวทำให้แถวสูงจนอ่านยาก
- * ชื่อไฟล์จริงยังอยู่ใน tooltip
+ * ลิงก์เปิดไฟล์ (กางแผงดูไฟล์ทับหน้าเดิม) — แสดงเป็นชื่อหมวด ชื่อไฟล์จริงอยู่ใน tooltip
+ * งานหนึ่งมีหลายไฟล์ ชื่อไฟล์ยาวทำให้แถวสูงจนอ่านยาก
  */
-function FileLinks({ list, label }: { list: LibraryFile[]; label?: string }) {
+function FileChips({ byCat }: { byCat?: Map<string, LibraryFile[]> }) {
+  if (!byCat?.size) return <span className="muted">-</span>;
   return (
-    <>
-      {list.map((f, i) => (
-        <Link
-          key={f.id}
-          className={`lib-file${label ? ' by-cat' : ''}`}
-          href={`/file/${f.id}`}
-          title={`${f.fileName} · อัปโหลด ${formatDateTime(f.uploadedAt)}${f.version > 1 ? ` · ฉบับที่ ${f.version}` : ''}`}
-        >
-          {label ? `${label}${list.length > 1 ? ` ${i + 1}` : ''}` : f.fileName}
-          {f.version > 1 ? <small> v{f.version}</small> : null}
-        </Link>
-      ))}
-    </>
+    <div className="lib-chips">
+      {sortCategories([...byCat.keys()]).flatMap((c) => {
+        const list = byCat.get(c) ?? [];
+        return list.map((f, i) => (
+          <Link
+            key={f.id}
+            className="lib-file"
+            href={`/file/${f.id}`}
+            title={`${f.fileName} · อัปโหลด ${formatDateTime(f.uploadedAt)}${f.version > 1 ? ` · ฉบับที่ ${f.version}` : ''}`}
+          >
+            {fileLabel(c)}{list.length > 1 ? ` ${i + 1}` : ''}
+          </Link>
+        ));
+      })}
+    </div>
   );
 }
 
@@ -49,66 +54,60 @@ export default async function LibraryPage({
   if (home !== '/overview') redirect(home);
 
   const { one, search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
-  const selected = sortCategories(parseCategories(one('cat')));
-  if (selected.length) carry.cat = selected.join(',');
+  const counts = await libraryCategoryCounts();
 
-  const [counts, { rows, total }] = await Promise.all([
-    libraryCategoryCounts(),
-    listJobs({ where: () => [hasFilesIn(selected)], search, sortBy, sortDir }),
-  ]);
-  const filesByJob = await libraryFiles(rows.map((r) => r.id), selected);
-
-  // หมวดที่มีไฟล์จริง จัดเข้ากลุ่ม · หมวดที่เลือกไว้แต่ไม่มีไฟล์ยังต้องโชว์ ไม่งั้นกดเอาออกไม่ได้
-  const present = sortCategories([...new Set([...counts.keys(), ...selected])]);
-  const groups = [
-    ...LIBRARY_GROUPS,
-    { key: 'other', label: 'อื่น ๆ', categories: [] as string[] },
+  // แท็บ (กลุ่มหมวด) + หมวดย่อยในแท็บนั้น — ค่าที่ไม่รู้จักถือว่าไม่ได้เลือก
+  const tabs = [
+    ...LIBRARY_GROUPS.map((g) => ({ key: g.key, label: g.label })),
+    { key: 'other', label: 'อื่น ๆ' },
   ]
-    .map((g) => ({ ...g, cats: present.filter((c) => groupOf(c) === g.key) }))
-    .filter((g) => g.cats.length);
+    .map((t) => ({ ...t, cats: groupCategories(t.key, counts.present) }))
+    .filter((t) => t.cats.length);
+  const group = tabs.some((t) => t.key === one('g')) ? one('g') : '';
+  const tab = tabs.find((t) => t.key === group);
+  const filter = resolveFilter(group, one('cat'), counts.present);
+  const cat = filter?.length === 1 && tab && tab.cats.length > 1 ? filter[0] : '';
+  if (group) carry.g = group;
+  if (cat) carry.cat = cat;
 
-  const catHref = (next: string[]) => {
+  const { rows, total } = await listJobs({ where: () => [hasFilesIn(filter)], search, sortBy, sortDir });
+  const filesByJob = await libraryFiles(rows.map((r) => r.id), filter);
+
+  // ไฟล์ที่จะลง ZIP ของแต่ละงาน — โฟลเดอร์ละงาน ตั้งชื่อด้วย Job No. กับ BL ให้หาเจอในเครื่อง
+  const zipFiles: Record<string, ZipEntry[]> = {};
+  for (const r of rows) {
+    const folder = clean([r.jobNo, r.blNo].filter(Boolean).join(' '));
+    const byCat = filesByJob.get(r.id);
+    zipFiles[r.id] = byCat
+      ? sortCategories([...byCat.keys()]).flatMap((c) => (byCat.get(c) ?? []).map((f) => ({
+          id: f.id, size: f.sizeBytes ?? 0, path: `${folder}/${clean(`${fileLabel(c)} - ${f.fileName}`)}`,
+        })))
+      : [];
+  }
+
+  const linkTo = (g: string, c = '') => {
     const params = new URLSearchParams({ ...carry });
-    if (next.length) params.set('cat', sortCategories(next).join(',')); else params.delete('cat');
+    params.delete('g'); params.delete('cat');
+    if (g) params.set('g', g);
+    if (c) params.set('cat', c);
     const q = params.toString();
     return q ? `/library?${q}` : '/library';
   };
-  const toggle = (c: string) =>
-    catHref(selected.includes(c) ? selected.filter((x) => x !== c) : [...selected, c]);
-  const toggleGroup = (cats: string[]) =>
-    catHref(cats.every((c) => selected.includes(c))
-      ? selected.filter((c) => !cats.includes(c))
-      : [...new Set([...selected, ...cats])]);
 
-  const split = selected.length > 0 && selected.length <= SPLIT_LIMIT;
-  const fileColumns: Column[] = split
-    ? selected.map((c): Column => ({
-        label: fileLabel(c), kind: 'wrap', className: 'col-lib',
-        render: (r) => {
-          const list = filesByJob.get(r.id)?.get(c);
-          return list?.length ? <div className="lib-files"><FileLinks list={list} /></div> : <span className="muted">-</span>;
-        },
-      }))
-    : [{
-        label: 'ไฟล์', kind: 'wrap', className: 'col-lib-all',
-        render: (r) => {
-          const byCat = filesByJob.get(r.id);
-          if (!byCat) return '-';
-          return (
-            <div className="lib-chips">
-              {sortCategories([...byCat.keys()]).map((c) => (
-                <FileLinks key={c} list={byCat.get(c) ?? []} label={fileLabel(c)} />
-              ))}
-            </div>
-          );
-        },
-      }];
+  const scopeLabel = cat ? fileLabel(cat) : tab ? tab.label : 'ทุกหมวด';
 
-  // ไฟล์คือสิ่งที่มาหา จึงวางต่อจาก Job / BL ทันที ข้อมูลงานที่เหลือไว้ช่วยค้นอยู่ด้านขวา
   const columns: Column[] = [
+    {
+      label: '', kind: 'actions', className: 'col-pick', header: <PickAllBox />,
+      render: (r) => <PickBox id={r.id} />,
+    },
     col.jobNo(), col.blNo(),
-    ...fileColumns,
-    col.clientInCharge(), col.shipper(), col.consignee(), col.vessel(), col.eta(),
+    {
+      label: 'ไฟล์', kind: 'wrap', className: 'col-lib',
+      render: (r) => <FileChips byCat={filesByJob.get(r.id)} />,
+    },
+    { label: 'จำนวน', align: 'center', render: (r) => zipFiles[r.id]?.length || '-' },
+    col.clientInCharge(), col.shipper(), col.vessel(), col.eta(),
     { label: 'Container', searchKey: 'container', kind: 'wrap', render: (r) => r.containerNos?.replaceAll(',', ', ') || '-' },
   ];
 
@@ -116,60 +115,45 @@ export default async function LibraryPage({
     <>
       <div className="page-head">
         <h1>คลังไฟล์ข้อมูล</h1>
-        <p>ไฟล์ปัจจุบันของทุกงาน แถวละ Job · เลือกหมวดเพื่อดูเฉพาะงานที่มีไฟล์หมวดนั้น · กดชื่อไฟล์เพื่อเปิดดู</p>
+        <p>ติ๊กเลือกงาน แล้วกด <b>ดาวน์โหลด ZIP</b> ที่แถบด้านล่าง · ได้ไฟล์เดียว แยกโฟลเดอร์ตาม Job · กดชื่อไฟล์เพื่อเปิดดูทีละไฟล์</p>
       </div>
 
-      <div className="lib-filter">
-        <div className="lib-filter-head">
-          <span className="filter-label">หมวดไฟล์</span>
-          {selected.length ? (
-            <>
-              <span className="filter-note">เลือก {selected.length} หมวด</span>
-              <Link className="button tiny" href={catHref([])} prefetch={false}>ล้างหมวด (ดูทุกหมวด)</Link>
-            </>
-          ) : (
-            <span className="filter-note">ยังไม่ได้เลือก = แสดงทุกหมวด · เลือกได้หลายหมวด</span>
-          )}
+      {/* ตัวกรองชั้นเดียว: แท็บตามขั้นงาน · ตัวเลข = จำนวนงานที่มีไฟล์ในแท็บนั้น */}
+      <nav className="tabs lib-tabs" aria-label="หมวดไฟล์">
+        <Link href={linkTo('')} prefetch={false} aria-current={!group ? 'page' : undefined}>
+          ทุกหมวด <small className="count">{counts.all}</small>
+        </Link>
+        {tabs.map((t) => (
+          <Link key={t.key} href={linkTo(t.key)} prefetch={false} aria-current={group === t.key ? 'page' : undefined}>
+            {t.label} <small className="count">{counts.jobsIn(t.cats)}</small>
+          </Link>
+        ))}
+      </nav>
+
+      {/* หมวดย่อย — โผล่เฉพาะตอนเลือกแท็บที่มีมากกว่าหนึ่งหมวด ไม่บังคับเลือก */}
+      {tab && tab.cats.length > 1 ? (
+        <div className="lib-sub">
+          <span className="filter-label">เฉพาะ</span>
+          <Link className={`chip-toggle small${!cat ? ' on' : ''}`} href={linkTo(tab.key)} prefetch={false}>
+            ทุกไฟล์ใน {tab.label}
+          </Link>
+          {tab.cats.map((c) => (
+            <Link key={c} className={`chip-toggle small${cat === c ? ' on' : ''}`} href={linkTo(tab.key, c)} prefetch={false}>
+              {fileLabel(c)} <small>{counts.perCategory.get(c) ?? 0}</small>
+            </Link>
+          ))}
         </div>
-        {groups.map((g) => {
-          const all = g.cats.every((c) => selected.includes(c));
-          return (
-            <div key={g.key} className="lib-filter-row">
-              <Link
-                className={`lib-group-toggle${all ? ' on' : ''}`}
-                href={toggleGroup(g.cats)}
-                prefetch={false}
-                title={all ? 'เอาทั้งกลุ่มออก' : 'เลือกทั้งกลุ่ม'}
-              >
-                {g.label}
-              </Link>
-              <div className="lib-chips">
-                {g.cats.map((c) => (
-                  <Link
-                    key={c}
-                    className={`chip-toggle small${selected.includes(c) ? ' on' : ''}`}
-                    href={toggle(c)}
-                    prefetch={false}
-                    aria-pressed={selected.includes(c)}
-                  >
-                    {fileLabel(c)} <small>{counts.get(c) ?? 0}</small>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      ) : null}
 
-      <JobTable
-        basePath="/library"
-        columns={columns}
-        rows={rows} total={total} carry={carry} sortBy={sortBy} sortDir={sortDir}
-        empty={selected.length ? 'ไม่มีงานที่มีไฟล์ในหมวดที่เลือก' : 'ยังไม่มีไฟล์'}
-        hint={selected.length > SPLIT_LIMIT
-          ? `เลือกเกิน ${SPLIT_LIMIT} หมวดจึงรวมไฟล์ไว้คอลัมน์เดียว`
-          : 'นับเฉพาะไฟล์ฉบับปัจจุบัน ฉบับเก่าดูได้ใน Drawer ของงาน'}
-      />
+      <LibraryDownload files={zipFiles} scopeLabel={scopeLabel}>
+        <JobTable
+          basePath="/library"
+          columns={columns}
+          rows={rows} total={total} carry={carry} sortBy={sortBy} sortDir={sortDir}
+          empty="ไม่มีงานที่มีไฟล์ในหมวดนี้"
+          hint={`ZIP จะมีเฉพาะไฟล์ "${scopeLabel}" ตามแท็บที่เลือก · นับเฉพาะไฟล์ฉบับปัจจุบัน`}
+        />
+      </LibraryDownload>
     </>
   );
 }

@@ -2352,35 +2352,20 @@ table.data td.col-stuck { min-width: 200px; }
 }
 
 /* ---------- คลังไฟล์ข้อมูล ---------- */
-.lib-filter {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
-  padding: 10px 12px; margin-bottom: 12px; display: grid; gap: 8px;
-}
-.lib-filter-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.lib-filter-row { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: start; }
-.lib-group-toggle {
-  font-size: 12px; font-weight: 700; color: var(--ink); text-decoration: none;
-  padding: 5px 0; border-bottom: 2px solid transparent; justify-self: start;
-}
-.lib-group-toggle:hover { color: var(--blue); }
-.lib-group-toggle.on { color: var(--blue); border-bottom-color: var(--blue); }
-.lib-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.lib-tabs { flex-wrap: wrap; }
+.lib-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: -4px 0 12px; }
 .chip-toggle.small { padding: 3px 10px; font-size: 12px; }
 .chip-toggle small { opacity: .7; margin-left: 2px; }
-.lib-files { display: grid; gap: 3px; justify-items: start; }
+.lib-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .lib-file {
-  display: inline-block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  vertical-align: bottom; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; white-space: nowrap;
   background: var(--green-soft); color: var(--green); text-decoration: none;
 }
 .lib-file:hover { text-decoration: underline; }
-.lib-file small { opacity: .7; }
-table.data td.col-lib { min-width: 190px; max-width: 260px; }
-table.data td.col-lib .lib-files { min-width: 0; }
-table.data td.col-lib .lib-file { max-width: 100%; }
-table.data td.col-lib-all { min-width: 380px; }
-.lib-file.by-cat { max-width: none; }
+table.data td.col-lib { min-width: 300px; }
+.lib-bar small { opacity: .75; font-weight: 400; }
+.lib-progress { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.lib-progress progress { width: 120px; }
 .muted { color: var(--muted); }
-@media (max-width: 640px) {
-  .lib-filter-row { grid-template-columns: 1fr; gap: 4px; }
-}
+/* ตัวเลขบนแท็บคลังไฟล์เป็นจำนวนงาน ไม่ใช่งานค้าง — ไม่ใช้ป้ายแดงแบบหน้าคิวงาน */
+.lib-tabs a:not([aria-current="page"]) small.count { background: var(--canvas); color: var(--muted); }

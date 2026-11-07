@@ -4,18 +4,23 @@ import { files, jobs } from '@/db/schema';
 import { FILE_ORDER } from '@/lib/file-categories';
 
 /**
- * คลังไฟล์ข้อมูล — ไฟล์ปัจจุบันของทุกงาน แถวละงาน กรองเฉพาะหมวดที่ต้องการได้
+ * คลังไฟล์ข้อมูล — ไฟล์ปัจจุบันของทุกงาน แถวละงาน ติ๊กหลายงานแล้วดาวน์โหลดเป็น ZIP ทีเดียว
+ *
+ * ตัวกรองมีชั้นเดียวเป็นแท็บตามขั้นงาน (กับหมวดย่อยในแท็บนั้นถ้าอยากแคบลงอีก)
+ * รุ่นแรกเป็นชิปทุกหมวดเรียงห้าแถว เลือกได้หลายหมวด คนใช้บอกว่าเยอะและงง
  *
  * ใช้ไฟล์ปัจจุบัน (is_current) เท่านั้น ฉบับเก่ายังเปิดดูได้จาก Drawer ของงาน
  * ไม่ใช้ currentFiles ที่มากับ listJobs เพราะตัวนั้นเก็บได้หมวดละไฟล์เดียว
  * แต่บางหมวดมีไฟล์ปัจจุบันหลายไฟล์จริง (Slip ค่า DO หลายใบต่องาน)
  */
 
-/** กลุ่มหมวดตามขั้นงาน — กดชื่อกลุ่มเพื่อเลือกทั้งกลุ่มทีเดียว */
-export const LIBRARY_GROUPS: Array<{ key: string; label: string; categories: string[] }> = [
-  { key: 'source', label: 'เอกสารต้นเรื่อง', categories: ['ARRIVAL_NOTICE', 'BL'] },
+export type LibraryGroup = { key: string; label: string; categories: string[] };
+
+/** แท็บตามขั้นงาน — หมวดที่ไม่อยู่ในกลุ่มไหนไปอยู่ "อื่น ๆ" */
+export const LIBRARY_GROUPS: LibraryGroup[] = [
+  { key: 'source', label: 'AN / BL', categories: ['ARRIVAL_NOTICE', 'BL'] },
   {
-    key: 'invoice', label: 'Invoice สินค้า / Surrender',
+    key: 'invoice', label: 'Invoice สินค้า',
     categories: ['INVOICE_GOODS', 'FINAL_INVOICE', 'FINAL_INVOICE_PDF', 'FINAL_INVOICE_ENGINE', 'SURRENDER'],
   },
   { key: 'customs', label: 'ใบขน', categories: ['DRAFT_CSV', 'DRAFT_ENTRY', 'CUSTOMS_ENTRY_DOC'] },
@@ -31,15 +36,7 @@ export const LIBRARY_GROUPS: Array<{ key: string; label: string; categories: str
   },
 ];
 
-/** หมวดที่ไม่อยู่ในกลุ่มไหน (OTHER และหมวดใหม่ที่ยังไม่ได้จัดกลุ่ม) ไปอยู่ "อื่น ๆ" */
-export function groupOf(category: string) {
-  return LIBRARY_GROUPS.find((g) => g.categories.includes(category))?.key ?? 'other';
-}
-
-/** อ่าน ?cat=A,B จาก URL — ตัดค่าที่ไม่ใช่ชื่อหมวดทิ้ง กันคนพิมพ์มั่ว */
-export function parseCategories(raw: string): string[] {
-  return [...new Set(raw.split(',').map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z_]{2,40}$/.test(c)))];
-}
+const GROUPED = new Set(LIBRARY_GROUPS.flatMap((g) => g.categories));
 
 /** เรียงหมวดตามขั้นงานจริง หมวดที่ไม่รู้จักไปท้าย */
 export function sortCategories(list: string[]) {
@@ -47,27 +44,60 @@ export function sortCategories(list: string[]) {
   return [...list].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
-/** งานที่มีไฟล์ปัจจุบันในหมวดที่เลือก (ไม่เลือก = มีไฟล์หมวดใดก็ได้) — ใช้เป็น where ของ listJobs */
-export function hasFilesIn(categories: string[]): SQL {
-  return categories.length
-    ? sql`exists (select 1 from files f
-                   where f.job_id = ${jobs.id} and f.is_current = true
-                     and f.category in (${sql.join(categories.map((c) => sql`${c}`), sql`, `)}))`
-    : sql`exists (select 1 from files f where f.job_id = ${jobs.id} and f.is_current = true)`;
+/** หมวดของแท็บนั้นที่มีไฟล์อยู่จริง — "other" = หมวดที่ไม่อยู่ในกลุ่มไหนเลย */
+export function groupCategories(group: string, present: string[]): string[] {
+  if (group === 'other') return sortCategories(present.filter((c) => !GROUPED.has(c)));
+  const def = LIBRARY_GROUPS.find((g) => g.key === group);
+  return def ? sortCategories(def.categories.filter((c) => present.includes(c))) : [];
 }
 
-/** จำนวนงานที่มีไฟล์ในแต่ละหมวด — ใช้เขียนตัวเลขบนชิปตัวกรอง */
+/**
+ * หมวดที่ใช้กรองจากค่าใน URL
+ *   null = ไม่กรอง (ทุกหมวด) · [] = แท็บที่ไม่มีไฟล์เลย
+ * หมวดย่อยต้องอยู่ในแท็บที่เลือก กันลิงก์เก่าที่พาหมวดของอีกแท็บติดมา
+ */
+export function resolveFilter(group: string, cat: string, present: string[]): string[] | null {
+  if (!group) return null;
+  const inGroup = groupCategories(group, present);
+  return cat && inGroup.includes(cat) ? [cat] : inGroup;
+}
+
+/** งานที่มีไฟล์ปัจจุบันในหมวดที่กรอง (null = หมวดใดก็ได้) — ใช้เป็น where ของ listJobs */
+export function hasFilesIn(categories: string[] | null): SQL {
+  if (categories === null) {
+    return sql`exists (select 1 from files f where f.job_id = ${jobs.id} and f.is_current = true)`;
+  }
+  if (!categories.length) return sql`false`;
+  return sql`exists (select 1 from files f
+                      where f.job_id = ${jobs.id} and f.is_current = true
+                        and f.category in (${sql.join(categories.map((c) => sql`${c}`), sql`, `)}))`;
+}
+
+/** จำนวนงานต่อหมวด (ไฟล์ปัจจุบัน งานที่ยังไม่ถูกลบ) — ใช้หาหมวดที่มีอยู่จริงและเขียนตัวเลขบนแท็บ */
 export async function libraryCategoryCounts() {
   const rows = await db
-    .select({
-      category: files.category,
-      jobs: sql<number>`count(distinct ${files.jobId})::int`,
-    })
+    .select({ category: files.category, jobId: files.jobId })
     .from(files)
     .innerJoin(jobs, eq(jobs.id, files.jobId))
     .where(and(eq(files.isCurrent, true), eq(jobs.isArchived, false)))
-    .groupBy(files.category);
-  return new Map(rows.map((r) => [r.category, Number(r.jobs)]));
+    .groupBy(files.category, files.jobId);
+  /*
+   * ดึงคู่ (หมวด, งาน) มารวมเอง เพราะตัวเลขบนแท็บต้องนับงานไม่ซ้ำข้ามหลายหมวด
+   * งานหนึ่งมีทั้ง Invoice DO และ Slip — แท็บแลก DO ต้องนับเป็นหนึ่งงาน ไม่ใช่สอง
+   */
+  const jobsByCat = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const set = jobsByCat.get(r.category) ?? new Set<string>();
+    set.add(r.jobId);
+    jobsByCat.set(r.category, set);
+  }
+  const allJobs = new Set(rows.map((r) => r.jobId));
+  const jobsIn = (cats: string[]) => {
+    const set = new Set<string>();
+    cats.forEach((c) => jobsByCat.get(c)?.forEach((id) => set.add(id)));
+    return set.size;
+  };
+  return { present: [...jobsByCat.keys()], perCategory: new Map([...jobsByCat].map(([c, s]) => [c, s.size])), all: allJobs.size, jobsIn };
 }
 
 export type LibraryFile = {
@@ -75,9 +105,9 @@ export type LibraryFile = {
 };
 
 /** ไฟล์ปัจจุบันของงานที่อยู่บนหน้า จัดกลุ่มตามงาน → หมวด */
-export async function libraryFiles(jobIds: string[], categories: string[]) {
+export async function libraryFiles(jobIds: string[], categories: string[] | null) {
   const map = new Map<string, Map<string, LibraryFile[]>>();
-  if (!jobIds.length) return map;
+  if (!jobIds.length || (categories && !categories.length)) return map;
   const rows = await db
     .select({
       id: files.id, jobId: files.jobId, category: files.category, fileName: files.fileName,
@@ -87,7 +117,7 @@ export async function libraryFiles(jobIds: string[], categories: string[]) {
     .where(and(
       inArray(files.jobId, jobIds),
       eq(files.isCurrent, true),
-      categories.length ? inArray(files.category, categories) : undefined,
+      categories ? inArray(files.category, categories) : undefined,
     ))
     .orderBy(asc(files.uploadedAt));
   for (const { jobId, ...file } of rows) {
