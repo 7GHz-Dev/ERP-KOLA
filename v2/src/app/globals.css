@@ -2464,3 +2464,55 @@ table.data td.col-lib { min-width: 300px; }
 .monitor-split { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
 .monitor-recent { margin-top: 12px; }
 .monitor-recent > summary { cursor: pointer; font-weight: 600; color: var(--blue); margin-bottom: 8px; }
+
+/* ---------- ภาพรวมงาน: การ์ด Urgent / Priority + ตารางที่โผล่เมื่อกด ---------- */
+.ov-levels { display: grid; gap: 14px; margin-bottom: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.ov-level {
+  --tone: var(--red); --tone-soft: var(--red-soft);
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name total" "hint total" "split cta";
+  gap: 2px 12px; align-items: center; padding: 14px 18px; border-radius: 12px; text-decoration: none; color: var(--ink);
+  background: var(--tone-soft); border: 2px solid transparent; border-left: 8px solid var(--tone);
+  transition: transform .08s ease, box-shadow .12s ease;
+}
+.ov-level.priority { --tone: #c98a00; --tone-soft: #fff6db; }
+.ov-level:hover { box-shadow: 0 4px 14px rgba(15, 35, 49, .12); }
+.ov-level.on { border-color: var(--tone); box-shadow: 0 4px 14px rgba(15, 35, 49, .14); }
+.ov-level-name { grid-area: name; font-size: 18px; font-weight: 800; color: var(--tone); letter-spacing: .3px; text-transform: uppercase; }
+.ov-level-hint { grid-area: hint; font-size: 12px; color: var(--muted); }
+.ov-level-total { grid-area: total; display: grid; justify-items: end; }
+.ov-level-total b { font-size: 44px; line-height: 1; color: var(--tone); font-variant-numeric: tabular-nums; }
+.ov-level-total small { color: var(--muted); font-size: 12px; }
+.ov-level-split { grid-area: split; display: flex; gap: 14px; margin-top: 8px; font-size: 13px; }
+.ov-level-split i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--owner); margin-right: 5px; }
+.ov-level-split b { font-variant-numeric: tabular-nums; }
+.ov-level-cta { grid-area: cta; justify-self: end; align-self: end; font-size: 12px; font-weight: 700; color: var(--tone); }
+
+.ov-pick-hint { text-align: center; color: var(--muted); padding: 14px; border: 1px dashed var(--line); border-radius: 10px; }
+.ov-pick-hint .red { color: var(--red); }
+.ov-pick-hint .amber { color: #c98a00; }
+
+.ov-list { scroll-margin-top: 12px; border-top: 4px solid var(--navy); padding-top: 12px; }
+.ov-list.urgent { border-top-color: var(--red); }
+.ov-list.priority { border-top-color: #c98a00; }
+.ov-list-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.ov-list-head h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.ov-list-head h2 small { font-weight: 400; color: var(--muted); }
+.ov-list-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ov-pill { padding: 2px 10px; border-radius: 999px; color: #fff; font-size: 12px; text-transform: uppercase; }
+.ov-pill.urgent { background: var(--red); }
+.ov-pill.priority { background: #c98a00; }
+.ov-step-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+.ov-chip {
+  --owner: var(--navy);
+  padding: 4px 11px; border-radius: 999px; font-size: 12px; text-decoration: none; color: var(--ink);
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--owner) 35%, var(--line));
+}
+.ov-chip b { margin-left: 3px; color: var(--owner); font-variant-numeric: tabular-nums; }
+.ov-chip:hover { border-color: var(--owner); }
+.ov-chip.on { background: var(--owner); border-color: var(--owner); color: #fff; }
+.ov-chip.on b { color: #fff; }
+.ov-chip.empty { opacity: .55; }
+@media (max-width: 640px) {
+  .ov-level-total b { font-size: 36px; }
+  .ov-list-head { flex-direction: column; align-items: flex-start; }
+}

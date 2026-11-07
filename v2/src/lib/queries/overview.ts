@@ -109,11 +109,37 @@ export function viewCondition(view: string) {
   };
 }
 
+/**
+ * ระดับความเร่งด่วนของงานที่ค้าง — ดูจาก ETA ตามวันที่ไทย
+ *   urgent    ETA วันนี้หรือผ่านไปแล้ว (เรือถึงแล้ว ค่า DEM เริ่มเดิน)
+ *   priority  ETA ภายใน 7 วันข้างหน้า
+ * งานที่ไม่มี ETA หรือ ETA ไกลกว่านั้น ไม่อยู่ในทั้งสองระดับ
+ */
+export const LEVELS = [
+  { key: 'urgent', label: 'Urgent', hint: 'ETA วันนี้หรือเลยมาแล้ว' },
+  { key: 'priority', label: 'Priority', hint: 'ETA ภายใน 7 วันข้างหน้า' },
+] as const;
+export type LevelKey = (typeof LEVELS)[number]['key'];
+export const PRIORITY_DAYS = 7;
+
+const TODAY = sql`(now() at time zone 'Asia/Bangkok')::date`;
+
+/** เงื่อนไข ETA ของระดับนั้น — ใช้กรองตาราง ต้องตรงกับที่ overviewStats จัดระดับ */
+export function levelCondition(level: string): SQL | undefined {
+  if (level === 'urgent') return sql`${jobs.eta} <= ${TODAY}`;
+  if (level === 'priority') return sql`${jobs.eta} > ${TODAY} and ${jobs.eta} <= ${TODAY} + ${sql.raw(String(PRIORITY_DAYS))}`;
+  return undefined;
+}
+
 export type StageStat = { jobs: number; containers: number; overdue: number };
-export type OverviewStats = {
+export type Bucket = {
   stages: Record<string, StageStat>;
   owners: Record<StageOwner, StageStat>;
   all: StageStat;
+};
+export type OverviewStats = Bucket & {
+  /** แยกตามระดับความเร่งด่วน — ใช้ทำการ์ด Urgent / Priority และตัวเลขบนตัวกรองขั้นในตาราง */
+  levels: Record<LevelKey, Bucket>;
   /** ขั้นที่แต่ละงานค้างอยู่ — ใช้เขียนป้าย "ค้างที่" ในตาราง */
   stagesOf: Map<string, string[]>;
 };
@@ -139,7 +165,9 @@ export async function overviewStats(): Promise<OverviewStats> {
     .select({
       id: jobs.id,
       containers: sql<number>`(select count(*) from containers c where c.job_id = ${jobs.id})::int`,
-      overdue: sql<boolean>`coalesce(${jobs.eta} < (now() at time zone 'Asia/Bangkok')::date, false)`,
+      overdue: sql<boolean>`coalesce(${jobs.eta} < ${TODAY}, false)`,
+      level: sql<string | null>`case when ${levelCondition('urgent')} then 'urgent'
+                                     when ${levelCondition('priority')} then 'priority' end`,
       ...flags,
     })
     .from(jobs)
@@ -148,31 +176,38 @@ export async function overviewStats(): Promise<OverviewStats> {
     .where(and(eq(jobs.isArchived, false), or(...STAGES.map((s) => stageCondition(s, ctx)))));
 
   const empty = (): StageStat => ({ jobs: 0, containers: 0, overdue: 0 });
+  const bucket = (): Bucket => ({
+    stages: Object.fromEntries(STAGES.map((s) => [s.key, empty()])) as Record<string, StageStat>,
+    owners: { PAINT: empty(), FAH: empty() },
+    all: empty(),
+  });
   const add = (stat: StageStat, containers: number, overdue: boolean) => {
     stat.jobs += 1;
     stat.containers += containers;
     if (overdue) stat.overdue += 1;
   };
 
-  const stages = Object.fromEntries(STAGES.map((s) => [s.key, empty()])) as Record<string, StageStat>;
-  const owners: Record<StageOwner, StageStat> = { PAINT: empty(), FAH: empty() };
-  const all = empty();
+  const total = bucket();
+  const levels: Record<LevelKey, Bucket> = { urgent: bucket(), priority: bucket() };
   const stagesOf = new Map<string, string[]>();
 
   for (const row of rows) {
-    const r = row as unknown as Record<string, unknown> & { id: string; containers: number; overdue: boolean };
+    const r = row as unknown as Record<string, unknown> & { id: string; containers: number; overdue: boolean; level: string | null };
     const containers = Number(r.containers) || 0;
     const overdue = Boolean(r.overdue);
     const hit = STAGES.filter((s) => r[s.key] === true);
     if (!hit.length) continue;
     stagesOf.set(r.id, hit.map((s) => s.key));
-    hit.forEach((s) => add(stages[s.key], containers, overdue));
     const active = hit.filter((s) => !s.passive);
-    (['PAINT', 'FAH'] as const).forEach((owner) => {
-      if (active.some((s) => s.owner === owner)) add(owners[owner], containers, overdue);
-    });
-    if (active.length) add(all, containers, overdue);
+    const targets = [total, ...(r.level === 'urgent' || r.level === 'priority' ? [levels[r.level]] : [])];
+    for (const b of targets) {
+      hit.forEach((s) => add(b.stages[s.key], containers, overdue));
+      (['PAINT', 'FAH'] as const).forEach((owner) => {
+        if (active.some((s) => s.owner === owner)) add(b.owners[owner], containers, overdue);
+      });
+      if (active.length) add(b.all, containers, overdue);
+    }
   }
 
-  return { stages, owners, all, stagesOf };
+  return { ...total, levels, stagesOf };
 }

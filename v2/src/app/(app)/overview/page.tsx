@@ -9,7 +9,7 @@ import { JobTable, type Column } from '@/components/JobTable';
 import { listJobs } from '@/lib/queries/jobs';
 import { dashboardSummary } from '@/lib/queries/dashboard';
 import {
-  OWNERS, STAGES, overviewStats, stageByKey, viewCondition, type StageStat,
+  LEVELS, OWNERS, STAGES, levelCondition, overviewStats, stageByKey, viewCondition, type StageStat,
 } from '@/lib/queries/overview';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +26,16 @@ function StatLine({ stat }: { stat: StageStat }) {
   );
 }
 
+/**
+ * ภาพรวมงาน — สำหรับ NAMKANG ดูว่างานติดอยู่ที่ PAINT / FAH กี่งาน
+ *
+ * บนสุดเป็นการ์ด Urgent (ETA ถึงแล้ว) กับ Priority (ETA ภายใน 7 วัน) บอกยอดรวมก่อน
+ * ถัดมาเป็นบอร์ด PAINT / FAH แยกตามขั้นเหมือนเดิม
+ * ตารางยังไม่แสดงจนกว่าจะกดการ์ดหรือขั้นในบอร์ด แล้วกรองขั้นต่อได้ด้วยชิปเหนือตาราง
+ *
+ * พารามิเตอร์ใน URL: level = urgent | priority (ว่าง = ทุกระดับ)
+ *                     view  = รหัสขั้น | PAINT | FAH (ว่าง = ทุกขั้น)
+ */
 export default async function OverviewPage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -38,24 +48,38 @@ export default async function OverviewPage({
   if (home !== '/overview') redirect(home);
 
   const { one, search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
-  // มุมที่เลือก: ขั้นใดขั้นหนึ่ง · ทั้งแผนก (PAINT / FAH) · ว่าง = ทุกงานที่ค้าง
   const rawView = one('view');
   const view = stageByKey(rawView) || rawView === 'PAINT' || rawView === 'FAH' ? rawView : '';
+  const level = LEVELS.some((l) => l.key === one('level')) ? one('level') : '';
   if (view) carry.view = view;
+  if (level) carry.level = level;
   const stage = stageByKey(view);
+  // ตารางโผล่เมื่อเลือกอะไรสักอย่างแล้ว — เปิดหน้ามาเห็นแต่ยอดรวมก่อน
+  const showTable = Boolean(view || level);
 
   const [stats, summary, { rows, total }] = await Promise.all([
     overviewStats(),
     dashboardSummary(),
-    listJobs({ where: viewCondition(view), search, sortBy: sortBy ?? 'eta', sortDir: sortBy ? sortDir : 'asc' }),
+    showTable
+      ? listJobs({
+          where: (ctx) => [...viewCondition(view)(ctx), levelCondition(level)],
+          search, sortBy: sortBy ?? 'eta', sortDir: sortBy ? sortDir : 'asc',
+        })
+      : Promise.resolve({ rows: [], total: 0 }),
   ]);
+  // ตัวเลขบนตัวกรองขั้นนับภายในระดับที่เลือกอยู่
+  const scope = level ? stats.levels[level as 'urgent' | 'priority'] : stats;
 
-  // ลิงก์เปลี่ยนมุม — คงคำค้นไว้ แต่เปลี่ยน view
-  const viewHref = (next: string) => {
+  /** ลิงก์เปลี่ยนมุม — คงคำค้นไว้ เปลี่ยนเฉพาะค่าที่ส่งมา */
+  const hrefWith = (changes: { view?: string; level?: string }) => {
     const params = new URLSearchParams({ ...carry });
-    if (next) params.set('view', next); else params.delete('view');
+    for (const [k, v] of Object.entries(changes)) {
+      if (v) params.set(k, v); else params.delete(k);
+    }
     const q = params.toString();
-    return q ? `/overview?${q}` : '/overview';
+    // มีตารางให้ดู = เลื่อนลงไปที่ตารางเลย ไม่ต้องเลื่อนหาเองใต้บอร์ด
+    const opens = params.has('view') || params.has('level');
+    return `/overview${q ? `?${q}` : ''}${opens ? '#list' : ''}`;
   };
 
   const columns: Column[] = [
@@ -84,9 +108,17 @@ export default async function OverviewPage({
     { label: 'ตู้', align: 'center', render: (r) => r.containerCount || '-' },
   ];
 
-  const viewLabel = stage
-    ? `${stage.owner} · ${stage.label}`
-    : view ? `ค้างที่ ${view} ทุกขั้น` : 'งานค้างทั้งหมด (PAINT + FAH)';
+  const levelLabel = LEVELS.find((l) => l.key === level)?.label;
+  const viewLabel = stage ? `${stage.owner} · ${stage.label}` : view ? `${view} ทุกขั้น` : 'ทุกขั้น';
+
+  // ชิปกรองในตาราง: ทุกขั้น · PAINT · FAH · แล้วทีละขั้นที่มีงาน (ขั้นที่เลือกอยู่โชว์เสมอแม้เป็น 0)
+  const stepChips = [
+    { key: '', label: 'ทุกขั้น', count: scope.all.jobs, color: '' },
+    ...OWNERS.map((o) => ({ key: o.key, label: `${o.label} ทั้งหมด`, count: scope.owners[o.key].jobs, color: o.color })),
+    ...STAGES
+      .filter((s) => scope.stages[s.key].jobs > 0 || s.key === view)
+      .map((s) => ({ key: s.key, label: `${s.owner} · ${s.label}${s.passive ? ' ⏳' : ''}`, count: scope.stages[s.key].jobs, color: ownerColor(s.owner) })),
+  ];
 
   return (
     <>
@@ -96,11 +128,44 @@ export default async function OverviewPage({
       <div className="page-head with-action">
         <div>
           <h1>ภาพรวมงาน</h1>
-          <p>งานที่ค้างอยู่ที่ PAINT และ FAH แยกตามขั้น · กดที่ขั้นเพื่อดูรายการงาน</p>
+          <p>งานที่ค้างอยู่ที่ PAINT และ FAH · กดการ์ดหรือขั้นในบอร์ดเพื่อดูรายการงาน</p>
         </div>
         <span className="ov-updated">อัปเดต {formatDateTime(new Date())}</span>
       </div>
 
+      {/* ---------- Urgent / Priority ---------- */}
+      <div className="ov-levels">
+        {LEVELS.map((l) => {
+          const b = stats.levels[l.key];
+          const on = level === l.key;
+          return (
+            <Link
+              key={l.key}
+              className={`ov-level ${l.key}${on ? ' on' : ''}`}
+              href={hrefWith({ level: on ? '' : l.key })}
+              prefetch={false}
+              aria-current={on ? 'true' : undefined}
+            >
+              <span className="ov-level-name">{l.label}</span>
+              <span className="ov-level-hint">{l.hint}</span>
+              <span className="ov-level-total">
+                <b>{b.all.jobs}</b>
+                <small>งาน{b.all.containers ? ` · ${b.all.containers} ตู้` : ''}</small>
+              </span>
+              <span className="ov-level-split">
+                {OWNERS.map((o) => (
+                  <span key={o.key} style={{ '--owner': o.color } as React.CSSProperties}>
+                    <i />{o.label} <b>{b.owners[o.key].jobs}</b>
+                  </span>
+                ))}
+              </span>
+              <span className="ov-level-cta">{on ? 'ซ่อนรายการ ▲' : 'ดูรายการ ▼'}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* ---------- บอร์ด PAINT / FAH (ยอดทุกระดับ) ---------- */}
       <div className="ov-boards">
         {OWNERS.map((owner) => {
           const ownerStat = stats.owners[owner.key];
@@ -115,7 +180,7 @@ export default async function OverviewPage({
             >
               <Link
                 className={`ov-board-head${view === owner.key ? ' on' : ''}`}
-                href={viewHref(view === owner.key ? '' : owner.key)}
+                href={hrefWith({ view: view === owner.key ? '' : owner.key })}
                 prefetch={false}
               >
                 <span className="ov-owner"><i />{owner.label}</span>
@@ -136,7 +201,7 @@ export default async function OverviewPage({
                       <Link
                         className={['ov-step', stat.jobs ? null : 'zero', s.passive ? 'passive' : null, on ? 'on' : null]
                           .filter(Boolean).join(' ')}
-                        href={viewHref(on ? '' : s.key)}
+                        href={hrefWith({ view: on ? '' : s.key })}
                         prefetch={false}
                         aria-current={on ? 'true' : undefined}
                       >
@@ -169,44 +234,58 @@ export default async function OverviewPage({
         })}
       </div>
 
-      <div className="filter-bar">
-        <span className="filter-label">แสดง</span>
-        <div className="chip-group">
-          {[
-            { key: '', label: `ทั้งหมด ${stats.all.jobs}` },
-            ...OWNERS.map((o) => ({ key: o.key, label: `${o.label} ${stats.owners[o.key].jobs}` })),
-          ].map((c) => (
-            <Link
-              key={c.key || 'all'}
-              // เลือกขั้นอยู่ก็ไฮไลต์แผนกของขั้นนั้น จะได้รู้ว่ากำลังดูของใคร
-              className={`chip-toggle${(stage ? stage.owner : view) === c.key ? ' on' : ''}`}
-              href={viewHref(c.key)}
-              prefetch={false}
-            >
-              {c.label}
-            </Link>
-          ))}
-        </div>
-        <span className="filter-note">
-          <b>{viewLabel}</b>
-          {stage ? (
-            <>
-              {' · '}<Link href={viewHref(stage.owner)} prefetch={false}>ดูทุกขั้นของ {stage.owner}</Link>
-              {roleAllows(user.role, [stage.owner]) ? (
-                <>{' · '}<Link href={stage.href} prefetch={false}>เปิดหน้างานของขั้นนี้ →</Link></>
+      {/* ---------- ตาราง (โผล่เมื่อเลือกแล้ว) ---------- */}
+      {showTable ? (
+        <section className={`ov-list${level ? ` ${level}` : ''}`} id="list">
+          <div className="ov-list-head">
+            <h2>
+              {levelLabel ? <span className={`ov-pill ${level}`}>{levelLabel}</span> : null}
+              {viewLabel}
+              <small> · {total} งาน</small>
+            </h2>
+            <div className="ov-list-actions">
+              {/* สลับระดับได้จากตรงนี้โดยไม่ต้องเลื่อนกลับขึ้นไป */}
+              <div className="chip-group">
+                {[{ key: '', label: 'ทุกระดับ' }, ...LEVELS].map((l) => (
+                  <Link key={l.key || 'all'} className={`chip-toggle small${level === l.key ? ' on' : ''}`}
+                    href={hrefWith({ level: l.key })} prefetch={false}>
+                    {l.label}
+                  </Link>
+                ))}
+              </div>
+              {stage && roleAllows(user.role, [stage.owner]) ? (
+                <Link className="button tiny" href={stage.href} prefetch={false}>เปิดหน้างานของขั้นนี้ →</Link>
               ) : null}
-            </>
-          ) : null}
-        </span>
-      </div>
+              <Link className="button tiny" href="/overview" prefetch={false}>ปิดตาราง ✕</Link>
+            </div>
+          </div>
 
-      <JobTable
-        basePath="/overview"
-        columns={columns}
-        rows={rows} total={total} carry={carry} sortBy={sortBy ?? 'eta'} sortDir={sortBy ? sortDir : 'asc'}
-        empty={stage ? `ไม่มีงานค้างที่ขั้น "${stage.label}"` : 'ไม่มีงานค้าง'}
-        hint="เรียงตาม ETA เก่าสุดก่อน"
-      />
+          <div className="ov-step-filter" aria-label="กรองขั้นที่ค้าง">
+            <span className="filter-label">ขั้นที่ค้าง</span>
+            {stepChips.map((c) => (
+              <Link
+                key={c.key || 'all'}
+                className={`ov-chip${view === c.key ? ' on' : ''}${c.count ? '' : ' empty'}`}
+                style={c.color ? ({ '--owner': c.color } as React.CSSProperties) : undefined}
+                href={hrefWith({ view: c.key })}
+                prefetch={false}
+              >
+                {c.label} <b>{c.count}</b>
+              </Link>
+            ))}
+          </div>
+
+          <JobTable
+            basePath="/overview"
+            columns={columns}
+            rows={rows} total={total} carry={carry} sortBy={sortBy ?? 'eta'} sortDir={sortBy ? sortDir : 'asc'}
+            empty={`ไม่มีงาน${levelLabel ? ` ${levelLabel}` : ''}ที่ค้าง${stage ? `ขั้น "${stage.label}"` : ''}`}
+            hint="เรียงตาม ETA เก่าสุดก่อน"
+          />
+        </section>
+      ) : (
+        <p className="ov-pick-hint">กดการ์ด <b className="red">Urgent</b> / <b className="amber">Priority</b> หรือขั้นในบอร์ด เพื่อดูรายการงาน</p>
+      )}
 
       {/* ตัวเลขทั้งระบบชุดเดิม ย่อเหลือบรรทัดเดียว — ยังมีคนใช้ดูเรื่องที่ต้องตามด่วน */}
       <p className="ov-system">
