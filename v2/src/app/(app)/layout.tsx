@@ -34,6 +34,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/overview', label: 'ภาพรวมงาน' },
       { href: '/jobs', label: 'ทะเบียนงาน' },
+      { href: '/library', label: 'คลังไฟล์ข้อมูล' },
     ],
   },
   {
