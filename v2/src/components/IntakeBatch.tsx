@@ -8,6 +8,8 @@ import { matchShipper } from '@/lib/match-shipper';
 import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { findDuplicateBls } from '@/lib/actions/intake';
+import { findWaitingBls, type WaitingMatch } from '@/lib/actions/waiting-bl';
+import { WaitingBlNote } from '@/components/WaitingBlNote';
 import { dedupeContainers, isBlDuplicateExempt, normalizeBlNo } from '@/lib/intake-checks';
 
 /**
@@ -63,6 +65,8 @@ export function IntakeBatch({
    * ซ้ำได้ทั้งกับงานที่มีอยู่ในระบบ และกับไฟล์อื่นในชุดที่กำลังรับอยู่นี้
    */
   const [dupBls, setDupBls] = useState<Map<string, string>>(new Map());
+  /** BL ที่อยู่ใน Waiting BL — คีย์เป็นเลข BL แบบปรับรูปแล้ว */
+  const [waiting, setWaiting] = useState<Map<string, WaitingMatch>>(new Map());
 
   /** ตรวจเลข BL ซ้ำของทุกแถว — SEALS ซ้ำได้ตามปกติ ไม่นับ */
   async function refreshDuplicates(list: Array<{ blNo: string; carrier: string; saved?: boolean }>) {
@@ -71,6 +75,10 @@ export function IntakeBatch({
     const counts = new Map<string, number>();
     for (const r of pending) counts.set(normalizeBlNo(r.blNo), (counts.get(normalizeBlNo(r.blNo)) ?? 0) + 1);
     for (const [bl, n] of counts) if (n > 1) out.set(bl, 'ไฟล์อื่นในชุดนี้');
+    // เตือนอย่างเดียว ไม่ขวางการบันทึก จึงไม่ต้องรอผล
+    findWaitingBls(pending.map((r) => r.blNo))
+      .then((found) => setWaiting(new Map(found.map((w) => [normalizeBlNo(w.blNo), w]))))
+      .catch(() => undefined);
     try {
       const found = pending.length ? await findDuplicateBls(pending.map((r) => r.blNo), '') : [];
       for (const d of found) {
@@ -292,6 +300,9 @@ export function IntakeBatch({
                         />
                       )}
                       {!r.savedAs && dupOf(r) ? <small className="dup-note">⚠️ BL ซ้ำกับ {dupOf(r)}</small> : null}
+                      {!r.savedAs && waiting.get(normalizeBlNo(r.blNo)) ? (
+                        <WaitingBlNote matches={[waiting.get(normalizeBlNo(r.blNo))!]} />
+                      ) : null}
                     </td>
                     <td>
                       {r.savedAs ? (r.shipperName ?? '-') : (

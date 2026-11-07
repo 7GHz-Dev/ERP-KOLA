@@ -51,12 +51,15 @@
     "test:customs": "tsx --tsconfig tsconfig.json tests/customs-monitor.ts",
     "migrate:customs-flow": "tsx scripts/migrate-customs-flow.ts",
     "migrate:partner-channels": "tsx scripts/migrate-partner-channels.ts",
+    "migrate:waiting-bl": "tsx scripts/migrate-waiting-bl.ts",
     "migrate:eoffice-officer": "tsx scripts/migrate-eoffice-officer.ts",
     "test:eoffice": "tsx --tsconfig tsconfig.json tests/eoffice-officer.ts",
     "test:table-filter": "tsx --tsconfig tsconfig.json tests/table-filter.ts",
-    "test:register": "tsx --tsconfig tsconfig.json tests/register-sheet.ts"
+    "test:register": "tsx --tsconfig tsconfig.json tests/register-sheet.ts",
+    "test:waiting-bl": "tsx --tsconfig tsconfig.json tests/waiting-bl.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@cantoo/pdf-lib": "^2.9.1",
     "@pdf-lib/fontkit": "^1.1.1",
     "@supabase/supabase-js": "^2.47.10",

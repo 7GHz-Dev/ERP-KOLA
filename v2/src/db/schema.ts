@@ -485,3 +485,40 @@ export const engineNumbers = pgTable('engine_numbers', {
   numberChassisKey: uniqueIndex('engine_numbers_number_chassis_key').on(t.number, t.chassis),
   chassisIdx: index('engine_numbers_chassis_idx').on(t.chassis),
 }));
+
+/**
+ * Waiting BL — BL ที่ลูกค้าแจ้งมาทางอื่น (LINE / โทร / อีเมลลูกค้า) ก่อนที่ Arrival Notice จากสายเรือจะมา
+ *
+ * NAMKANG / FAH กรอกข้อมูลคร่าว ๆ ไว้ก่อน พอ PAINT รับ AN ที่เลข BL ตรงกัน หน้ารับงานจะเตือน
+ * และเมื่อ NAMKANG อนุมัติ AN ของงานนั้นเข้าตารางหลัก รายการจะถูกปิด (resolved_at) หายจากรายการรอ
+ * เก็บแถวไว้ไม่ลบจริง จะได้ย้อนดูได้ว่าใครแจ้งอะไรไว้
+ */
+export const waitingBls = pgTable('waiting_bls', {
+  id: id(),
+  blNo: text('bl_no').notNull(),
+  /** เลข BL แบบตัวใหญ่ไม่มีช่องว่าง — ใช้จับคู่กับงาน */
+  blKey: text('bl_key').notNull(),
+  customer: text('customer'),
+  shipper: text('shipper'),
+  vessel: text('vessel'),
+  voyage: text('voyage'),
+  eta: date('eta'),
+  containerNos: text('container_nos'),
+  product: text('product'),
+  /** ช่องทางที่ได้ข้อมูลมา เช่น LINE · โทรศัพท์ · อีเมลลูกค้า */
+  channel: text('channel'),
+  note: text('note'),
+  createdBy: text('created_by'),
+  createdAt: createdAt(),
+  updatedBy: text('updated_by'),
+  updatedAt: updatedAt(),
+  /** NAMKANG อนุมัติ AN ของงานที่ BL ตรงกันแล้ว = เข้าตารางหลัก */
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedJobId: text('resolved_job_id'),
+  /** ลบออกเองโดยไม่ได้เข้าตารางหลัก (เช่น ลูกค้ายกเลิก) */
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancelledBy: text('cancelled_by'),
+}, (t) => ({
+  keyIdx: index('waiting_bls_key_idx').on(t.blKey),
+  openIdx: index('waiting_bls_open_idx').on(t.resolvedAt, t.cancelledAt),
+}));

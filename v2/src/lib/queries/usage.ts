@@ -1,7 +1,7 @@
 import { and, gte, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { activityLog } from '@/db/schema';
-import { AI_READ_ACTION } from '@/lib/usage-log';
+import { AI_READ_ACTION, ASSISTANT_ACTION } from '@/lib/usage-log';
 
 /**
  * ยอดใช้งานสำหรับหน้า Monitor ของ ADMIN
@@ -30,7 +30,8 @@ export type AiUsage = {
  */
 const BKK = sql`at time zone 'Asia/Bangkok'`;
 
-export async function aiUsage(): Promise<AiUsage> {
+/** ยอดค่า AI ของงานหนึ่งชนิด — ค่าอ่าน AN/BL (ตั้งต้น) หรือผู้ช่วย KOLA */
+export async function aiUsage(action: string = AI_READ_ACTION): Promise<AiUsage> {
   const baht = sql<number>`coalesce(sum((${activityLog.detail}::jsonb ->> 'baht')::numeric), 0)`;
   const calls = sql<number>`count(*)::int`;
 
@@ -54,7 +55,7 @@ export async function aiUsage(): Promise<AiUsage> {
         where (${activityLog.createdAt} ${BKK})::date = (now() ${BKK})::date), 0)`,
     })
     .from(activityLog)
-    .where(sql`${activityLog.action} = ${AI_READ_ACTION}`);
+    .where(sql`${activityLog.action} = ${action}`);
 
   const daily = await db
     .select({
@@ -67,7 +68,7 @@ export async function aiUsage(): Promise<AiUsage> {
     })
     .from(activityLog)
     .where(and(
-      sql`${activityLog.action} = ${AI_READ_ACTION}`,
+      sql`${activityLog.action} = ${action}`,
       gte(activityLog.createdAt, sql`now() - interval '14 days'`),
     ))
     .groupBy(sql`(${activityLog.createdAt} ${BKK})::date`)
@@ -83,6 +84,50 @@ export async function aiUsage(): Promise<AiUsage> {
       day: String(d.day).slice(0, 10),
       calls: n(d.calls), baht: n(d.baht), failed: n(d.failed),
     })),
+  };
+}
+
+export type AssistantDetail = {
+  /** เดือนนี้แยกตามคนถาม มากสุดอยู่บน */
+  byUser: Array<{ name: string; role: string | null; calls: number; baht: number }>;
+  /** คำถามล่าสุด */
+  recent: Array<{ at: string; name: string; q: string; baht: number; ms: number; ok: boolean; rounds: number }>;
+  /** ค่าเฉลี่ยต่อคำถาม 30 วันล่าสุด */
+  avgBaht: number;
+};
+
+/** รายละเอียดเพิ่มของผู้ช่วย KOLA — ใครใช้เท่าไร และถามอะไรกันบ้าง */
+export async function assistantDetail(): Promise<AssistantDetail> {
+  const num = (key: string) => sql`coalesce((l.detail::jsonb ->> ${key})::numeric, 0)`;
+  const [byUser, recent, avg] = await Promise.all([
+    db.execute<{ name: string | null; role: string | null; calls: number; baht: string }>(sql`
+      select u.display_name as name, u.role, count(*)::int as calls, sum(${num('baht')}) as baht
+        from activity_log l left join users u on u.id = l.user_id
+       where l.action = ${ASSISTANT_ACTION}
+         and date_trunc('month', l.created_at ${BKK}) = date_trunc('month', now() ${BKK})
+       group by 1, 2 order by 4 desc`),
+    db.execute<{ at: string; name: string | null; detail: string | null }>(sql`
+      select l.created_at as at, u.display_name as name, l.detail
+        from activity_log l left join users u on u.id = l.user_id
+       where l.action = ${ASSISTANT_ACTION}
+       order by l.created_at desc limit 20`),
+    db.execute<{ avg: string | null }>(sql`
+      select avg(${num('baht')}) as avg from activity_log l
+       where l.action = ${ASSISTANT_ACTION} and l.created_at >= now() - interval '30 days'`),
+  ]);
+  const parse = (raw: string | null) => {
+    try { return JSON.parse(raw ?? '{}') as Record<string, unknown>; } catch { return {}; }
+  };
+  return {
+    byUser: [...byUser].map((r) => ({ name: r.name ?? '(ไม่ทราบชื่อ)', role: r.role, calls: Number(r.calls), baht: Number(r.baht ?? 0) })),
+    recent: [...recent].map((r) => {
+      const d = parse(r.detail);
+      return {
+        at: String(r.at), name: r.name ?? '(ไม่ทราบชื่อ)', q: String(d.q ?? ''),
+        baht: Number(d.baht ?? 0), ms: Number(d.ms ?? 0), ok: d.ok !== false, rounds: Number(d.rounds ?? 0),
+      };
+    }),
+    avgBaht: Number([...avg][0]?.avg ?? 0),
   };
 }
 

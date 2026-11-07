@@ -13,6 +13,7 @@ import { canEditBlAtDo } from '@/lib/do-letter';
 import { hasBlBrackets } from '@/lib/bl-format';
 import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
+import { resolveWaitingBlsForJob } from '@/lib/waiting-bl-store';
 
 /**
  * การแก้ไขข้อมูลทั้งหมดผ่าน server action
@@ -192,6 +193,12 @@ async function decideApprovalImpl(formData: FormData) {
   await recordStatus(approval.jobId, approval.status, next,
     decision === 'REJECTED' ? `ตีกลับ: ${reason}` : 'อนุมัติแล้ว', user.id);
   await logActivity(user.id, `DECIDE_${approval.approvalType}`, 'APPROVAL', approvalId, { decision });
+  // AN ผ่าน = BL เข้าตารางหลักแล้ว → ปิดรายการ Waiting BL ที่เลข BL ตรงกัน
+  // ปิดไม่สำเร็จก็ไม่ทำให้การอนุมัติล้ม — รายการยังค้างให้ยกเลิกเองได้
+  if (decision === 'APPROVED' && approval.approvalType === 'AN') {
+    await resolveWaitingBlsForJob(approval.jobId, user.id)
+      .catch((e) => console.error('ปิด Waiting BL ไม่สำเร็จ', e));
+  }
 
   revalidatePath('/pending');
   revalidatePath('/nam/approve');

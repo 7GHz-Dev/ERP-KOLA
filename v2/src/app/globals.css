@@ -2369,3 +2369,98 @@ table.data td.col-lib { min-width: 300px; }
 .muted { color: var(--muted); }
 /* ตัวเลขบนแท็บคลังไฟล์เป็นจำนวนงาน ไม่ใช่งานค้าง — ไม่ใช้ป้ายแดงแบบหน้าคิวงาน */
 .lib-tabs a:not([aria-current="page"]) small.count { background: var(--canvas); color: var(--muted); }
+
+/* ---------- ผู้ช่วย KOLA (Chatbot) ---------- */
+.ai-fab {
+  position: fixed; right: 18px; bottom: 18px; z-index: 60;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 16px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--navy); color: #fff; font: inherit; font-weight: 700; font-size: 13px;
+  box-shadow: 0 6px 20px rgba(15, 35, 49, .3);
+}
+.ai-fab:hover { background: var(--blue); }
+.ai-fab span { color: #ffd166; }
+.ai-panel {
+  position: fixed; right: 18px; bottom: 18px; z-index: 60;
+  width: min(440px, calc(100vw - 24px)); height: min(640px, calc(100vh - 36px));
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(15, 35, 49, .28); overflow: hidden;
+}
+.ai-panel header {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  background: var(--navy); color: #fff;
+}
+.ai-panel header > div { flex: 1; min-width: 0; display: grid; }
+.ai-panel header small { opacity: .75; font-size: 11px; }
+.ai-panel header .button { color: #fff; background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.28); }
+.ai-close { background: none; border: 0; color: #fff; font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.ai-log { flex: 1; overflow-y: auto; padding: 12px; display: grid; gap: 10px; align-content: start; background: var(--canvas); }
+.ai-empty p { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
+.ai-example {
+  display: block; width: 100%; text-align: left; margin-bottom: 6px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  font: inherit; font-size: 12px; color: var(--ink); cursor: pointer;
+}
+.ai-example:hover { border-color: var(--blue); color: var(--blue); }
+.ai-msg { max-width: 92%; padding: 8px 11px; border-radius: 10px; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.ai-msg.user { justify-self: end; background: var(--blue); color: #fff; white-space: pre-wrap; border-bottom-right-radius: 3px; }
+.ai-msg.assistant { justify-self: start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 3px; }
+.ai-msg.assistant:empty { display: none; }
+.ai-msg.error { border-color: var(--red); background: var(--red-soft); }
+.ai-msg p { margin: 0 0 6px; }
+.ai-msg p:last-child { margin-bottom: 0; }
+.ai-msg .ai-h { font-weight: 700; }
+.ai-msg ul, .ai-msg ol { margin: 0 0 6px; padding-left: 18px; }
+.ai-msg code { background: var(--canvas); padding: 0 4px; border-radius: 4px; font-size: 12px; }
+.ai-table { overflow-x: auto; margin: 4px 0 6px; }
+.ai-table table { border-collapse: collapse; font-size: 12px; }
+.ai-table th, .ai-table td { border: 1px solid var(--line); padding: 3px 7px; text-align: left; white-space: nowrap; }
+.ai-table th { background: var(--canvas); }
+.ai-step { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); animation: ai-pulse 1s ease-in-out infinite; }
+@keyframes ai-pulse { 50% { opacity: .25; } }
+.ai-input { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); align-items: flex-end; }
+.ai-input textarea {
+  flex: 1; resize: none; font: inherit; font-size: 13px; padding: 7px 9px;
+  border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface);
+}
+.ai-input textarea:focus { outline: 2px solid var(--blue-soft); border-color: var(--blue); }
+.ai-foot { margin: 0; padding: 0 12px 8px; font-size: 10.5px; color: var(--muted); }
+@media (max-width: 640px) {
+  .ai-panel { right: 0; bottom: 0; width: 100vw; height: 100dvh; border-radius: 0; }
+  .ai-fab { right: 12px; bottom: 12px; }
+}
+/* แถบเลือกหลายรายการอยู่ล่างจอเหมือนกัน — เว้นที่ให้ปุ่มผู้ช่วย */
+.bulk-bar { margin-right: 130px; }
+@media (max-width: 640px) { .bulk-bar { margin-right: 0; margin-bottom: 52px; } }
+
+/* ---------- Waiting BL ---------- */
+.wbl-forms { display: grid; gap: 8px; margin-bottom: 14px; }
+.wbl-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0; }
+.wbl-card > summary { cursor: pointer; padding: 10px 14px; font-weight: 700; color: var(--blue); list-style: none; }
+.wbl-card > summary::-webkit-details-marker { display: none; }
+.wbl-card[open] > summary { border-bottom: 1px solid var(--line); }
+.wbl-form { display: grid; gap: 10px 12px; padding: 12px 14px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.wbl-form label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.wbl-form .wide { grid-column: span 2; }
+.wbl-form .full { grid-column: 1 / -1; }
+.wbl-form input, .wbl-form textarea {
+  font: inherit; font-weight: 400; color: var(--ink); padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+}
+.wbl-form textarea { resize: vertical; }
+.wbl-actions { display: flex; gap: 8px; align-items: end; }
+.wbl-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.wbl-search { min-width: 280px; padding: 6px 10px; font: inherit; border: 1px solid var(--line); border-radius: 6px; }
+@media (max-width: 640px) { .wbl-form .wide { grid-column: 1 / -1; } .wbl-search { min-width: 0; flex: 1; } }
+/* หน้ารับ AN: BL นี้มีใน Waiting BL */
+.wbl-alert {
+  display: block; margin-top: 6px; padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.5;
+  background: var(--amber-soft); color: #6b4700; border: 1px solid #f0d58c;
+}
+.wbl-alert b { color: #4d3300; }
+/* Monitor: ตารางรายวันกับรายคนวางคู่กัน */
+.monitor-split { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
+.monitor-recent { margin-top: 12px; }
+.monitor-recent > summary { cursor: pointer; font-weight: 600; color: var(--blue); margin-bottom: 8px; }

@@ -3,10 +3,11 @@ import { requireUserReady } from '@/lib/auth';
 import { MasterMenu, MONITOR_MENU_KEY } from '@/components/MasterMenu';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { masterCounts } from '@/lib/queries/master';
-import { aiUsage, type LineQuota } from '@/lib/queries/usage';
+import { aiUsage, assistantDetail, type LineQuota } from '@/lib/queries/usage';
+import { ASSISTANT_ACTION } from '@/lib/usage-log';
 import { lineAccountsOverview, type LineAccountView } from '@/lib/line-accounts';
 import { addLineAccount, removeLineAccount, selectLineAccount, setLineGroup, testLineAccount } from '@/lib/actions/line';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,9 @@ const baht = (v: number) => v.toLocaleString('th-TH', { minimumFractionDigits: 2
  */
 export default async function MonitorPage() {
   await requireUserReady(['ADMIN']);
-  const [counts, ai, line] = await Promise.all([masterCounts(), aiUsage(), lineAccountsOverview()]);
+  const [counts, ai, line, chat, chatDetail] = await Promise.all([
+    masterCounts(), aiUsage(), lineAccountsOverview(), aiUsage(ASSISTANT_ACTION), assistantDetail(),
+  ]);
   // URL ที่ต้องใส่เป็น Webhook URL ของ OA ใหม่ตอนหา Group ID — โดเมนเดียวกับที่เปิดหน้านี้อยู่
   const host = (await headers()).get('host') ?? 'erp-kola.vercel.app';
   const webhookUrl = `${host.startsWith('localhost') ? 'http' : 'https'}://${host}/api/line/webhook`;
@@ -32,13 +35,29 @@ export default async function MonitorPage() {
     <>
       <div className="page-head">
         <h1>การใช้งานและค่าใช้จ่าย</h1>
-        <p>โควต้าข้อความ LINE · ค่าอ่านเอกสาร AN/BL ด้วย AI</p>
+        <p>โควต้าข้อความ LINE · ค่าอ่านเอกสาร AN/BL ด้วย AI · ค่าผู้ช่วย KOLA (Chatbot)</p>
       </div>
 
       <div className="master-layout">
         <MasterMenu current={MONITOR_MENU_KEY} counts={counts} />
 
         <div className="monitor-body">
+          {/* ---------- รวมค่า AI ---------- */}
+          <section className="monitor-card">
+            <h2>ค่า AI รวมทุกอย่าง</h2>
+            <div className="monitor-figures">
+              <div><span>วันนี้</span><b>{baht(ai.today.baht + chat.today.baht)} ฿</b></div>
+              <div><span>7 วันล่าสุด</span><b>{baht(ai.week.baht + chat.week.baht)} ฿</b></div>
+              <div><span>เดือนนี้</span><b>{baht(ai.month.baht + chat.month.baht)} ฿</b>
+                <small>อ่าน AN/BL {baht(ai.month.baht)} · ผู้ช่วย {baht(chat.month.baht)}</small></div>
+              <div><span>ทั้งหมด</span><b>{baht(ai.total.baht + chat.total.baht)} ฿</b></div>
+            </div>
+            <p className="monitor-note">
+              ประมาณจากจำนวน token ที่ใช้จริงแต่ละครั้ง × ราคาต่อ token ณ วันที่ใช้ (คิด 33 บาท/ดอลลาร์) ·
+              ยอดเรียกเก็บจริงดูที่ console.anthropic.com → Billing
+            </p>
+          </section>
+
           {/* ---------- LINE ---------- */}
           <LineSection accounts={line} webhookUrl={webhookUrl} />
 
@@ -78,6 +97,85 @@ export default async function MonitorPage() {
             ) : (
               <p className="monitor-note">ยังไม่มีการเรียกใช้ AI ในช่วง 14 วันที่ผ่านมา</p>
             )}
+          </section>
+
+          {/* ---------- ผู้ช่วย KOLA ---------- */}
+          <section className="monitor-card">
+            <h2>ผู้ช่วย KOLA (Chatbot)</h2>
+            <div className="monitor-figures">
+              <div><span>วันนี้</span><b>{baht(chat.today.baht)} ฿</b><small>{chat.today.calls} คำถาม</small></div>
+              <div><span>7 วันล่าสุด</span><b>{baht(chat.week.baht)} ฿</b><small>{chat.week.calls} คำถาม</small></div>
+              <div><span>เดือนนี้</span><b>{baht(chat.month.baht)} ฿</b><small>{chat.month.calls} คำถาม</small></div>
+              <div><span>ทั้งหมด</span><b>{baht(chat.total.baht)} ฿</b><small>{chat.total.calls} คำถาม</small></div>
+              <div><span>เฉลี่ยต่อคำถาม (30 วัน)</span><b>{baht(chatDetail.avgBaht)} ฿</b></div>
+            </div>
+            <p className="monitor-note">
+              Claude Opus 5.5 · คิดค่าทุกคำถามรวมที่ตอบไม่สำเร็จ (ใช้ token ไปแล้ว) ·
+              คำถามที่ต้องค้นหลายรอบ (เช่น เทียบหลายวัน) แพงกว่าถามสถานะงานใบเดียว
+            </p>
+
+            {chat.total.calls ? (
+              <div className="monitor-split">
+                <div className="table-wrap">
+                  <table className="data monitor-table">
+                    <thead>
+                      <tr><th>วันที่</th><th className="num">คำถาม</th><th className="num">ค่าใช้จ่าย</th><th className="num">ไม่สำเร็จ</th></tr>
+                    </thead>
+                    <tbody>
+                      {chat.daily.map((d) => (
+                        <tr key={d.day}>
+                          <td>{formatDate(d.day)}</td>
+                          <td className="num">{d.calls}</td>
+                          <td className="num">{baht(d.baht)} ฿</td>
+                          <td className="num">{d.failed ? <b className="bad">{d.failed}</b> : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="table-wrap">
+                  <table className="data monitor-table">
+                    <thead><tr><th>ผู้ใช้ (เดือนนี้)</th><th className="num">คำถาม</th><th className="num">ค่าใช้จ่าย</th></tr></thead>
+                    <tbody>
+                      {chatDetail.byUser.length ? chatDetail.byUser.map((u) => (
+                        <tr key={u.name}>
+                          <td>{u.name} {u.role ? <small className="muted">{u.role}</small> : null}</td>
+                          <td className="num">{u.calls}</td>
+                          <td className="num">{baht(u.baht)} ฿</td>
+                        </tr>
+                      )) : <tr><td colSpan={3} className="empty">เดือนนี้ยังไม่มีคนใช้</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="monitor-note">ยังไม่มีใครใช้ผู้ช่วย</p>
+            )}
+
+            {chatDetail.recent.length ? (
+              <details className="monitor-recent">
+                <summary>คำถามล่าสุด {chatDetail.recent.length} รายการ</summary>
+                <div className="table-wrap">
+                  <table className="data monitor-table">
+                    <thead>
+                      <tr><th>เวลา</th><th>ผู้ถาม</th><th>คำถาม</th><th className="num">รอบค้น</th><th className="num">เวลา</th><th className="num">ค่าใช้จ่าย</th></tr>
+                    </thead>
+                    <tbody>
+                      {chatDetail.recent.map((r) => (
+                        <tr key={r.at + r.q}>
+                          <td>{formatDateTime(r.at)}</td>
+                          <td>{r.name}</td>
+                          <td className="col-wrap">{r.q}{r.ok ? null : <> <b className="bad">ไม่สำเร็จ</b></>}</td>
+                          <td className="num">{r.rounds || '-'}</td>
+                          <td className="num">{(r.ms / 1000).toFixed(1)} วิ</td>
+                          <td className="num">{baht(r.baht)} ฿</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ) : null}
           </section>
         </div>
       </div>

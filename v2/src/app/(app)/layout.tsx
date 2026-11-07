@@ -1,10 +1,12 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { ActionAlert } from '@/components/ActionAlert';
+import { AssistantChat } from '@/components/AssistantChat';
 import { DisclosureBehavior } from '@/components/Interactions';
 import { SideNav } from '@/components/SideNav';
 import { SidebarToggle } from '@/components/SidebarToggle';
 import { currentUser, logout, roleAllows } from '@/lib/auth';
+import { homePageFor } from '@/lib/home-page';
 import { navCounts } from '@/lib/queries/dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -53,11 +55,14 @@ const NAV: NavGroup[] = [
       { href: '/fah/do', label: 'Upload InvDO / ETA Official / Terminal / Send Partner', count: 'fahDoWait' },
       { href: '/fah/fn', label: 'อนุมัติ Final Invoice', count: 'pendingFn' },
       { href: '/fah/draft', label: 'ตรวจ Draft / ทำใบขน', count: 'draftReview' },
+      // BL ที่ลูกค้าแจ้งมาทางอื่นก่อน AN — รายการเดียวกับของ NAMKANG
+      { href: '/waiting-bl', label: 'Waiting BL', count: 'waitingBl' },
     ],
   },
   {
     label: 'NAMKANG', color: '#1aae39', roles: ['NAMKANG'],
     items: [
+      { href: '/waiting-bl', label: 'Waiting BL', count: 'waitingBl' },
       { href: '/nam/approve', label: 'อนุมัติข้อมูล BL เข้าตารางหลัก', count: 'pendingAn' },
       { href: '/nam/customer', label: 'ใส่ Client in Charge / ติดตาม Invoice สินค้า & Surrender', count: 'namCustomerWait' },
       { href: '/nam/haul', label: 'จัดการลากตู้สินค้า', count: 'haulWait' },
@@ -206,6 +211,8 @@ export default async function AppLayout({
         {children}
       </main>
       {drawer}
+      {/* ผู้ช่วยถามข้อมูล — role เดียวกับหน้าภาพรวมงาน (API ตรวจสิทธิ์ซ้ำอีกชั้น) */}
+      {homePageFor(user.role) === '/overview' ? <AssistantChat /> : null}
     </div>
   );
 }

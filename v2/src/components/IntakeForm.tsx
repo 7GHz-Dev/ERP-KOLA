@@ -9,6 +9,8 @@ import { SearchSelect, SearchText } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 import { findDuplicateBls } from '@/lib/actions/intake';
+import { findWaitingBls, type WaitingMatch } from '@/lib/actions/waiting-bl';
+import { WaitingBlNote } from '@/components/WaitingBlNote';
 import {
   dedupeContainers, duplicateBlMessage, duplicateContainers, normalizeContainerNo,
   type DuplicateBl,
@@ -96,6 +98,8 @@ export function IntakeForm({
   const [formError, setFormError] = useState('');
   // เลข BL ที่ซ้ำกับงานที่มีอยู่ — ขึ้นเตือนใต้ช่องทันทีที่กรอกเสร็จ
   const [blDuplicates, setBlDuplicates] = useState<DuplicateBl[]>([]);
+  /** BL ที่ NAMKANG / FAH กรอกรอไว้ใน Waiting BL — เตือนให้เทียบข้อมูลก่อนบันทึก */
+  const [waiting, setWaiting] = useState<WaitingMatch[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   // เปลี่ยน key แล้ว React สร้างฟอร์มใหม่ทั้งชุด ช่องทุกช่องกลับไปเป็นค่าตั้งต้น
   const [formKey, setFormKey] = useState(0);
@@ -308,7 +312,9 @@ export function IntakeForm({
   /** ถามเซิร์ฟเวอร์ว่าเลข BL ซ้ำกับงานไหน แล้วขึ้นเตือนใต้ช่อง (SEALS ไม่เตือน) */
   async function checkBlDuplicates(blNos: string[], shipline = currentShipline()) {
     const list = blNos.map((b) => b.trim()).filter(Boolean);
-    if (!list.length) { setBlDuplicates([]); return []; }
+    if (!list.length) { setBlDuplicates([]); setWaiting([]); return []; }
+    // ไม่รอผล — เป็นแค่คำเตือน ไม่ใช่เงื่อนไขการบันทึก
+    findWaitingBls(list).then(setWaiting).catch(() => setWaiting([]));
     try {
       const found = await findDuplicateBls(list, shipline);
       setBlDuplicates(found);
@@ -323,6 +329,7 @@ export function IntakeForm({
     setSaved(jobNo);
     setFormError('');
     setBlDuplicates([]);
+    setWaiting([]);
     setBlRows([{ blNo: '', shipperId: '', shipperName: '' }]);
     setContainerRows([{ containerNo: '', containerType: defaults.containerType, sealNo: '' }]);
     setPersonId('');
@@ -479,6 +486,7 @@ export function IntakeForm({
               </div>
             ))}
           </div>
+          <WaitingBlNote matches={waiting} />
           {blDuplicates.length ? (
             <small className="dup-note">
               ⚠️ เลข BL ซ้ำกับงานที่มีอยู่: {duplicateBlMessage(blDuplicates)} · บันทึกได้ แต่ระบบจะถามยืนยันอีกครั้ง

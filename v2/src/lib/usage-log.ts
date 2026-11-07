@@ -11,5 +11,8 @@
 /** เรียก AI อ่าน AN/BL หนึ่งครั้ง — detail เก็บ { baht, ms, ok } */
 export const AI_READ_ACTION = 'AI_READ_DOC';
 
+/** ผู้ช่วย KOLA (Chatbot) ตอบหนึ่งคำถาม — detail เก็บ { q, baht, ms, ok, input, output, cacheRead, cacheWrite, rounds } */
+export const ASSISTANT_ACTION = 'AI_ASSISTANT';
+
 /** webhook ของ LINE เห็น source ใหม่ — detail เก็บ { type, id } */
 export const LINE_SOURCE_ACTION = 'LINE_WEBHOOK_SOURCE';
