@@ -35,7 +35,8 @@ const MAX_BYTES = 20 * 1024 * 1024;
 export async function POST(request: Request) {
   const user = await currentUser();
   if (!user) return Response.json({ ok: false, detail: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
-  if (!roleAllows(user.role, ['PAINT'])) {
+  // PAINT รับ AN · Senior / Head Officer เพิ่มงานจาก BL ที่หน้า Waiting list — ใช้ตัวอ่านไฟล์เดียวกัน
+  if (!roleAllows(user.role, ['PAINT', 'FAH', 'NAMKANG'])) {
     return Response.json({ ok: false, detail: 'ไม่มีสิทธิ์' }, { status: 403 });
   }
 

@@ -17,7 +17,7 @@ export default async function FahFnPage({
   return (
     <>
       <div className="page-head">
-        <h1>อนุมัติ Final Invoice</h1>
+        <h1>Approve cargo Invoice</h1>
         <p>ตรวจไฟล์ที่ PAINT ส่งมา แล้วอนุมัติหรือตีกลับพร้อมเหตุผล</p>
       </div>
       <JobTable

@@ -93,7 +93,7 @@ export default async function NamCustomerPage({
   return (
     <>
       <div className="page-head">
-        <h1>ใส่ Client in Charge / ติดตาม Invoice สินค้า & Surrender</h1>
+        <h1>Upload cargo Invoice</h1>
         <p>เลือก Client in Charge · อัปโหลด Invoice สินค้า · ระบุสถานะ Surrender BL แล้วกดยืนยันข้อมูล</p>
       </div>
       <Tabs basePath="/nam/customer" items={TABS} active={tab} carry={carry} />

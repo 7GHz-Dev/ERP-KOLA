@@ -53,7 +53,7 @@ export default async function NamHaulPage({
   return (
     <>
       <div className="page-head">
-        <h1>จัดการลากตู้สินค้า</h1>
+        <h1>Transport Request</h1>
         <p>งานที่ส่ง Partner แล้ว · เลือกงาน → ตั้งวันลากตู้ → ส่งแพลนให้ MAY (ลงทุกตู้ของงาน) · งาน MUO Partner ลากเอง ไม่อยู่ในหน้านี้</p>
       </div>
       <Tabs basePath="/nam/haul" items={TABS} active={tab} carry={carry} />

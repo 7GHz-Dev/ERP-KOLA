@@ -109,7 +109,7 @@ export default async function FahDraftPage({
       <CustomsMonitorAutoLaunch latestTaskId={latest?.id ?? null} />
       <div className="page-head with-action">
         <div>
-          <h1>ตรวจ Draft / ทำใบขนสินค้า</h1>
+          <h1>Submit import decl.</h1>
           <p>ตรวจ Draft → กด SEND TO CUSTOMS ใน NETBAY → กด &quot;สร้างใบขนแล้ว&quot; → ระบบรอ ACCEPT แล้วดึงเลขใบขน + PDF ให้</p>
         </div>
         {/* ตรวจ Draft · รอไฟล์และเลขใบขน — กดแล้วเช็กใน NETBAY ทันที */}

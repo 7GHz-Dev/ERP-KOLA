@@ -296,7 +296,7 @@ export default async function PendingPage({
   return (
     <>
       <div className="page-head">
-        <h1>งานคงค้าง</h1>
+        <h1>Pending jobs</h1>
         <p>BL → Final Invoice → Draft ใบขน → เตรียมเอกสารเดิน E (คำร้อง → รวมชุด → ส่งมอบคนเดินเอกสาร)</p>
       </div>
 

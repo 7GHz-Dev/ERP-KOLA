@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/db';
 import { doHandoffs, jobs } from '@/db/schema';
-import { latestApproval, notPartnerRelease } from './jobs';
+import { latestApproval, notPartnerRelease, QUEUE, type JoinContext } from './jobs';
 
 /** ตัวเลขสรุปทั้งหมดใน query เดียว แทนการนับทีละอย่างแบบระบบเดิม */
 export async function dashboardSummary() {
@@ -32,9 +32,33 @@ export async function dashboardSummary() {
  * เวลาที่เพิ่มจึงทับซ้อนกับ query ของหน้า ไม่ได้บวกเข้าไปตรง ๆ
  */
 export async function navCounts() {
-  const [main, waitingBl] = await Promise.all([navCountsMain(), waitingBlCount()]);
-  return { ...main, waitingBl };
+  const [main, waitingBl, people] = await Promise.all([navCountsMain(), waitingBlCount(), queueCounts(PERSON_QUEUES)]);
+  return { ...main, waitingBl, ...people };
 }
+
+/*
+ * ตัวเลขข้างเมนูของหน้าใหม่ — Waiting list และ Pending Jobs ของ Senior / Head Officer
+ * ใช้เงื่อนไขตัวเดียวกับหน้า (QUEUE) งานที่ค้างหลายคิวของคนเดียวกันนับครั้งเดียว
+ */
+const anyOf = (...qs: Array<(ctx: JoinContext) => (SQL | undefined)[]>) =>
+  (ctx: JoinContext) => [or(...qs.map((q) => and(...q(ctx)) ?? sql`false`))];
+
+export const SENIOR_QUEUES = {
+  do: QUEUE.fahDo('wait'),
+  fn: QUEUE.fahFn(),
+  draft: QUEUE.fahDraftReview(),
+  customs: QUEUE.fahDraftWaiting(),
+};
+export const HEAD_QUEUES = {
+  an: QUEUE.namApprove(),
+  customer: QUEUE.namCustomer('wait'),
+  haul: QUEUE.haul('wait'),
+};
+const PERSON_QUEUES = {
+  waitingList: QUEUE.waitingList(),
+  seniorPending: anyOf(...Object.values(SENIOR_QUEUES)),
+  headPending: anyOf(...Object.values(HEAD_QUEUES)),
+};
 
 /**
  * Waiting BL ที่ยังรอ AN — แยก query และกลืน error ไว้
@@ -184,4 +208,26 @@ export async function doHandoffSentAt(jobIds: string[]) {
     .where(and(inArray(doHandoffs.jobId, jobIds), isNotNull(doHandoffs.sentAt)));
   rows.forEach((r) => { if (r.sentAt) map.set(r.jobId, r.sentAt.toISOString()); });
   return map;
+}
+
+/**
+ * นับงานของหลายคิวในรอบเดียว — ใช้กับตัวเลขบนแท็บของหน้า Pending Jobs / Waiting list
+ * รับเงื่อนไข QUEUE ตัวเดียวกับที่ตารางใช้ ตัวเลขจึงเท่ากับจำนวนแถวที่เห็นเสมอ
+ */
+export async function queueCounts<K extends string>(
+  queues: Record<K, (ctx: JoinContext) => (SQL | undefined)[]>,
+): Promise<Record<K, number>> {
+  const an = latestApproval('AN');
+  const fn = latestApproval('FN');
+  const ctx = { an, fn };
+  const cols = Object.fromEntries(Object.entries(queues).map(([k, where]) => [
+    k, sql<number>`count(*) filter (where ${and(...(where as (c: JoinContext) => (SQL | undefined)[])(ctx)) ?? sql`false`})::int`,
+  ])) as Record<K, SQL<number>>;
+  const [row] = await db
+    .select(cols)
+    .from(jobs)
+    .leftJoin(an, eq(an.jobId, jobs.id))
+    .leftJoin(fn, eq(fn.jobId, jobs.id))
+    .where(eq(jobs.isArchived, false));
+  return Object.fromEntries(Object.keys(queues).map((k) => [k, Number((row as Record<string, number>)[k] ?? 0)])) as Record<K, number>;
 }

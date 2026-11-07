@@ -32,41 +32,48 @@ const NAV: NavGroup[] = [
      * ภาพรวมงานกับทะเบียนงานเป็นมุมของฝั่ง KOLA จึงไม่ต้องมีในเมนูของสองคนนี้
      * เมนูสั้นลงเหลือเฉพาะงานของตัวเอง ซึ่งช่วยมากตอนใช้บนมือถือ
      */
-    label: 'IMPORT DEPT.', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY', 'ACCOUNT'],
+    label: 'Import Dept.', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY', 'ACCOUNT'],
     items: [
-      { href: '/overview', label: 'DASHBOARD' },
-      { href: '/jobs', label: 'BOOKINGS' },
-      { href: '/library', label: 'IMPORT DOC FILES' },
+      { href: '/overview', label: 'Dashboard' },
+      { href: '/jobs', label: 'Bookings table' },
+      { href: '/library', label: 'Import doc files' },
     ],
   },
+  /*
+   * ชื่อกลุ่มเป็นตำแหน่งงาน ไม่ใช่ชื่อคน — role ในระบบยังเป็น PAINT / FAH / NAMKANG เหมือนเดิม
+   *   Import Officer = PAINT · Senior Officer = FAH · Head Officer = NAMKANG
+   */
   {
-    label: 'PAINT', color: '#0075de', roles: ['PAINT'],
+    label: 'Import Officer', color: '#0075de', roles: ['PAINT'],
     items: [
-      { href: '/intake/an', label: 'Arrival Notice BL' },
-      { href: '/intake/bl', label: 'BL Waiting Confirm' },
-      { href: '/pending', label: 'งานคงค้าง', count: 'openJobs' },
+      { href: '/pending', label: 'Pending jobs', count: 'openJobs' },
+      { href: '/intake/an', label: 'Arrival notice upload' },
+      { href: '/paint/eoffice-signed', label: 'Submit (Signed) E-office Doc', count: 'eofficeSignedWait' },
       { href: '/paint/cargo-invoice', label: 'Create Cargo Invoice' },
-      { href: '/paint/eoffice-signed', label: 'Upload ชุดปล่อย E-Office / ส่ง Partner', count: 'eofficeSignedWait' },
       { href: '/automation', label: 'คิว Automation', count: 'queue' },
     ],
   },
   {
-    label: 'FAH', color: '#dd5b00', roles: ['FAH'],
+    label: 'Senior Officer', color: '#dd5b00', roles: ['FAH'],
     items: [
-      { href: '/fah/do', label: 'Upload InvDO / ETA Official / Terminal / Send Partner', count: 'fahDoWait' },
-      { href: '/fah/fn', label: 'อนุมัติ Final Invoice', count: 'pendingFn' },
-      { href: '/fah/draft', label: 'ตรวจ Draft / ทำใบขน', count: 'draftReview' },
-      // BL ที่ลูกค้าแจ้งมาทางอื่นก่อน AN — รายการเดียวกับของ NAMKANG
-      { href: '/waiting-bl', label: 'Waiting BL', count: 'waitingBl' },
+      { href: '/waiting-list', label: 'Waiting list', count: 'waitingList' },
+      { href: '/fah/pending', label: 'Pending Jobs', count: 'seniorPending' },
+      { href: '/fah/do', label: 'Upload Invoice of D/O', count: 'fahDoWait' },
+      { href: '/fah/fn', label: 'Approve cargo Invoice', count: 'pendingFn' },
+      { href: '/fah/draft', label: 'Submit import decl.', count: 'draftReview' },
+      // BL ที่ลูกค้าแจ้งมาทางอื่น (กรอกคร่าว ๆ) — รายการเดียวกับของ Head Officer
+      { href: '/waiting-bl', label: 'Waiting BL (ข้อมูลจากลูกค้า)', count: 'waitingBl' },
     ],
   },
   {
-    label: 'NAMKANG', color: '#1aae39', roles: ['NAMKANG'],
+    label: 'Head Officer', color: '#1aae39', roles: ['NAMKANG'],
     items: [
-      { href: '/waiting-bl', label: 'Waiting BL', count: 'waitingBl' },
-      { href: '/nam/approve', label: 'อนุมัติข้อมูล BL เข้าตารางหลัก', count: 'pendingAn' },
-      { href: '/nam/customer', label: 'ใส่ Client in Charge / ติดตาม Invoice สินค้า & Surrender', count: 'namCustomerWait' },
-      { href: '/nam/haul', label: 'จัดการลากตู้สินค้า', count: 'haulWait' },
+      { href: '/waiting-list', label: 'Waiting list', count: 'waitingList' },
+      { href: '/nam/pending', label: 'Pending Jobs', count: 'headPending' },
+      { href: '/nam/approve', label: 'Approve B/L', count: 'pendingAn' },
+      { href: '/nam/customer', label: 'Upload cargo Invoice', count: 'namCustomerWait' },
+      { href: '/nam/haul', label: 'Transport Request', count: 'haulWait' },
+      { href: '/waiting-bl', label: 'Waiting BL (ข้อมูลจากลูกค้า)', count: 'waitingBl' },
     ],
   },
   {

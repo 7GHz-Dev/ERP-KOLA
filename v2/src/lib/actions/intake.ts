@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { bls, containers, files, jobSequences, jobs, masterRecords } from '@/db/schema';
-import { requireActiveSession } from '@/lib/auth';
+import { requireActiveSession, roleAllows } from '@/lib/auth';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { nextContainerNos } from '@/lib/container-no';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
@@ -23,6 +23,12 @@ import {
 
 /** เลขงานถัดไปของปีนั้น — ล็อกแถวไว้กันสองคนกดพร้อมกันแล้วได้เลขซ้ำ */
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * ใครรับงานเข้าระบบได้ — Import Officer (PAINT) ทุกทาง
+ * Senior Officer (FAH) และ Head Officer (NAMKANG) เพิ่มงานจาก BL ได้ที่หน้า Waiting list (BL Waiting Confirm)
+ */
+const INTAKE_ROLES = ['PAINT', 'FAH', 'NAMKANG'];
 
 async function nextJobNo(tx: Tx): Promise<string> {
   const year = String(new Date().getFullYear());
@@ -122,15 +128,19 @@ async function existingBls(blNos: string[]): Promise<DuplicateBl[]> {
  * สายเรือที่ BL ซ้ำได้ตามปกติ (SEALS) ไม่ต้องเตือน
  */
 export async function findDuplicateBls(blNos: string[], shipline: string): Promise<DuplicateBl[]> {
-  await requireActiveSession(['PAINT']);
+  await requireActiveSession(INTAKE_ROLES);
   if (isBlDuplicateExempt(shipline)) return [];
   return existingBls(Array.isArray(blNos) ? blNos.map(String).slice(0, 50) : []);
 }
 
 async function createJobFromIntakeImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
+  const user = await requireActiveSession(INTAKE_ROLES);
 
   const sourceType = text(formData.get('sourceType'), 4) === 'BL' ? 'BL' : 'AN';
+  // รับงานจาก Arrival Notice เป็นงานของ Import Officer (PAINT) เท่านั้น
+  if (sourceType === 'AN' && !roleAllows(user.role, ['PAINT'])) {
+    throw new Error('รับงานจาก Arrival Notice ได้เฉพาะ Import Officer — ใช้หน้า Waiting list เพื่อเพิ่มงานจาก BL');
+  }
   const vessel = required(formData.get('vessel'), 'ชื่อเรือ', 120);
 
   // รายการ BL และตู้ ส่งมาเป็น JSON เพราะจำนวนแถวไม่แน่นอน
@@ -273,6 +283,7 @@ async function createJobFromIntakeImpl(formData: FormData) {
 
   revalidatePath('/pending');
   revalidatePath('/overview');
+  revalidatePath('/waiting-list');
 
   // ไม่พาไปหน้าอื่น เพราะคนรับงานมักคีย์ติดกันหลายใบ
   // คืนเลขงานให้หน้าเดิมขึ้นข้อความแล้วล้างฟอร์มรอใบถัดไป
@@ -289,7 +300,7 @@ const QUICK_ADD: Record<string, { label: string; prefix: string }> = {
 };
 
 async function quickAddMasterImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
+  const user = await requireActiveSession(INTAKE_ROLES);
   const type = text(formData.get('type'), 40);
   const spec = QUICK_ADD[type];
   if (!spec) throw new Error('หัวข้อนี้เพิ่มจากหน้านี้ไม่ได้');

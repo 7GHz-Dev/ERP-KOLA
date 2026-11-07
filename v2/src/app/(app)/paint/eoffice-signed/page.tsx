@@ -105,7 +105,7 @@ export default async function PaintEofficeSignedPage({
   return (
     <>
       <div className="page-head">
-        <h1>Upload ชุดปล่อย E-Office / ส่ง Partner</h1>
+        <h1>Submit (Signed) E-office Doc</h1>
         <p>
           รายการมาจาก งานคงค้าง → 4. เตรียมเอกสารเดิน E หลังกด &quot;ส่งมอบคนเดินเอกสาร&quot; ·
           สแกนชุดที่เซ็นแล้วอัปโหลดให้ตรงรายการ แล้วกดส่ง Partner

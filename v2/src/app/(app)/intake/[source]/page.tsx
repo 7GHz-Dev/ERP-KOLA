@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
-import { requireUserReady } from '@/lib/auth';
+import { requireUserReady, roleAllows } from '@/lib/auth';
+import Link from 'next/link';
 import { IntakeForm } from '@/components/IntakeForm';
 import { IntakeBatch } from '@/components/IntakeBatch';
 import { ShipmentImport } from '@/components/ShipmentImport';
@@ -27,8 +28,6 @@ const TABS = [
   { key: 'attach', label: 'แนบไฟล์ AN/BL เข้างาน' },
 ];
 
-const TAB_KEYS = TABS.map((t) => t.key);
-
 const HEAD: Record<string, string> = {
   one: 'อัปโหลด PDF → ระบบอ่านข้อมูลและเติมฟอร์ม → ตรวจสอบ → บันทึก',
   batch: 'เลือก PDF หลายไฟล์ → ระบบอ่านให้ทุกใบ → ตรวจในตาราง → บันทึกทีเดียว',
@@ -42,12 +41,19 @@ export default async function IntakePage({
   params: Promise<{ source: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUserReady(['PAINT']);
   const { source } = await params;
-  const tabParam = (await searchParams).tab;
-  const tab = typeof tabParam === 'string' && TAB_KEYS.includes(tabParam) ? tabParam : 'one';
   if (source !== 'an' && source !== 'bl') notFound();
   const sourceType = source === 'an' ? 'AN' : 'BL';
+  /*
+   * Arrival notice upload เป็นงานของ Import Officer (PAINT)
+   * BL Waiting Confirm เปิดให้ Senior / Head Officer ด้วย — เพิ่มงานจากปุ่มในหน้า Waiting list
+   * สองคนนี้ใช้ได้แค่รับทีละใบ/หลายใบ ส่วนนำเข้าไฟล์ตารางกับแนบ AN เข้างานยังเป็นงานของ PAINT
+   */
+  const user = await requireUserReady(sourceType === 'AN' ? ['PAINT'] : ['PAINT', 'FAH', 'NAMKANG']);
+  const isPaint = roleAllows(user.role, ['PAINT']);
+  const tabs = isPaint ? TABS : TABS.filter((t) => t.key === 'one' || t.key === 'batch');
+  const tabParam = (await searchParams).tab;
+  const tab = typeof tabParam === 'string' && tabs.some((t) => t.key === tabParam) ? tabParam : 'one';
 
   /*
    * แบบร่างพื้นที่อ่านค่าที่ผู้ดูแลตั้งไว้ที่ /master/parse-template
@@ -74,11 +80,14 @@ export default async function IntakePage({
   return (
     <>
       <div className="page-head">
-        <h1>{sourceType === 'AN' ? 'Arrival Notice BL' : 'BL Waiting Confirm'}</h1>
-        <p>{HEAD[tab]}</p>
+        <h1>{sourceType === 'AN' ? 'Arrival notice upload' : 'BL Waiting Confirm'}</h1>
+        <p>
+          {HEAD[tab]}
+          {sourceType === 'BL' ? <> · <Link href="/waiting-list">← กลับไป Waiting list</Link></> : null}
+        </p>
       </div>
 
-      <Tabs basePath={`/intake/${source}`} items={TABS} active={tab} />
+      <Tabs basePath={`/intake/${source}`} items={tabs} active={tab} />
 
       {tab === 'attach' ? (
         <AttachArrival

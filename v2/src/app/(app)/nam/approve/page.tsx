@@ -26,7 +26,7 @@ export default async function NamApprovePage({
       */}
       <div className="page-head with-action">
         <div>
-          <h1>อนุมัติข้อมูล BL เข้าตารางหลัก</h1>
+          <h1>Approve B/L</h1>
           <p>ตรวจข้อมูล BL ที่ PAINT ส่งมา · อนุมัติแล้ว Export ตารางงานได้ที่ปุ่มขวา</p>
         </div>
         <ExportTemplateButton label="Export ตารางงาน (อนุมัติแล้ว)" />

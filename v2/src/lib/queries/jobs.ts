@@ -412,6 +412,15 @@ export const hasArrivalFiles = (has: boolean) =>
                      and f.is_current = true)`;
 
 export const QUEUE = {
+  /*
+   * Waiting list (Senior / Head Officer) — งานที่เพิ่มจาก BL (BL Waiting Confirm) ยังไม่เข้าตารางหลัก
+   * คือ AN ยังไม่ผ่าน: ยังไม่ส่ง · รอ Head Officer อนุมัติ · หรือถูกตีกลับ
+   */
+  waitingList: () => ({ an }: JoinContext) => [
+    eq(jobs.sourceType, 'BL'),
+    or(isNull(an.status), ne(an.status, 'APPROVED')),
+  ],
+
   /** งานคงค้าง แท็บ 1 — รอส่งอนุมัติ AN / รออนุมัติ */
   pendingBl: (sub: 'wait' | 'approve') => ({ an }: JoinContext) => [
     sub === 'wait'
