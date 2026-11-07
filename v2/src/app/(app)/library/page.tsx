@@ -114,7 +114,7 @@ export default async function LibraryPage({
   return (
     <>
       <div className="page-head">
-        <h1>คลังไฟล์ข้อมูล</h1>
+        <h1>IMPORT DOC FILES</h1>
         <p>ติ๊กเลือกงาน แล้วกด <b>ดาวน์โหลด ZIP</b> ที่แถบด้านล่าง · ได้ไฟล์เดียว แยกโฟลเดอร์ตาม Job · กดชื่อไฟล์เพื่อเปิดดูทีละไฟล์</p>
       </div>
 

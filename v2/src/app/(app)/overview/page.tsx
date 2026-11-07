@@ -127,7 +127,7 @@ export default async function OverviewPage({
 
       <div className="page-head with-action">
         <div>
-          <h1>ภาพรวมงาน</h1>
+          <h1>DASHBOARD</h1>
           <p>งานที่ค้างอยู่ที่ PAINT และ FAH · กดการ์ดหรือขั้นในบอร์ดเพื่อดูรายการงาน</p>
         </div>
         <span className="ov-updated">อัปเดต {formatDateTime(new Date())}</span>

@@ -73,7 +73,7 @@ export default async function JobsPage({
     <>
       <div className="page-head with-action">
         <div>
-          <h1>ทะเบียนงาน</h1>
+          <h1>BOOKINGS</h1>
           <p>งานทุกใบตามตารางงานเดิม · ส้ม = MUO · ม่วง = BY TRUCK · ขาว = MU ยังไม่ส่งแพลนลากตู้ · คลิกเลขลำดับเพื่อดูสรุปงานและไฟล์แนบ</p>
         </div>
         {/* หน้านี้เห็นทุกงาน จึงโหลดได้ทั้งสองแบบ */}

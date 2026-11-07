@@ -32,11 +32,11 @@ const NAV: NavGroup[] = [
      * ภาพรวมงานกับทะเบียนงานเป็นมุมของฝั่ง KOLA จึงไม่ต้องมีในเมนูของสองคนนี้
      * เมนูสั้นลงเหลือเฉพาะงานของตัวเอง ซึ่งช่วยมากตอนใช้บนมือถือ
      */
-    label: 'Overview', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY', 'ACCOUNT'],
+    label: 'IMPORT DEPT.', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY', 'ACCOUNT'],
     items: [
-      { href: '/overview', label: 'ภาพรวมงาน' },
-      { href: '/jobs', label: 'ทะเบียนงาน' },
-      { href: '/library', label: 'คลังไฟล์ข้อมูล' },
+      { href: '/overview', label: 'DASHBOARD' },
+      { href: '/jobs', label: 'BOOKINGS' },
+      { href: '/library', label: 'IMPORT DOC FILES' },
     ],
   },
   {
