@@ -14,6 +14,7 @@ import { hasBlBrackets } from '@/lib/bl-format';
 import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 import { resolveWaitingBlsForJob } from '@/lib/waiting-bl-store';
+import { jobIsOtherCargo, requireJobActor } from '@/lib/job-actor';
 
 /**
  * การแก้ไขข้อมูลทั้งหมดผ่าน server action
@@ -34,8 +35,8 @@ async function latestApprovalRow(jobId: string, type: 'AN' | 'FN') {
 
 /** ส่งงานเข้าคิวอนุมัติ */
 async function requestApprovalImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  const user = await requireJobActor(jobId, ['PAINT']);
   const type = text(formData.get('type'), 4) === 'FN' ? 'FN' : 'AN';
 
   const pending = await latestApprovalRow(jobId, type);
@@ -68,6 +69,28 @@ async function requestApprovalImpl(formData: FormData) {
       ))
       .limit(1);
     if (!file) throw new Error('ยังไม่มีไฟล์ AN หรือ BL แนบไว้ — แนบไฟล์ก่อนส่งอนุมัติ');
+  }
+
+  /*
+   * Other cargo (MO / TO) — Head Officer ทำเองทั้งเส้น ไม่ต้องรอใครอนุมัติ
+   * บันทึกเป็นการอนุมัติจริง (มีแถว approvals) ทุกหน้าที่ดูสถานะ AN / FN จึงเห็นว่าผ่านแล้วเหมือนงานปกติ
+   */
+  if (await jobIsOtherCargo(jobId)) {
+    const autoId = newId('APR');
+    await db.insert(approvals).values({
+      id: autoId, jobId, approvalType: type, status: 'APPROVED', requestedBy: user.id,
+      decidedBy: user.id, decidedAt: new Date(), reason: 'อนุมัติอัตโนมัติ (Other cargo)',
+    });
+    const approved = type === 'AN' ? 'AN_APPROVED' : 'FN_APPROVED';
+    await db.update(jobs).set({ status: approved, updatedBy: user.id, updatedAt: new Date() }).where(eq(jobs.id, jobId));
+    await recordStatus(jobId, null, approved, `${type} อนุมัติอัตโนมัติ — Other cargo (Head Officer ทำเอง)`, user.id);
+    await logActivity(user.id, `AUTO_APPROVE_${type}`, 'APPROVAL', autoId, { jobId });
+    if (type === 'AN') {
+      await resolveWaitingBlsForJob(jobId, user.id).catch((e) => console.error('ปิด Waiting BL ไม่สำเร็จ', e));
+    }
+    revalidatePath('/other/msfz');
+    revalidatePath('/other/transit');
+    return;
   }
 
   const id = newId('APR');
@@ -431,8 +454,8 @@ async function jobTypeCodeOf(jobTypeId: string | null): Promise<string | null> {
  * เพราะฟอร์มถูกยิงตรงได้ และไฟล์อาจถูกเปลี่ยนจากหน้าอื่นระหว่างนั้น
  */
 async function sendEofficeToPartnerImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  const user = await requireJobActor(jobId, ['PAINT']);
 
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
@@ -678,8 +701,8 @@ async function rejectDraftImpl(formData: FormData) {
  * เก็บจำนวนวันไว้ ไม่ได้เก็บวันสุดท้าย เพราะวันสุดท้ายคำนวณจาก ETA ซึ่งเปลี่ยนได้อีก
  */
 async function updateBlInfoImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  const user = await requireJobActor(jobId, ['PAINT']);
 
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
@@ -813,8 +836,9 @@ async function submitDraftForReviewImpl(formData: FormData) {
 
 /** บันทึกเลขใบขนด้วยมือ (ใช้เมื่อไม่ได้ผ่าน Automation Hub) */
 async function fileCustomsEntryImpl(formData: FormData) {
-  const user = await requireActiveSession(['FAH']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  // Other cargo: Head Officer บันทึกเลขใบขนเองได้ (ไม่มีขั้น Senior Officer ตรวจ Draft)
+  const user = await requireJobActor(jobId, ['FAH']);
   const declarationNo = required(formData.get('declarationNo'), 'เลขที่ใบขน', 120);
 
   const [existing] = await db.select().from(customsEntries)

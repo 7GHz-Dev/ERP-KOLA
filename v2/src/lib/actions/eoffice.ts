@@ -6,6 +6,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { customsEntries, eofficeRequests, jobSequences, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
+import { requireJobActor } from '@/lib/job-actor';
 import { storeRequestPdf } from '@/lib/eoffice-bundle';
 import { loadEofficeForm } from '@/lib/eoffice-form';
 import {
@@ -47,8 +48,8 @@ async function nextRunningNo(tx: Tx): Promise<string> {
  * แต่กระดาษที่ยื่นไปแล้วต้องพิมพ์ซ้ำได้เหมือนเดิมทุกตัวอักษร
  */
 async function createEofficeRequestImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  const user = await requireJobActor(jobId, ['PAINT']);
 
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');

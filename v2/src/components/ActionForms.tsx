@@ -32,7 +32,13 @@ export function SubmitButton({ label, tone }: { label: string; tone?: 'primary' 
   );
 }
 
-export function RequestApproval({ jobId, type, label }: { jobId: string; type: 'AN' | 'FN'; label: string }) {
+export function RequestApproval({
+  jobId, type, label, auto = false,
+}: {
+  jobId: string; type: 'AN' | 'FN'; label: string;
+  /** งาน Other cargo — ระบบอนุมัติให้ทันทีตอนกด (ดู requestApproval) */
+  auto?: boolean;
+}) {
   return (
     <form action={requestApproval} className="inline-form">
       <input type="hidden" name="jobId" value={jobId} />
@@ -40,8 +46,10 @@ export function RequestApproval({ jobId, type, label }: { jobId: string; type: '
       <ConfirmSubmit
         label={label}
         tone="primary"
-        confirm={`ส่งรายการนี้ให้อนุมัติ ${type} ใช่ไหม`}
-        detail="ส่งแล้วรายการจะย้ายไปแท็บรออนุมัติ และแก้ไขไม่ได้จนกว่าจะมีผลตัดสิน"
+        confirm={auto ? `ยืนยัน ${type} ของงานนี้ใช่ไหม` : `ส่งรายการนี้ให้อนุมัติ ${type} ใช่ไหม`}
+        detail={auto
+          ? 'งาน Other cargo อนุมัติให้ทันที งานจะย้ายไปขั้นถัดไป'
+          : 'ส่งแล้วรายการจะย้ายไปแท็บรออนุมัติ และแก้ไขไม่ได้จนกว่าจะมีผลตัดสิน'}
       />
     </form>
   );

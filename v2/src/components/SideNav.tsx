@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
  */
 
 export type NavLink = { href: string; label: string; count: number; countKey?: string };
-export type NavGroupView = { label: string; color: string; items: NavLink[] };
+export type NavGroupView = { label: string; color: string; sub?: boolean; items: NavLink[] };
 
 export function SideNav({ groups }: { groups: NavGroupView[] }) {
   const pathname = usePathname();
@@ -60,9 +60,9 @@ export function SideNav({ groups }: { groups: NavGroupView[] }) {
   return (
     <nav className="main-nav" aria-label="เมนูหลัก">
       {groups.map((group) => (
-        <div key={group.label} className="nav-group">
+        <div key={group.label} className={group.sub ? 'nav-group nav-sub' : 'nav-group'}>
           <div className="nav-group-title">
-            <span className="nav-group-dot" style={{ background: group.color }} />
+            {group.sub ? <span className="nav-sub-arrow" aria-hidden>↳</span> : <span className="nav-group-dot" style={{ background: group.color }} />}
             {group.label}
           </div>
           {group.items.map((item) => {

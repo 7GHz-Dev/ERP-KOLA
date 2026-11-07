@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { eofficeRequests, files } from '@/db/schema';
-import { requireUserReady } from '@/lib/auth';
+import { requireJobPage } from '@/lib/job-actor';
 import { loadEofficeForm } from '@/lib/eoffice-form';
 import { officerLine, routeLine } from '@/lib/eoffice-officer';
 
@@ -35,8 +35,9 @@ function thaiDate(value: string | null) {
 export default async function EofficeRequestPage({
   params,
 }: { params: Promise<{ jobId: string }> }) {
-  await requireUserReady(['PAINT']);
   const { jobId } = await params;
+  // Other cargo (MO / TO): Head Officer เปิดได้ด้วย
+  await requireJobPage(jobId, ['PAINT']);
 
   const [req] = await db.select().from(eofficeRequests)
     .where(eq(eofficeRequests.jobId, jobId)).limit(1);

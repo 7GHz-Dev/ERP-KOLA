@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/format';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
 import { MAX_ROWS } from '@/lib/table-filter';
 import { PARTNER_RELEASE_JOB_TYPE } from '@/lib/job-types';
+import { OTHER_CARGO_TYPES } from '@/lib/other-cargo';
 import { periodRange, type Period, type PeriodCount } from '@/lib/eta-period';
 
 /**
@@ -390,6 +391,18 @@ export function notPartnerRelease(jobTypeId: AnyPgColumn | SQL): SQL {
 }
 
 /**
+ * เป็นงาน Other cargo (MO / TO) หรือไม่ — Head Officer ทำเองทั้งเส้น (lib/other-cargo.ts)
+ *
+ * is=false ใช้ตัดงานกลุ่มนี้ออกจากคิวของ PAINT / FAH · is=true ใช้กับหน้า Other job
+ * codes = เฉพาะบางประเภท (หน้า MSFZ ใช้ ['MO'] หน้า Transit ใช้ ['TO'])
+ */
+export function otherCargo(is: boolean, codes: string[] = OTHER_CARGO_TYPES): SQL {
+  const list = sql.join(codes.map((c) => sql`${c}`), sql`, `);
+  return sql`${is ? sql`exists` : sql`not exists`} (select 1 from master_records ot
+                   where ot.id = ${jobs.jobTypeId} and upper(ot.code) in (${list}))`;
+}
+
+/**
  * คัดงานตามว่ามีไฟล์เอกสารต้นเรื่องแนบอยู่หรือยัง — Arrival Notice หรือ BL
  *
  * `has: false` = ไม่มีทั้งสองหมวด ใช้คัดงานที่นำเข้ามาจากไฟล์ตาราง (CSV/Excel)
@@ -411,7 +424,7 @@ export const hasArrivalFiles = (has: boolean) =>
                      and f.category in ('ARRIVAL_NOTICE', 'BL')
                      and f.is_current = true)`;
 
-export const QUEUE = {
+const BASE_QUEUE = {
   /*
    * Waiting list (Senior / Head Officer) — งานที่เพิ่มจาก BL (BL Waiting Confirm) ยังไม่เข้าตารางหลัก
    * คือ AN ยังไม่ผ่าน: ยังไม่ส่ง · รอ Head Officer อนุมัติ · หรือถูกตีกลับ
@@ -593,6 +606,45 @@ export const QUEUE = {
     ];
   },
 } as const;
+
+type QueueFn<A extends unknown[]> = (...args: A) => (ctx: JoinContext) => (SQL | undefined)[];
+/** คิวเดิมบวกเงื่อนไข "ไม่ใช่ Other cargo" — งาน MO / TO ไม่เข้าคิวของ Import Officer / Senior Officer */
+const withoutOther = <A extends unknown[]>(q: QueueFn<A>): QueueFn<A> =>
+  (...args: A) => (ctx: JoinContext) => [...q(...args)(ctx), otherCargo(false)];
+
+/**
+ * คิวที่หน้างานใช้ — คิวของ PAINT / FAH (และอนุมัติ AN ของ NAMKANG) ตัดงาน Other cargo ออก
+ * งานกลุ่มนั้น Head Officer ทำเองทั้งเส้นที่หน้า Other job (ใช้ OTHER_QUEUE แทน)
+ */
+export const QUEUE = {
+  ...BASE_QUEUE,
+  pendingBl: withoutOther(BASE_QUEUE.pendingBl),
+  pendingFn: withoutOther(BASE_QUEUE.pendingFn),
+  pendingDraft: withoutOther(BASE_QUEUE.pendingDraft),
+  pendingEdoc: withoutOther(BASE_QUEUE.pendingEdoc),
+  eofficeSigned: withoutOther(BASE_QUEUE.eofficeSigned),
+  fahDo: withoutOther(BASE_QUEUE.fahDo),
+  fahFn: withoutOther(BASE_QUEUE.fahFn),
+  fahDraftReview: withoutOther(BASE_QUEUE.fahDraftReview),
+  fahDraftWaiting: withoutOther(BASE_QUEUE.fahDraftWaiting),
+  fahDraftDone: withoutOther(BASE_QUEUE.fahDraftDone),
+  namApprove: withoutOther(BASE_QUEUE.namApprove),
+};
+
+/** คิวขั้นเดียวกันแต่เฉพาะงาน Other cargo ประเภทที่ระบุ (MO หรือ TO) — หน้า Other job ของ Head Officer */
+export function otherQueue(code: string) {
+  const only = <A extends unknown[]>(q: QueueFn<A>): QueueFn<A> =>
+    (...args: A) => (ctx: JoinContext) => [...q(...args)(ctx), otherCargo(true, [code])];
+  return {
+    pendingBl: only(BASE_QUEUE.pendingBl),
+    pendingFn: only(BASE_QUEUE.pendingFn),
+    // ไม่มีขั้นส่งให้ Senior Officer ตรวจ — Head Officer บันทึกเลขใบขนต่อจาก Draft เลย ได้เลขแล้วจึงออกจากแท็บนี้
+    pendingDraft: (sub: 'wait' | 'approve') => (ctx: JoinContext) =>
+      [...only(BASE_QUEUE.pendingDraft)(sub)(ctx), sql`${jobs.customsStatus} <> 'FILED'`],
+    pendingEdoc: only(BASE_QUEUE.pendingEdoc),
+    eofficeSigned: only(BASE_QUEUE.eofficeSigned),
+  };
+}
 
 /**
  * รายการเรือ/เที่ยวที่ยังมีงานค้างอยู่ในคิว Upload InvDO — ใช้เป็นตัวเลือกในช่องกรอง

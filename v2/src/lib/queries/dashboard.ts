@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/db';
 import { doHandoffs, jobs } from '@/db/schema';
-import { latestApproval, notPartnerRelease, QUEUE, type JoinContext } from './jobs';
+import { latestApproval, notPartnerRelease, otherCargo, otherQueue, QUEUE, type JoinContext } from './jobs';
 
 /** ตัวเลขสรุปทั้งหมดใน query เดียว แทนการนับทีละอย่างแบบระบบเดิม */
 export async function dashboardSummary() {
@@ -11,8 +11,8 @@ export async function dashboardSummary() {
     .select({
       total: sql<number>`count(*)::int`,
       invoiceAlerts: sql<number>`count(*) filter (where ${jobs.hasInvoiceAlert})::int`,
-      waitingAn: sql<number>`count(*) filter (where ${an.status} = 'PENDING')::int`,
-      waitingFn: sql<number>`count(*) filter (where ${fn.status} = 'PENDING')::int`,
+      waitingAn: sql<number>`count(*) filter (where (${an.status} = 'PENDING') and ${otherCargo(false)})::int`,
+      waitingFn: sql<number>`count(*) filter (where (${fn.status} = 'PENDING') and ${otherCargo(false)})::int`,
       customsDraft: sql<number>`count(*) filter (where ${jobs.customsStatus} = 'DRAFT')::int`,
       customsFiled: sql<number>`count(*) filter (where ${jobs.customsStatus} = 'FILED')::int`,
       released: sql<number>`count(*) filter (where ${jobs.releaseStatus} = 'RELEASED')::int`,
@@ -54,10 +54,18 @@ export const HEAD_QUEUES = {
   customer: QUEUE.namCustomer('wait'),
   haul: QUEUE.haul('wait'),
 };
+/** งาน Other cargo ที่ยังไม่จบเส้นของ Head Officer (ยังไม่ส่ง Partner) — ตัวเลขข้างเมนู Other job */
+const otherOpen = (code: string) => {
+  const q = otherQueue(code);
+  return anyOf(q.pendingBl('wait'), q.pendingFn('wait'), q.pendingDraft('wait'), q.pendingEdoc(), q.eofficeSigned('wait'));
+};
+
 const PERSON_QUEUES = {
   waitingList: QUEUE.waitingList(),
   seniorPending: anyOf(...Object.values(SENIOR_QUEUES)),
   headPending: anyOf(...Object.values(HEAD_QUEUES)),
+  otherMsfz: otherOpen('MO'),
+  otherTransit: otherOpen('TO'),
 };
 
 /**
@@ -80,13 +88,13 @@ async function navCountsMain() {
   const fn = latestApproval('FN');
   const [row] = await db
     .select({
-      pendingAn: sql<number>`count(*) filter (where ${an.status} = 'PENDING')::int`,
-      pendingFn: sql<number>`count(*) filter (where ${fn.status} = 'PENDING')::int`,
+      pendingAn: sql<number>`count(*) filter (where (${an.status} = 'PENDING') and ${otherCargo(false)})::int`,
+      pendingFn: sql<number>`count(*) filter (where (${fn.status} = 'PENDING') and ${otherCargo(false)})::int`,
       // ต้องตรงกับ QUEUE.fahDraftReview ไม่งั้นเลขข้างเมนูจะนับงานที่ทำใบขนเสร็จแล้วด้วย
       draftReview: sql<number>`count(*) filter (
-        where ${jobs.draftStatus} = 'SUBMITTED'
+        where (${jobs.draftStatus} = 'SUBMITTED'
           and ${jobs.customsTaskId} is null
-          and ${jobs.customsStatus} <> 'FILED')::int`,
+          and ${jobs.customsStatus} <> 'FILED') and ${otherCargo(false)})::int`,
       /*
        * ต้องเท่ากับผลรวมของแท็บ 1-4 ในหน้างานคงค้าง
        *
@@ -95,22 +103,22 @@ async function navCountsMain() {
        * เงื่อนไขแต่ละก้อนตรงกับ pendingTabCounts ตัวต่อตัว
        */
       openJobs: sql<number>`count(*) filter (
-        where (${an.status} is null or ${an.status} = 'REJECTED')
+        where ((${an.status} is null or ${an.status} = 'REJECTED')
            or (${an.status} = 'APPROVED'
                and (${fn.status} is null or ${fn.status} = 'REJECTED'))
            or (${fn.status} = 'APPROVED'
                and (${jobs.draftStatus} is null
                     or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))
            or (${jobs.customsStatus} = 'FILED'
-               and ${jobs.eofficeHandoverAt} is null and signed.job_id is null))::int`,
+               and ${jobs.eofficeHandoverAt} is null and signed.job_id is null)) and ${otherCargo(false)})::int`,
       // ต้องตรงกับ QUEUE.pendingEdoc — ยังไม่ส่งมอบคนเดินเอกสาร และยังไม่มีชุดปล่อยเซ็นแล้ว
       edoc: sql<number>`count(*) filter (
-        where ${jobs.customsStatus} = 'FILED'
-          and ${jobs.eofficeHandoverAt} is null and signed.job_id is null)::int`,
+        where (${jobs.customsStatus} = 'FILED'
+          and ${jobs.eofficeHandoverAt} is null and signed.job_id is null) and ${otherCargo(false)})::int`,
       // ต้องตรงกับ QUEUE.eofficeSigned('wait') — ส่งมอบแล้ว (หรืองานเก่าที่มีไฟล์แล้ว) แต่ยังไม่ได้กดส่ง Partner
       eofficeSignedWait: sql<number>`count(*) filter (
-        where ${jobs.customsStatus} = 'FILED' and ${jobs.eofficeSentAt} is null
-          and (${jobs.eofficeHandoverAt} is not null or signed.job_id is not null))::int`,
+        where (${jobs.customsStatus} = 'FILED' and ${jobs.eofficeSentAt} is null
+          and (${jobs.eofficeHandoverAt} is not null or signed.job_id is not null)) and ${otherCargo(false)})::int`,
       // ต้องตรงกับ QUEUE.doExchange('wait') — ส่ง Partner แล้ว (ทางใดทางหนึ่ง) แต่ยังไม่ได้ส่งแลก DO
       doExchangeWait: sql<number>`count(*) filter (
         where ${jobs.doExchangedAt} is null
@@ -143,9 +151,9 @@ async function navCountsMain() {
                        where hp.job_id = ${jobs.id} and hp.sent_at is not null and hp.ack_at is null))::int`,
       // ต้องตรงกับ QUEUE.fahDo('wait') — งานที่ผ่าน AN แล้วแต่ยังไม่ได้กดส่ง Partner
       fahDoWait: sql<number>`count(*) filter (
-        where ${an.status} = 'APPROVED'
+        where (${an.status} = 'APPROVED'
           and not exists (select 1 from do_handoffs dh
-                           where dh.job_id = ${jobs.id} and dh.sent_at is not null))::int`,
+                           where dh.job_id = ${jobs.id} and dh.sent_at is not null)) and ${otherCargo(false)})::int`,
       // ต้องตรงกับ QUEUE.namCustomer('wait') — ยังไม่ได้กดยืนยันข้อมูลลูกค้า
       namCustomerWait: sql<number>`count(*) filter (
         where ${an.status} = 'APPROVED' and ${jobs.customerConfirmedAt} is null)::int`,
@@ -174,17 +182,17 @@ export async function pendingTabCounts() {
   const [row] = await db
     .select({
       bl: sql<number>`count(*) filter (
-        where ${an.status} is null or ${an.status} = 'REJECTED')::int`,
+        where (${an.status} is null or ${an.status} = 'REJECTED') and ${otherCargo(false)})::int`,
       fn: sql<number>`count(*) filter (
-        where ${an.status} = 'APPROVED'
-          and (${fn.status} is null or ${fn.status} = 'REJECTED'))::int`,
+        where (${an.status} = 'APPROVED'
+          and (${fn.status} is null or ${fn.status} = 'REJECTED')) and ${otherCargo(false)})::int`,
       draft: sql<number>`count(*) filter (
-        where ${fn.status} = 'APPROVED'
+        where (${fn.status} = 'APPROVED'
           and (${jobs.draftStatus} is null
-               or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))::int`,
+               or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED'))) and ${otherCargo(false)})::int`,
       edoc: sql<number>`count(*) filter (
-        where ${jobs.customsStatus} = 'FILED'
-          and ${jobs.eofficeHandoverAt} is null and signed.job_id is null)::int`,
+        where (${jobs.customsStatus} = 'FILED'
+          and ${jobs.eofficeHandoverAt} is null and signed.job_id is null) and ${otherCargo(false)})::int`,
     })
     .from(jobs)
     .leftJoin(an, eq(an.jobId, jobs.id))

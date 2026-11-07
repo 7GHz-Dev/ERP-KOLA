@@ -1,4 +1,5 @@
 import { requireActiveSession } from '@/lib/auth';
+import { requireJobActor } from '@/lib/job-actor';
 import { buildBundle, type BundleKind, type BundleStep } from '@/lib/eoffice-bundle';
 import { revalidatePath } from 'next/cache';
 import { isDoBundleKind } from '@/lib/do-bundle-options';
@@ -21,22 +22,23 @@ export async function POST(request: Request) {
     ? body.kind
     : 'eoffice';
 
+  const { jobId } = body;
+  if (typeof jobId !== 'string' || !jobId || jobId.length > 80) {
+    return new Response(JSON.stringify({ status: 'error', detail: 'ไม่ได้ระบุงาน' }), {
+      status: 400, headers: { 'content-type': 'application/json' },
+    });
+  }
+
   let user;
   try {
-    user = await requireActiveSession(kind === 'eoffice' ? ['PAINT'] : ['ANN']);
+    // ชุด E-Office ของงาน Other cargo (MO / TO) Head Officer รวมเองได้
+    user = kind === 'eoffice' ? await requireJobActor(jobId, ['PAINT']) : await requireActiveSession(['ANN']);
     if (user.mustChangePassword) throw new Error('กรุณาเปลี่ยนรหัสผ่านก่อนดำเนินการ');
   } catch (error) {
     return new Response(
       JSON.stringify({ status: 'error', detail: error instanceof Error ? error.message : 'ไม่มีสิทธิ์' }),
       { status: 401, headers: { 'content-type': 'application/json' } },
     );
-  }
-
-  const { jobId } = body;
-  if (typeof jobId !== 'string' || !jobId || jobId.length > 80) {
-    return new Response(JSON.stringify({ status: 'error', detail: 'ไม่ได้ระบุงาน' }), {
-      status: 400, headers: { 'content-type': 'application/json' },
-    });
   }
 
   const encoder = new TextEncoder();

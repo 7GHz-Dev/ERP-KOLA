@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { automationTasks, customsEntries, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
+import { requireJobActor } from '@/lib/job-actor';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId, required, runAction } from './common';
 import { reuseOpenTask, TASK_TYPES } from '@/lib/automation';
@@ -22,8 +23,8 @@ import { netbayCredentials } from '@/lib/netbay-accounts';
 
 /** PAINT ส่ง Final Invoice เข้าคิวเพื่อให้ automate สร้าง Draft ใบขน */
 async function submitDraftTaskImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  const user = await requireJobActor(jobId, ['PAINT']);
   // บัญชี NETBAY ที่เลือกไว้ก่อนกด — ว่าง = บัญชีประจำเครื่องที่กด (.env.local)
   const netbayUser = String(formData.get('netbayUser') ?? '').trim().slice(0, 80);
   if (netbayUser && !netbayCredentials(netbayUser)) throw new Error(`ไม่รู้จักบัญชี NETBAY "${netbayUser}"`);

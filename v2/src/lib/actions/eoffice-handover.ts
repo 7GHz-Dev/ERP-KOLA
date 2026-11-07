@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { files, jobs } from '@/db/schema';
-import { requireActiveSession } from '@/lib/auth';
+import { requireJobActor, requireJobsActor } from '@/lib/job-actor';
 import { logActivity, recordStatus, required, runAction } from './common';
 
 /**
@@ -17,9 +17,9 @@ import { logActivity, recordStatus, required, runAction } from './common';
  * รายการไหนไม่ผ่านไม่ขวางรายการอื่น ส่งมอบที่ผ่านไปก่อนแล้วบอกว่าใบไหนติดอะไร
  */
 async function handoverEofficeImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const ids = [...new Set(String(formData.get('jobIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean))];
   if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
+  const user = await requireJobsActor(ids, ['PAINT']);
 
   const rows = await db.select({
     id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo, status: jobs.status,
@@ -65,8 +65,8 @@ async function handoverEofficeImpl(formData: FormData) {
  * ทำได้เฉพาะที่ยังไม่ได้อัปชุดที่เซ็นแล้ว ไม่งั้นงานจะค้างอยู่หน้า Upload เพราะมีไฟล์แล้ว
  */
 async function undoEofficeHandoverImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  const user = await requireJobActor(jobId, ['PAINT']);
 
   const [job] = await db.select({ status: jobs.status, handoverAt: jobs.eofficeHandoverAt, sentAt: jobs.eofficeSentAt })
     .from(jobs).where(eq(jobs.id, jobId)).limit(1);

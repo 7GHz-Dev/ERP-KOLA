@@ -6,6 +6,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { bls, containers, files, jobSequences, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession, roleAllows } from '@/lib/auth';
+import { isOtherCargo } from '@/lib/other-cargo';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { nextContainerNos } from '@/lib/container-no';
 import { day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
@@ -29,6 +30,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * Senior Officer (FAH) และ Head Officer (NAMKANG) เพิ่มงานจาก BL ได้ที่หน้า Waiting list (BL Waiting Confirm)
  */
 const INTAKE_ROLES = ['PAINT', 'FAH', 'NAMKANG'];
+// Head Officer รับ AN ได้ด้วยเมื่อเป็นงาน Other cargo (MO / TO) — ดู lib/other-cargo.ts
 
 async function nextJobNo(tx: Tx): Promise<string> {
   const year = String(new Date().getFullYear());
@@ -137,8 +139,8 @@ async function createJobFromIntakeImpl(formData: FormData) {
   const user = await requireActiveSession(INTAKE_ROLES);
 
   const sourceType = text(formData.get('sourceType'), 4) === 'BL' ? 'BL' : 'AN';
-  // รับงานจาก Arrival Notice เป็นงานของ Import Officer (PAINT) เท่านั้น
-  if (sourceType === 'AN' && !roleAllows(user.role, ['PAINT'])) {
+  // รับงานจาก Arrival Notice เป็นงานของ Import Officer — Head Officer ได้เฉพาะงาน Other cargo (ตรวจด้านล่างหลังรู้ประเภทงาน)
+  if (sourceType === 'AN' && !roleAllows(user.role, ['PAINT', 'NAMKANG'])) {
     throw new Error('รับงานจาก Arrival Notice ได้เฉพาะ Import Officer — ใช้หน้า Waiting list เพื่อเพิ่มงานจาก BL');
   }
   const vessel = required(formData.get('vessel'), 'ชื่อเรือ', 120);
@@ -188,6 +190,14 @@ async function createJobFromIntakeImpl(formData: FormData) {
   const jobTypeId = await applyUsedCarRule(
     text(formData.get('jobTypeId'), 80) || null, notifyPartyId, product,
   );
+  if (sourceType === 'AN' && !roleAllows(user.role, ['PAINT'])) {
+    const [type] = jobTypeId
+      ? await db.select({ code: masterRecords.code }).from(masterRecords).where(eq(masterRecords.id, jobTypeId)).limit(1)
+      : [];
+    if (!isOtherCargo(type?.code)) {
+      throw new Error('Head Officer รับงานจาก Arrival Notice ได้เฉพาะ Job Type MSFZ - OTHERS / TRANSIT - OTHERS (Other cargo)');
+    }
+  }
 
   const jobId = newId('JOB');
   const fileId = newId('FIL');

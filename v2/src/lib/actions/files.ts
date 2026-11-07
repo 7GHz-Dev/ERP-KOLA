@@ -5,6 +5,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
+import { requireJobActor } from '@/lib/job-actor';
 import { storeJobFileVersion } from '@/lib/job-files';
 import { storeInvoicePdf } from '@/lib/eoffice-bundle';
 import { DO_DOC_CATEGORIES, DO_SLIP_CATEGORIES, isDoMultiCategory } from '@/lib/do-attachments';
@@ -41,13 +42,22 @@ const UPLOAD_ROLES: Record<string, string[]> = {
   OTHER: ['PAINT', 'FAH', 'NAMKANG'],
 };
 
+/** หมวดที่ Head Officer อัปเองได้เมื่องานเป็น Other cargo — ขั้นตั้งแต่รับ AN จนส่งชุดปล่อย */
+const OTHER_CARGO_UPLOADS = new Set([
+  'ARRIVAL_NOTICE', 'BL', 'FINAL_INVOICE', 'FINAL_INVOICE_PDF',
+  'EOFFICE', 'EOFFICE_REQUEST', 'EOFFICE_SIGNED', 'CUSTOMS_ENTRY_DOC',
+]);
+
 async function uploadJobFileImpl(formData: FormData) {
   const jobId = required(formData.get('jobId'), 'งาน', 80);
   const category = required(formData.get('category'), 'หมวดไฟล์', 40).toUpperCase();
   const allowed = UPLOAD_ROLES[category];
   if (!allowed) throw new Error(`หมวดไฟล์ไม่ถูกต้อง: ${category}`);
 
-  const user = await requireActiveSession(allowed);
+  // Other cargo (MO / TO): Head Officer อัปไฟล์ขั้นของ PAINT / FAH เองได้ (AN · BL · Final Invoice · E-Office · ใบขน)
+  const user = OTHER_CARGO_UPLOADS.has(category)
+    ? await requireJobActor(jobId, allowed)
+    : await requireActiveSession(allowed);
 
   const blob = formData.get('file');
   if (!(blob instanceof File) || blob.size === 0) throw new Error('กรุณาเลือกไฟล์');

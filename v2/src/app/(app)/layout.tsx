@@ -23,6 +23,8 @@ type NavGroup = {
   label: string; color: string; roles: string[]; items: NavItem[];
   /** role ที่ไม่ต้องเห็นกลุ่มนี้ ใช้กับกลุ่มที่เปิดให้ทุกคน (roles ว่าง) แต่มีข้อยกเว้น */
   hideFor?: string[];
+  /** เมนูย่อยของกลุ่มก่อนหน้า — แสดงเยื้องเข้าไป */
+  sub?: boolean;
 };
 
 const NAV: NavGroup[] = [
@@ -77,6 +79,14 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    // เมนูย่อยของ Head Officer — งาน Other cargo (Job Type MO / TO) ที่ทำเองทั้งเส้นโดยไม่ต้องมีใครอนุมัติ
+    label: 'Other job', color: '#1aae39', roles: ['NAMKANG'], sub: true,
+    items: [
+      { href: '/other/msfz', label: 'Other cargo, import decl. (MSFZ)', count: 'otherMsfz' },
+      { href: '/other/transit', label: 'Other cargo, import decl. (Transit)', count: 'otherTransit' },
+    ],
+  },
+  {
     label: 'ANN', color: '#7b3fe4', roles: ['ANN'],
     items: [
       { href: '/do-exchange', label: 'จัดการแลก DO', count: 'doExchangeWait' },
@@ -110,6 +120,7 @@ function groupsWithoutCounts(visible: NavGroup[]) {
   return visible.map((group) => ({
     label: group.label,
     color: group.color,
+    sub: group.sub,
     items: group.items.map((item) => ({
       href: item.href,
       label: item.label,
@@ -133,6 +144,7 @@ async function NavWithCounts({ visible }: { visible: NavGroup[] }) {
       groups={visible.map((group) => ({
         label: group.label,
         color: group.color,
+        sub: group.sub,
         items: group.items.map((item) => ({
           href: item.href,
           label: item.label,

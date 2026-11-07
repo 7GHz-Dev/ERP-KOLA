@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requireUserReady, roleAllows } from '@/lib/auth';
+import { isOtherCargo } from '@/lib/other-cargo';
 import Link from 'next/link';
 import { IntakeForm } from '@/components/IntakeForm';
 import { IntakeBatch } from '@/components/IntakeBatch';
@@ -49,10 +50,18 @@ export default async function IntakePage({
    * BL Waiting Confirm เปิดให้ Senior / Head Officer ด้วย — เพิ่มงานจากปุ่มในหน้า Waiting list
    * สองคนนี้ใช้ได้แค่รับทีละใบ/หลายใบ ส่วนนำเข้าไฟล์ตารางกับแนบ AN เข้างานยังเป็นงานของ PAINT
    */
-  const user = await requireUserReady(sourceType === 'AN' ? ['PAINT'] : ['PAINT', 'FAH', 'NAMKANG']);
+  const query = await searchParams;
+  /*
+   * ?jobType=MO|TO — เปิดจากหน้า Other job ของ Head Officer: ตั้ง Job Type ให้ตั้งแต่ต้น
+   * Head Officer รับ AN ได้เฉพาะทางนี้ (งาน Other cargo) ฝั่งเซิร์ฟเวอร์ตรวจซ้ำตอนบันทึก
+   */
+  const otherType = typeof query.jobType === 'string' && isOtherCargo(query.jobType) ? query.jobType.toUpperCase() : '';
+  const user = await requireUserReady(
+    sourceType === 'BL' ? ['PAINT', 'FAH', 'NAMKANG'] : otherType ? ['PAINT', 'NAMKANG'] : ['PAINT'],
+  );
   const isPaint = roleAllows(user.role, ['PAINT']);
   const tabs = isPaint ? TABS : TABS.filter((t) => t.key === 'one' || t.key === 'batch');
-  const tabParam = (await searchParams).tab;
+  const tabParam = query.tab;
   const tab = typeof tabParam === 'string' && tabs.some((t) => t.key === tabParam) ? tabParam : 'one';
 
   /*
@@ -74,6 +83,12 @@ export default async function IntakePage({
    */
   const blChoices = tab === 'attach' ? await attachableBls() : [];
 
+  // เปิดจากหน้า Other job → Job Type ตั้งต้นเป็น MO / TO แทน MU
+  if (otherType) ids.jobTypeId = options.jobTypes.find((t) => t.code?.toUpperCase() === otherType)?.id ?? ids.jobTypeId;
+  const backTo = otherType
+    ? { href: `/other/${otherType === 'MO' ? 'msfz' : 'transit'}`, label: '← กลับไป Other cargo' }
+    : sourceType === 'BL' ? { href: '/waiting-list', label: '← กลับไป Waiting list' } : null;
+
   const pick = (list: { code: string | null; name: string }[], code: string) =>
     list.find((o) => o.code?.toUpperCase() === code)?.name ?? list[0]?.name ?? '';
 
@@ -83,11 +98,11 @@ export default async function IntakePage({
         <h1>{sourceType === 'AN' ? 'Arrival notice upload' : 'BL Waiting Confirm'}</h1>
         <p>
           {HEAD[tab]}
-          {sourceType === 'BL' ? <> · <Link href="/waiting-list">← กลับไป Waiting list</Link></> : null}
+          {backTo ? <> · <Link href={backTo.href}>{backTo.label}</Link></> : null}
         </p>
       </div>
 
-      <Tabs basePath={`/intake/${source}`} items={tabs} active={tab} />
+      <Tabs basePath={`/intake/${source}`} items={tabs} active={tab} carry={otherType ? { jobType: otherType } : undefined} />
 
       {tab === 'attach' ? (
         <AttachArrival

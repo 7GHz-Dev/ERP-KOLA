@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { BlEditPanel } from '@/components/BlEditPanel';
 import { FileDrawerShell } from '@/components/FileDrawerShell';
-import { requireUserReady } from '@/lib/auth';
+import { requireJobPage } from '@/lib/job-actor';
 import { loadBlEdit } from '@/lib/queries/bl-edit';
 import { intakeOptions } from '@/lib/queries/master';
 
@@ -14,8 +14,9 @@ export const dynamic = 'force-dynamic';
  * ปิดแล้วกลับมาที่รายการตำแหน่งเดิมพร้อมแท็บและคำค้นเดิม
  */
 export default async function BlEditDrawer({ params }: { params: Promise<{ id: string }> }) {
-  await requireUserReady(['PAINT']);
   const { id } = await params;
+  // Other cargo (MO / TO): Head Officer เปิดได้ด้วย
+  await requireJobPage(id, ['PAINT']);
   const [data, options] = await Promise.all([loadBlEdit(id), intakeOptions()]);
   if (!data) notFound();
 

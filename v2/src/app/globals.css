@@ -2604,3 +2604,8 @@ table.data td.col-lib { min-width: 300px; }
 .cgi-done div { display: flex; gap: 8px; margin-top: 4px; }
 .cgi-rules > summary { cursor: pointer; font-weight: 600; color: var(--blue); }
 .cgi-rules .table-wrap { margin-top: 10px; }
+
+/* เมนูย่อย (Other job ใต้ Head Officer) — เยื้องเข้าไปให้เห็นว่าเป็นของกลุ่มด้านบน */
+.nav-group.nav-sub { margin-top: -6px; padding-left: 12px; }
+.nav-group.nav-sub .nav-group-title { font-size: 10px; opacity: .85; }
+.nav-sub-arrow { color: #1aae39; font-weight: 700; }
