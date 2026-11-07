@@ -77,9 +77,7 @@ export default async function OverviewPage({
       if (v) params.set(k, v); else params.delete(k);
     }
     const q = params.toString();
-    // มีตารางให้ดู = เลื่อนลงไปที่ตารางเลย ไม่ต้องเลื่อนหาเองใต้บอร์ด
-    const opens = params.has('view') || params.has('level');
-    return `/overview${q ? `?${q}` : ''}${opens ? '#list' : ''}`;
+    return q ? `/overview?${q}` : '/overview';
   };
 
   const columns: Column[] = [
@@ -109,7 +107,9 @@ export default async function OverviewPage({
   ];
 
   const levelLabel = LEVELS.find((l) => l.key === level)?.label;
-  const viewLabel = stage ? `${stage.owner} · ${stage.label}` : view ? `${view} ทุกขั้น` : 'ทุกขั้น';
+  const viewOwner = OWNERS.find((o) => o.key === view);
+  const viewLabel = stage ? `${stage.owner} · ${stage.label}`
+    : viewOwner ? `${viewOwner.title} : ${viewOwner.label} · ทุกขั้น` : 'ทุกขั้น';
 
   // ชิปกรองในตาราง: ทุกขั้น · PAINT · FAH · แล้วทีละขั้นที่มีงาน (ขั้นที่เลือกอยู่โชว์เสมอแม้เป็น 0)
   const stepChips = [
@@ -133,36 +133,43 @@ export default async function OverviewPage({
         <span className="ov-updated">อัปเดต {formatDateTime(new Date())}</span>
       </div>
 
-      {/* ---------- Urgent / Priority ---------- */}
-      <div className="ov-levels">
-        {LEVELS.map((l) => {
-          const b = stats.levels[l.key];
-          const on = level === l.key;
-          return (
-            <Link
-              key={l.key}
-              className={`ov-level ${l.key}${on ? ' on' : ''}`}
-              href={hrefWith({ level: on ? '' : l.key })}
-              prefetch={false}
-              aria-current={on ? 'true' : undefined}
-            >
-              <span className="ov-level-name">{l.label}</span>
-              <span className="ov-level-hint">{l.hint}</span>
-              <span className="ov-level-total">
-                <b>{b.all.jobs}</b>
-                <small>งาน{b.all.containers ? ` · ${b.all.containers} ตู้` : ''}</small>
-              </span>
-              <span className="ov-level-split">
-                {OWNERS.map((o) => (
-                  <span key={o.key} style={{ '--owner': o.color } as React.CSSProperties}>
-                    <i />{o.label} <b>{b.owners[o.key].jobs}</b>
-                  </span>
-                ))}
-              </span>
-              <span className="ov-level-cta">{on ? 'ซ่อนรายการ ▲' : 'ดูรายการ ▼'}</span>
-            </Link>
-          );
-        })}
+      {/*
+        ---------- Urgent / Priority แยกตามคน ----------
+        กดการ์ดแล้วตารางด้านล่างกรองเป็นระดับนั้นของคนนั้น — หน้าไม่เลื่อน (scroll={false})
+        ผู้ใช้ขอให้อยู่ที่เดิม จะได้กดการ์ดใบอื่นต่อได้ทันที
+      */}
+      <div className="ov-people">
+        {OWNERS.map((o) => (
+          <section key={o.key} className="ov-person" style={{ '--owner': o.color } as React.CSSProperties}>
+            <h2 className="ov-person-name">
+              <i />{o.title} : <b>{o.label}</b>
+            </h2>
+            <div className="ov-person-cards">
+              {LEVELS.map((l) => {
+                const stat = stats.levels[l.key].owners[o.key];
+                const on = level === l.key && view === o.key;
+                return (
+                  <Link
+                    key={l.key}
+                    className={`ov-level ${l.key}${on ? ' on' : ''}${stat.jobs ? '' : ' zero'}`}
+                    href={hrefWith(on ? { level: '', view: '' } : { level: l.key, view: o.key })}
+                    prefetch={false}
+                    scroll={false}
+                    aria-current={on ? 'true' : undefined}
+                  >
+                    <span className="ov-level-name">{l.label}</span>
+                    <span className="ov-level-hint">{l.hint}</span>
+                    <span className="ov-level-total">
+                      <b>{stat.jobs}</b>
+                      <small>งาน{stat.containers ? ` · ${stat.containers} ตู้` : ''}</small>
+                    </span>
+                    <span className="ov-level-cta">{on ? 'ซ่อนรายการ ▲' : 'ดูรายการ ▼'}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </div>
 
       {/* ---------- บอร์ด PAINT / FAH (ยอดทุกระดับ) ---------- */}
@@ -182,8 +189,9 @@ export default async function OverviewPage({
                 className={`ov-board-head${view === owner.key ? ' on' : ''}`}
                 href={hrefWith({ view: view === owner.key ? '' : owner.key })}
                 prefetch={false}
+                scroll={false}
               >
-                <span className="ov-owner"><i />{owner.label}</span>
+                <span className="ov-owner"><i /><small>{owner.title} :</small> {owner.label}</span>
                 <span className="ov-total">
                   <b>{ownerStat.jobs}</b>
                   <StatLine stat={ownerStat} />
@@ -203,6 +211,7 @@ export default async function OverviewPage({
                           .filter(Boolean).join(' ')}
                         href={hrefWith({ view: on ? '' : s.key })}
                         prefetch={false}
+                        scroll={false}
                         aria-current={on ? 'true' : undefined}
                       >
                         <span className="ov-step-no">{s.passive ? '⏳' : no}</span>
@@ -248,7 +257,7 @@ export default async function OverviewPage({
               <div className="chip-group">
                 {[{ key: '', label: 'ทุกระดับ' }, ...LEVELS].map((l) => (
                   <Link key={l.key || 'all'} className={`chip-toggle small${level === l.key ? ' on' : ''}`}
-                    href={hrefWith({ level: l.key })} prefetch={false}>
+                    href={hrefWith({ level: l.key })} prefetch={false} scroll={false}>
                     {l.label}
                   </Link>
                 ))}
@@ -256,7 +265,7 @@ export default async function OverviewPage({
               {stage && roleAllows(user.role, [stage.owner]) ? (
                 <Link className="button tiny" href={stage.href} prefetch={false}>เปิดหน้างานของขั้นนี้ →</Link>
               ) : null}
-              <Link className="button tiny" href="/overview" prefetch={false}>ปิดตาราง ✕</Link>
+              <Link className="button tiny" href="/overview" prefetch={false} scroll={false}>ปิดตาราง ✕</Link>
             </div>
           </div>
 
@@ -269,6 +278,7 @@ export default async function OverviewPage({
                 style={c.color ? ({ '--owner': c.color } as React.CSSProperties) : undefined}
                 href={hrefWith({ view: c.key })}
                 prefetch={false}
+                scroll={false}
               >
                 {c.label} <b>{c.count}</b>
               </Link>
@@ -284,7 +294,7 @@ export default async function OverviewPage({
           />
         </section>
       ) : (
-        <p className="ov-pick-hint">กดการ์ด <b className="red">Urgent</b> / <b className="amber">Priority</b> หรือขั้นในบอร์ด เพื่อดูรายการงาน</p>
+        <p className="ov-pick-hint">กดการ์ด <b className="red">Urgent</b> / <b className="amber">Priority</b> ของแต่ละคน หรือขั้นในบอร์ด เพื่อดูรายการงาน</p>
       )}
 
       {/* ตัวเลขทั้งระบบชุดเดิม ย่อเหลือบรรทัดเดียว — ยังมีคนใช้ดูเรื่องที่ต้องตามด่วน */}

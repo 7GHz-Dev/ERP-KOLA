@@ -2466,10 +2466,21 @@ table.data td.col-lib { min-width: 300px; }
 .monitor-recent > summary { cursor: pointer; font-weight: 600; color: var(--blue); margin-bottom: 8px; }
 
 /* ---------- ภาพรวมงาน: การ์ด Urgent / Priority + ตารางที่โผล่เมื่อกด ---------- */
-.ov-levels { display: grid; gap: 14px; margin-bottom: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+/* แถวละคน: ชื่อ "ตำแหน่ง : ผู้ใช้" แล้วการ์ด Urgent กับ Priority ของคนนั้น */
+.ov-people { display: grid; gap: 14px; margin-bottom: 14px; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+.ov-person {
+  background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--owner);
+  border-radius: 12px; padding: 12px;
+}
+.ov-person-name { margin: 0 0 10px 4px; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.ov-person-name i { width: 10px; height: 10px; border-radius: 50%; background: var(--owner); }
+.ov-person-name b { color: var(--ink); font-size: 17px; }
+.ov-person-cards { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.ov-level.zero { opacity: .6; }
+.ov-owner small { font-size: 13px; font-weight: 600; color: var(--muted); }
 .ov-level {
   --tone: var(--red); --tone-soft: var(--red-soft);
-  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name total" "hint total" "split cta";
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name total" "hint total" "cta cta";
   gap: 2px 12px; align-items: center; padding: 14px 18px; border-radius: 12px; text-decoration: none; color: var(--ink);
   background: var(--tone-soft); border: 2px solid transparent; border-left: 8px solid var(--tone);
   transition: transform .08s ease, box-shadow .12s ease;
@@ -2480,12 +2491,12 @@ table.data td.col-lib { min-width: 300px; }
 .ov-level-name { grid-area: name; font-size: 18px; font-weight: 800; color: var(--tone); letter-spacing: .3px; text-transform: uppercase; }
 .ov-level-hint { grid-area: hint; font-size: 12px; color: var(--muted); }
 .ov-level-total { grid-area: total; display: grid; justify-items: end; }
-.ov-level-total b { font-size: 44px; line-height: 1; color: var(--tone); font-variant-numeric: tabular-nums; }
+.ov-level-total b { font-size: 38px; line-height: 1; color: var(--tone); font-variant-numeric: tabular-nums; }
 .ov-level-total small { color: var(--muted); font-size: 12px; }
 .ov-level-split { grid-area: split; display: flex; gap: 14px; margin-top: 8px; font-size: 13px; }
 .ov-level-split i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--owner); margin-right: 5px; }
 .ov-level-split b { font-variant-numeric: tabular-nums; }
-.ov-level-cta { grid-area: cta; justify-self: end; align-self: end; font-size: 12px; font-weight: 700; color: var(--tone); }
+.ov-level-cta { grid-area: cta; justify-self: end; margin-top: 6px; font-size: 12px; font-weight: 700; color: var(--tone); }
 
 .ov-pick-hint { text-align: center; color: var(--muted); padding: 14px; border: 1px dashed var(--line); border-radius: 10px; }
 .ov-pick-hint .red { color: var(--red); }
@@ -2513,6 +2524,10 @@ table.data td.col-lib { min-width: 300px; }
 .ov-chip.on b { color: #fff; }
 .ov-chip.empty { opacity: .55; }
 @media (max-width: 640px) {
-  .ov-level-total b { font-size: 36px; }
+  .ov-level-total b { font-size: 32px; }
+  .ov-people { grid-template-columns: 1fr; }
+  /* บนมือถือบอร์ดแคบ — ตำแหน่งมีบนการ์ดด้านบนแล้ว ซ่อนในหัวบอร์ดไม่ให้ตัวเลขถูกบีบ */
+  .ov-owner small { display: none; }
+  .ov-person-cards { grid-template-columns: 1fr; }
   .ov-list-head { flex-direction: column; align-items: flex-start; }
 }

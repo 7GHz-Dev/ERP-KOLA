@@ -80,9 +80,13 @@ export const STAGES: Stage[] = [
   },
 ];
 
-export const OWNERS: Array<{ key: StageOwner; label: string; color: string }> = [
-  { key: 'PAINT', label: 'PAINT', color: '#0075de' },
-  { key: 'FAH', label: 'FAH', color: '#dd5b00' },
+/**
+ * ผู้รับผิดชอบแต่ละสาย — แสดงบนหน้า DASHBOARD แบบ "ตำแหน่ง : ชื่อผู้ใช้" เช่น Import Officer : PAINT
+ * ตำแหน่งตามที่ทีมเรียกกัน ไม่ใช่ position ในตาราง users (ตรงนั้นมีแค่ Manager / Employee)
+ */
+export const OWNERS: Array<{ key: StageOwner; label: string; title: string; color: string }> = [
+  { key: 'PAINT', label: 'PAINT', title: 'Import Officer', color: '#0075de' },
+  { key: 'FAH', label: 'FAH', title: 'Senior Officer', color: '#dd5b00' },
 ];
 
 export function stageByKey(key: string) {
