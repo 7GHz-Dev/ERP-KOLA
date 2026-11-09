@@ -39,7 +39,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/overview', label: 'Dashboard' },
       { href: '/jobs', label: 'Bookings table' },
-      { href: '/library', label: 'Import doc files' },
+      { href: '/library', label: 'Import doc WH' },
     ],
   },
   /*
