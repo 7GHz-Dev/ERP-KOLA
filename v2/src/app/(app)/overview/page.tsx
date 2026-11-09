@@ -80,6 +80,12 @@ export default async function OverviewPage({
     return q ? `/overview?${q}` : '/overview';
   };
 
+  /*
+   * กำลังดูงานของคนไหน (กดการ์ด / หัวบอร์ด / ขั้นของคนนั้น) — คอลัมน์ "ค้างที่" แสดงเฉพาะขั้นของคนนั้น
+   * งานเดียวกันอาจค้างที่อีกคนด้วย แต่ตอนดูของคนหนึ่ง ป้ายของอีกคนทำให้อ่านยากโดยไม่ได้ช่วยอะไร
+   */
+  const focusOwner = stage?.owner ?? (view === 'PAINT' || view === 'FAH' ? view : null);
+
   const columns: Column[] = [
     {
       label: 'ค้างที่', kind: 'wrap', className: 'col-stuck',
@@ -87,7 +93,7 @@ export default async function OverviewPage({
         <div className="ov-tags">
           {(stats.stagesOf.get(r.id) ?? []).map((key) => {
             const s = stageByKey(key);
-            if (!s) return null;
+            if (!s || (focusOwner && s.owner !== focusOwner)) return null;
             return (
               <span
                 key={key}
@@ -112,11 +118,17 @@ export default async function OverviewPage({
     : viewOwner ? `${viewOwner.title} : ${viewOwner.label} · ทุกขั้น` : 'ทุกขั้น';
 
   // ชิปกรองในตาราง: ทุกขั้น · PAINT · FAH · แล้วทีละขั้นที่มีงาน (ขั้นที่เลือกอยู่โชว์เสมอแม้เป็น 0)
+  // ดูของคนเดียวอยู่ = ชิปมีแค่ "ทุกขั้นของคนนั้น" กับขั้นของคนนั้น ไม่มีของอีกคนปน
+  const focused = OWNERS.find((o) => o.key === focusOwner);
   const stepChips = [
-    { key: '', label: 'ทุกขั้น', count: scope.all.jobs, color: '' },
-    ...OWNERS.map((o) => ({ key: o.key, label: `${o.label} ทั้งหมด`, count: scope.owners[o.key].jobs, color: o.color })),
+    ...(focused
+      ? [{ key: focused.key, label: `${focused.label} ทุกขั้น`, count: scope.owners[focused.key].jobs, color: focused.color }]
+      : [
+          { key: '', label: 'ทุกขั้น', count: scope.all.jobs, color: '' },
+          ...OWNERS.map((o) => ({ key: o.key, label: `${o.label} ทั้งหมด`, count: scope.owners[o.key].jobs, color: o.color })),
+        ]),
     ...STAGES
-      .filter((s) => scope.stages[s.key].jobs > 0 || s.key === view)
+      .filter((s) => (!focusOwner || s.owner === focusOwner) && (scope.stages[s.key].jobs > 0 || s.key === view))
       .map((s) => ({ key: s.key, label: `${s.owner} · ${s.label}${s.passive ? ' ⏳' : ''}`, count: scope.stages[s.key].jobs, color: ownerColor(s.owner) })),
   ];
 
