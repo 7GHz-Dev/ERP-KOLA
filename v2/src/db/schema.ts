@@ -575,7 +575,7 @@ export const specialCharges = pgTable('special_charges', {
   reviewNote: text('review_note'),
   reviewBy: text('review_by'),
   reviewAt: timestamp('review_at', { withTimezone: true }),
-  receivedAt: createdAt(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: updatedAt(),
 }, (t) => ({
   batchKey: uniqueIndex('special_charges_batch_key').on(t.shipmeBatchId),
@@ -607,5 +607,5 @@ export const specialChargeFiles = pgTable('special_charge_files', {
   sizeBytes: integer('size_bytes'),
   note: text('note'),
   uploadedBy: text('uploaded_by'),
-  uploadedAt: createdAt(),
+  uploadedAt: timestamp('uploaded_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({ chargeIdx: index('special_charge_files_charge_idx').on(t.chargeId) }));
