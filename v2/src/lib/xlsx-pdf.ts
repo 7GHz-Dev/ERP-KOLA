@@ -195,6 +195,127 @@ function marginPt(inches: number | undefined, fallback: number) {
   return Math.max(inches * 72, 14);
 }
 
+type Area = NonNullable<ReturnType<typeof parsePrintArea>>;
+type SheetLike = {
+  name: string; state?: string; pageSetup?: { printArea?: string };
+  rowCount: number; getCell(r: number, c: number): { value: unknown };
+};
+
+/** คอลัมน์สุดท้ายของส่วน invoice เมื่อไฟล์ไม่ได้ตั้งขอบเขตการพิมพ์ — ตารางสรุปที่ระบบเขียนเริ่มคอลัมน์ P จึงไม่ติดมา */
+const INVOICE_LAST_COL = 14;
+
+/**
+ * ชีตที่จะพิมพ์และขอบเขตของแต่ละชีต
+ *   มีชีตที่ตั้งขอบเขตการพิมพ์ไว้ → พิมพ์เฉพาะชีตเหล่านั้น (ตามที่คนทำไฟล์ตั้ง)
+ *   ไม่มีเลย → เดาจากชีตที่เป็นหน้า invoice (มีคำว่า INVOICE ในหัวใบ) ใช้ช่วง A ถึงช่องสุดท้ายที่มีข้อมูลในคอลัมน์ A:N
+ *   ไม่เข้าเงื่อนไขทั้งสองแบบ → ไม่พิมพ์ (คืน [] ให้ผู้เรียกแจ้งว่าแปลงไม่ได้ แทนการพิมพ์ทั้งชีตมั่ว ๆ)
+ * ชีตซ่อนและชีต datatariff ไม่พิมพ์
+ */
+export function invoicePages<T extends SheetLike>(sheets: T[]): Array<{ sheet: T; area: Area }> {
+  const shown = sheets.filter((ws) => (ws.state ?? 'visible') === 'visible' && ws.name !== 'datatariff');
+  const set = shown.flatMap((ws) => {
+    const area = ws.pageSetup?.printArea ? parsePrintArea(String(ws.pageSetup.printArea)) : null;
+    return area ? [{ sheet: ws, area }] : [];
+  });
+  if (set.length) return set;
+  return shown.flatMap((ws) => {
+    const text = (r: number, c: number) => {
+      const v = ws.getCell(r, c).value as unknown;
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'object') {
+        const o = v as { richText?: Array<{ text: string }>; result?: unknown; text?: string };
+        return o.richText ? o.richText.map((t) => t.text).join('') : String(o.result ?? o.text ?? '');
+      }
+      return String(v);
+    };
+    let isInvoice = false;
+    for (let r = 1; r <= 6 && !isInvoice; r++) {
+      for (let c = 1; c <= INVOICE_LAST_COL; c++) if (/INVOICE/i.test(text(r, c))) { isInvoice = true; break; }
+    }
+    if (!isInvoice) return [];
+    let toRow = 0; let toCol = 0;
+    for (let r = 1; r <= ws.rowCount; r++) {
+      for (let c = 1; c <= INVOICE_LAST_COL; c++) {
+        if (text(r, c).trim()) { toRow = r; toCol = Math.max(toCol, c); }
+      }
+    }
+    return toRow ? [{ sheet: ws, area: { fromRow: 1, fromCol: 1, toRow, toCol } }] : [];
+  });
+}
+
+/**
+ * แบ่งขอบเขตที่ยาวเกินหน้าเป็นหลายหน้า
+ *
+ * เดิมย่อทั้งขอบเขตลงหน้าเดียว — ใบ 137 แถวเหลือตัวอักษรราว 3 pt อ่านไม่ออก
+ * แบ่งเมื่อพิมพ์หน้าเดียวต้องย่อเหลือไม่ถึง 75% ของขนาดที่ความกว้างพอดีหน้า
+ * ตัดก่อนแถวที่คอลัมน์ A / B มีข้อความ (ต้นก้อนรถ · เลขตู้) ถ้าทำได้ และไม่ตัดกลางช่องที่ผสานแนวตั้ง
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const cellText = (sheet: any, r: number, c: number) => {
+  const v = sheet.getCell(r, c).value;
+  if (v === null || v === undefined) return '';
+  return String(typeof v === 'object' ? (v.result ?? v.text ?? (v.richText ? v.richText.map((t: { text: string }) => t.text).join('') : '')) : v).trim();
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function paginate(sheet: any, area: Area): Area[] {
+  const landscape = sheet.pageSetup?.orientation === 'landscape';
+  const pageW = landscape ? A4.height : A4.width;
+  const pageH = landscape ? A4.width : A4.height;
+  const m = sheet.pageSetup?.margins;
+  const usableW = pageW - marginPt(m?.left, 28) - marginPt(m?.right, 28);
+  const usableH = pageH - marginPt(m?.top, 28) - marginPt(m?.bottom, 28);
+  let contentW = 0;
+  for (let c = area.fromCol; c <= area.toCol; c += 1) {
+    const col = sheet.getColumn(c);
+    contentW += col.hidden ? 0 : colToPoints(col.width);
+  }
+  const rowH: number[] = [];
+  for (let r = area.fromRow; r <= area.toRow; r += 1) {
+    const row = sheet.getRow(r);
+    rowH.push(row.hidden ? 0 : rowToPoints(row.height));
+  }
+  const contentH = rowH.reduce((a, b) => a + b, 0);
+  const widthScale = Math.min(usableW / Math.max(contentW, 1), 1);
+  if (!contentH || usableH / contentH >= widthScale * 0.75) return [area];
+
+  const limit = usableH / widthScale;                 // ความสูงต่อหน้าในหน่วยของชีต
+  const vMerges: Array<{ top: number; bottom: number }> = (sheet.model?.merges ?? [])
+    .map((ref: string) => ref.split(':').map(parseRef))
+    .filter(([a, b]: Array<ReturnType<typeof parseRef>>) => a && b && a.row !== b.row)
+    .map(([a, b]: Array<{ row: number }>) => ({ top: Math.min(a.row, b.row), bottom: Math.max(a.row, b.row) }));
+  const canBreakBefore = (r: number) => !vMerges.some((mg) => mg.top < r && r <= mg.bottom);
+  const startsBlock = (r: number) => [1, 2].some((c) => cellText(sheet, r, c) !== '');
+
+  const parts: Area[] = [];
+  let from = area.fromRow;
+  let used = 0;
+  for (let r = area.fromRow; r <= area.toRow; r += 1) {
+    const h = rowH[r - area.fromRow];
+    if (used + h <= limit || r === from) { used += h; continue; }
+    // แถว r ล้นหน้า — หาจุดตัดที่ดีที่สุดย้อนหลังไม่เกินครึ่งหน้า
+    let cut = 0;
+    let fallback = 0;
+    let back = 0;
+    for (let k = r; k > from && back <= limit / 2; k -= 1) {
+      if (canBreakBefore(k)) {
+        if (!fallback) fallback = k;
+        if (startsBlock(k)) { cut = k; break; }
+      }
+      back += rowH[k - 1 - area.fromRow] ?? 0;
+    }
+    cut = cut || fallback || r;
+    // แถวหัวก้อนที่มีแต่ป้าย (เช่นเลขตู้ในคอลัมน์ A) อย่าทิ้งไว้ท้ายหน้า — ย้ายไปขึ้นหน้าใหม่พร้อมรถของมัน
+    while (cut - 1 > from && startsBlock(cut - 1) && canBreakBefore(cut - 1) && !cellText(sheet, cut - 1, 3)) cut -= 1;
+    parts.push({ ...area, fromRow: from, toRow: cut - 1 });
+    from = cut;
+    used = 0;
+    for (let k = cut; k <= r; k += 1) used += rowH[k - area.fromRow];
+  }
+  parts.push({ ...area, fromRow: from, toRow: area.toRow });
+  return parts;
+}
+
 /**
  * แปลงไฟล์ Excel เป็น PDF
  * คืน null เมื่อไม่มีชีตไหนตั้งขอบเขตการพิมพ์ไว้ — จะได้ไม่พิมพ์ทั้งชีตออกมามั่ว ๆ
@@ -207,10 +328,8 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(body as unknown as ArrayBuffer);
 
-  const sheet = workbook.worksheets.find((ws) => ws.pageSetup?.printArea);
-  if (!sheet) return null;
-  const area = parsePrintArea(String(sheet.pageSetup.printArea));
-  if (!area) return null;
+  const pages = invoicePages(workbook.worksheets);
+  if (!pages.length) return null;
 
   // Final Invoice ใช้ Cambria ตามที่ต้นฉบับ Excel ตั้งไว้ ถ้าไม่มีค่อยถอยไปใช้ Sarabun
   const pick = async (first: string, fallback: string) =>
@@ -232,200 +351,203 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
   const regular = await doc.embedFont(regularBytes, { subset: false });
   const bold = await doc.embedFont(boldBytes, { subset: false });
 
-  const landscape = sheet.pageSetup?.orientation === 'landscape';
-  const pageW = landscape ? A4.height : A4.width;
-  const pageH = landscape ? A4.width : A4.height;
-  const page = doc.addPage([pageW, pageH]);
+  // หน้าละชีต (AICHI รุ่นใหม่แยกตู้ละชีต) — ชีตที่ยาวมาก (JAN TRADING 17 คันในชีตเดียว) แบ่งหลายหน้า
+  for (const { sheet, area } of pages.flatMap(({ sheet: ws, area: full }) => paginate(ws, full).map((part) => ({ sheet: ws, area: part })))) {
+    const landscape = sheet.pageSetup?.orientation === 'landscape';
+    const pageW = landscape ? A4.height : A4.width;
+    const pageH = landscape ? A4.width : A4.height;
+    const page = doc.addPage([pageW, pageH]);
 
-  /* ---------- ขนาดของแต่ละคอลัมน์และแถวในขอบเขตที่จะพิมพ์ ---------- */
-  const colW: number[] = [];
-  for (let c = area.fromCol; c <= area.toCol; c += 1) {
-    const col = sheet.getColumn(c);
-    colW.push(col.hidden ? 0 : colToPoints(col.width));
-  }
-  const rowH: number[] = [];
-  for (let r = area.fromRow; r <= area.toRow; r += 1) {
-    const row = sheet.getRow(r);
-    rowH.push(row.hidden ? 0 : rowToPoints(row.height));
-  }
+    /* ---------- ขนาดของแต่ละคอลัมน์และแถวในขอบเขตที่จะพิมพ์ ---------- */
+    const colW: number[] = [];
+    for (let c = area.fromCol; c <= area.toCol; c += 1) {
+      const col = sheet.getColumn(c);
+      colW.push(col.hidden ? 0 : colToPoints(col.width));
+    }
+    const rowH: number[] = [];
+    for (let r = area.fromRow; r <= area.toRow; r += 1) {
+      const row = sheet.getRow(r);
+      rowH.push(row.hidden ? 0 : rowToPoints(row.height));
+    }
 
-  const contentW = colW.reduce((a, b) => a + b, 0);
-  const contentH = rowH.reduce((a, b) => a + b, 0);
+    const contentW = colW.reduce((a, b) => a + b, 0);
+    const contentH = rowH.reduce((a, b) => a + b, 0);
 
-  /*
-   * ใช้ระยะขอบที่ตั้งไว้ในไฟล์ ไม่ใช่ค่าคงที่ของเราเอง
-   * ใบ Final Invoice ตั้งขอบไว้แคบเพื่อให้ตารางลงพอดีหนึ่งหน้า ถ้าบังคับขอบกว้างกว่านั้น
-   * อัตราย่อจะลดตามแล้วตัวอักษรทั้งใบเล็กกว่าที่ Excel พิมพ์ออกมาโดยไม่จำเป็น
-   */
-  const margins = sheet.pageSetup?.margins;
-  const marginL = marginPt(margins?.left, 28);
-  const marginR = marginPt(margins?.right, 28);
-  const marginT = marginPt(margins?.top, 28);
-  const marginB = marginPt(margins?.bottom, 28);
+    /*
+     * ใช้ระยะขอบที่ตั้งไว้ในไฟล์ ไม่ใช่ค่าคงที่ของเราเอง
+     * ใบ Final Invoice ตั้งขอบไว้แคบเพื่อให้ตารางลงพอดีหนึ่งหน้า ถ้าบังคับขอบกว้างกว่านั้น
+     * อัตราย่อจะลดตามแล้วตัวอักษรทั้งใบเล็กกว่าที่ Excel พิมพ์ออกมาโดยไม่จำเป็น
+     */
+    const margins = sheet.pageSetup?.margins;
+    const marginL = marginPt(margins?.left, 28);
+    const marginR = marginPt(margins?.right, 28);
+    const marginT = marginPt(margins?.top, 28);
+    const marginB = marginPt(margins?.bottom, 28);
 
-  const scale = Math.min(
-    (pageW - marginL - marginR) / contentW,
-    (pageH - marginT - marginB) / contentH,
-    1,
-  );
+    const scale = Math.min(
+      (pageW - marginL - marginR) / contentW,
+      (pageH - marginT - marginB) / contentH,
+      1,
+    );
 
-  const originX = marginL + (pageW - marginL - marginR - contentW * scale) / 2;
-  const originY = pageH - marginT;
+    const originX = marginL + (pageW - marginL - marginR - contentW * scale) / 2;
+    const originY = pageH - marginT;
 
-  const xAt = (index: number) =>
-    originX + colW.slice(0, index).reduce((a, b) => a + b, 0) * scale;
-  const yAt = (index: number) =>
-    originY - rowH.slice(0, index).reduce((a, b) => a + b, 0) * scale;
+    const xAt = (index: number) =>
+      originX + colW.slice(0, index).reduce((a, b) => a + b, 0) * scale;
+    const yAt = (index: number) =>
+      originY - rowH.slice(0, index).reduce((a, b) => a + b, 0) * scale;
 
-  const black = rgb(0, 0, 0);
+    const black = rgb(0, 0, 0);
 
-  /** ช่องที่ถูกผสาน ให้วาดเฉพาะช่องบนซ้าย แล้วกินพื้นที่ทั้งกลุ่ม */
-  const merges: Array<{ top: number; left: number; bottom: number; right: number }> =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((sheet as any).model?.merges ?? [])
-      .map((ref: string) => {
-        const [a, b] = ref.split(':').map(parseRef);
-        return a && b
-          ? {
-            top: Math.min(a.row, b.row), bottom: Math.max(a.row, b.row),
-            left: Math.min(a.col, b.col), right: Math.max(a.col, b.col),
+    /** ช่องที่ถูกผสาน ให้วาดเฉพาะช่องบนซ้าย แล้วกินพื้นที่ทั้งกลุ่ม */
+    const merges: Array<{ top: number; left: number; bottom: number; right: number }> =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((sheet as any).model?.merges ?? [])
+        .map((ref: string) => {
+          const [a, b] = ref.split(':').map(parseRef);
+          return a && b
+            ? {
+              top: Math.min(a.row, b.row), bottom: Math.max(a.row, b.row),
+              left: Math.min(a.col, b.col), right: Math.max(a.col, b.col),
+            }
+            : null;
+        })
+        .filter(Boolean);
+
+    const mergeOf = (r: number, c: number) =>
+      merges.find((m) => r >= m.top && r <= m.bottom && c >= m.left && c <= m.right);
+
+    /*
+     * ช่องไหนมีข้อความอยู่แล้วบ้าง — ต้องรู้ก่อนเริ่มวาด
+     * ช่องที่อยู่ในกลุ่มผสาน ExcelJS คืนข้อความของช่องบนซ้ายให้ทุกช่อง จึงนับว่าไม่ว่างทั้งกลุ่ม
+     */
+    const filled: boolean[][] = [];
+    for (let r = area.fromRow; r <= area.toRow; r += 1) {
+      const row: boolean[] = [];
+      for (let c = area.fromCol; c <= area.toCol; c += 1) {
+        row.push(displayText(sheet.getCell(r, c)) !== '');
+      }
+      filled.push(row);
+    }
+
+    /**
+     * ความกว้างที่ข้อความใช้ได้จริง
+     *
+     * Excel ปล่อยให้ข้อความยาวล้นไปทับช่องข้าง ๆ ที่ยังว่างอยู่ ถ้าบังคับให้อยู่ในช่องตัวเอง
+     * ตัวอักษรจะถูกย่อจนอ่านไม่ออก — ที่อยู่ผู้ส่ง 30 ตัวอักษรในคอลัมน์กว้าง 50 pt
+     * เคยหดเหลือราว 4 pt ทั้งที่ทั้งแถวว่างเปล่า
+     *
+     * ชิดซ้ายล้นไปทางขวา ชิดขวาล้นไปทางซ้าย จัดกลางล้นได้ทั้งสองทาง ตามที่ Excel ทำ
+     */
+    const roomFor = (ri: number, ci: number, spanCols: number, align: Align) => {
+      let room = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0);
+      if (align !== 'right') {
+        for (let k = ci + spanCols; k < colW.length && !filled[ri][k]; k += 1) room += colW[k];
+      }
+      if (align !== 'left') {
+        for (let k = ci - 1; k >= 0 && !filled[ri][k]; k -= 1) room += colW[k];
+      }
+      return room * scale;
+    };
+
+    for (let r = area.fromRow; r <= area.toRow; r += 1) {
+      const ri = r - area.fromRow;
+      if (!rowH[ri]) continue;
+
+      for (let c = area.fromCol; c <= area.toCol; c += 1) {
+        const ci = c - area.fromCol;
+        if (!colW[ci]) continue;
+
+        const merge = mergeOf(r, c);
+        if (merge && (merge.top !== r || merge.left !== c)) continue;
+
+        const spanCols = merge ? Math.min(merge.right, area.toCol) - c + 1 : 1;
+        const spanRows = merge ? Math.min(merge.bottom, area.toRow) - r + 1 : 1;
+        const w = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0) * scale;
+        const h = rowH.slice(ri, ri + spanRows).reduce((a, b) => a + b, 0) * scale;
+        const x = xAt(ci);
+        const yTop = yAt(ri);
+
+        const cell = sheet.getCell(r, c);
+
+        // สีพื้นของช่อง
+        const fill = cell.fill;
+        if (fill?.type === 'pattern' && fill.pattern === 'solid' && fill.fgColor?.argb) {
+          const argb = fill.fgColor.argb;
+          if (argb.length === 8 && argb.slice(0, 2) !== '00') {
+            page.drawRectangle({
+              x, y: yTop - h, width: w, height: h,
+              color: rgb(
+                parseInt(argb.slice(2, 4), 16) / 255,
+                parseInt(argb.slice(4, 6), 16) / 255,
+                parseInt(argb.slice(6, 8), 16) / 255,
+              ),
+            });
           }
-          : null;
-      })
-      .filter(Boolean);
-
-  const mergeOf = (r: number, c: number) =>
-    merges.find((m) => r >= m.top && r <= m.bottom && c >= m.left && c <= m.right);
-
-  /*
-   * ช่องไหนมีข้อความอยู่แล้วบ้าง — ต้องรู้ก่อนเริ่มวาด
-   * ช่องที่อยู่ในกลุ่มผสาน ExcelJS คืนข้อความของช่องบนซ้ายให้ทุกช่อง จึงนับว่าไม่ว่างทั้งกลุ่ม
-   */
-  const filled: boolean[][] = [];
-  for (let r = area.fromRow; r <= area.toRow; r += 1) {
-    const row: boolean[] = [];
-    for (let c = area.fromCol; c <= area.toCol; c += 1) {
-      row.push(displayText(sheet.getCell(r, c)) !== '');
-    }
-    filled.push(row);
-  }
-
-  /**
-   * ความกว้างที่ข้อความใช้ได้จริง
-   *
-   * Excel ปล่อยให้ข้อความยาวล้นไปทับช่องข้าง ๆ ที่ยังว่างอยู่ ถ้าบังคับให้อยู่ในช่องตัวเอง
-   * ตัวอักษรจะถูกย่อจนอ่านไม่ออก — ที่อยู่ผู้ส่ง 30 ตัวอักษรในคอลัมน์กว้าง 50 pt
-   * เคยหดเหลือราว 4 pt ทั้งที่ทั้งแถวว่างเปล่า
-   *
-   * ชิดซ้ายล้นไปทางขวา ชิดขวาล้นไปทางซ้าย จัดกลางล้นได้ทั้งสองทาง ตามที่ Excel ทำ
-   */
-  const roomFor = (ri: number, ci: number, spanCols: number, align: Align) => {
-    let room = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0);
-    if (align !== 'right') {
-      for (let k = ci + spanCols; k < colW.length && !filled[ri][k]; k += 1) room += colW[k];
-    }
-    if (align !== 'left') {
-      for (let k = ci - 1; k >= 0 && !filled[ri][k]; k -= 1) room += colW[k];
-    }
-    return room * scale;
-  };
-
-  for (let r = area.fromRow; r <= area.toRow; r += 1) {
-    const ri = r - area.fromRow;
-    if (!rowH[ri]) continue;
-
-    for (let c = area.fromCol; c <= area.toCol; c += 1) {
-      const ci = c - area.fromCol;
-      if (!colW[ci]) continue;
-
-      const merge = mergeOf(r, c);
-      if (merge && (merge.top !== r || merge.left !== c)) continue;
-
-      const spanCols = merge ? Math.min(merge.right, area.toCol) - c + 1 : 1;
-      const spanRows = merge ? Math.min(merge.bottom, area.toRow) - r + 1 : 1;
-      const w = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0) * scale;
-      const h = rowH.slice(ri, ri + spanRows).reduce((a, b) => a + b, 0) * scale;
-      const x = xAt(ci);
-      const yTop = yAt(ri);
-
-      const cell = sheet.getCell(r, c);
-
-      // สีพื้นของช่อง
-      const fill = cell.fill;
-      if (fill?.type === 'pattern' && fill.pattern === 'solid' && fill.fgColor?.argb) {
-        const argb = fill.fgColor.argb;
-        if (argb.length === 8 && argb.slice(0, 2) !== '00') {
-          page.drawRectangle({
-            x, y: yTop - h, width: w, height: h,
-            color: rgb(
-              parseInt(argb.slice(2, 4), 16) / 255,
-              parseInt(argb.slice(4, 6), 16) / 255,
-              parseInt(argb.slice(6, 8), 16) / 255,
-            ),
-          });
         }
-      }
 
-      // เส้นขอบตามที่ตั้งไว้ในไฟล์
-      const b = cell.border;
-      const edge = (
-        on: unknown, x1: number, y1: number, x2: number, y2: number,
-      ) => {
-        if (!on) return;
-        page.drawLine({
-          start: { x: x1, y: y1 }, end: { x: x2, y: y2 },
-          thickness: 0.6, color: black,
+        // เส้นขอบตามที่ตั้งไว้ในไฟล์
+        const b = cell.border;
+        const edge = (
+          on: unknown, x1: number, y1: number, x2: number, y2: number,
+        ) => {
+          if (!on) return;
+          page.drawLine({
+            start: { x: x1, y: y1 }, end: { x: x2, y: y2 },
+            thickness: 0.6, color: black,
+          });
+        };
+        edge(b?.top, x, yTop, x + w, yTop);
+        edge(b?.bottom, x, yTop - h, x + w, yTop - h);
+        edge(b?.left, x, yTop, x, yTop - h);
+        edge(b?.right, x + w, yTop, x + w, yTop - h);
+
+        const text = displayText(cell);
+        if (!text) continue;
+
+        const isBold = Boolean(cell.font?.bold);
+        const font = isBold ? bold : regular;
+        const align: Align = (cell.alignment?.horizontal as Align)
+          ?? (numberIn(cell) !== null ? 'right' : 'left');
+
+        /*
+         * ข้อความที่ล้นออกนอกช่องตัวเอง คือข้อความอิสระที่คนทำไฟล์ไม่ได้จัดให้พอดีคอลัมน์
+         * เช่นที่อยู่ผู้ส่งกับที่อยู่ผู้รับ ซึ่งในไฟล์ตั้งไว้ 12 pt เล็กกว่าหัวข้ออื่นในใบเดียวกัน
+         * พอย่อทั้งใบเหลือสองในสามแล้วเล็กจนอ่านยาก จึงยกขึ้นให้ไม่เล็กกว่าหัวข้ออื่น
+         *
+         * ช่องในตารางข้อมูลไม่โดน เพราะแต่ละช่องพอดีคอลัมน์อยู่แล้วไม่ได้ล้น
+         * และต้องเล็กกว่าหัวตารางไว้ ไม่งั้นหัวกับข้อมูลจะกลืนกัน
+         */
+        const natural = (cell.font?.size ?? 11) * scale;
+        const ownWidth = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0) * scale;
+        const spills = font.widthOfTextAtSize(text, natural) > ownWidth - 4;
+
+        const room = roomFor(ri, ci, spanCols, align) - 4;
+        let size = natural;
+
+        // ยกขึ้นเฉพาะเมื่อที่ว่างข้าง ๆ รับขนาดใหม่ไหว ไม่งั้นจะไปโดนย่อกลับจนเล็กกว่าเดิม
+        if (spills) {
+          const raised = Math.max(natural, MIN_SPILL_SIZE * scale);
+          if (font.widthOfTextAtSize(text, raised) <= room) size = raised;
+        }
+
+        // ย่อขนาดต่อเมื่อยาวเกินที่ล้นไปช่องว่างข้าง ๆ ได้แล้วจริง ๆ
+        while (size > 4 && font.widthOfTextAtSize(text, size) > room) size -= 0.25;
+
+        const textW = font.widthOfTextAtSize(text, size);
+        const tx = align === 'center' ? x + (w - textW) / 2
+          : align === 'right' ? x + w - textW - 2
+            : x + 2;
+
+        page.drawText(text, {
+          x: tx,
+          y: yTop - h + (h - size * 0.72) / 2,
+          size,
+          font,
+          color: black,
         });
-      };
-      edge(b?.top, x, yTop, x + w, yTop);
-      edge(b?.bottom, x, yTop - h, x + w, yTop - h);
-      edge(b?.left, x, yTop, x, yTop - h);
-      edge(b?.right, x + w, yTop, x + w, yTop - h);
-
-      const text = displayText(cell);
-      if (!text) continue;
-
-      const isBold = Boolean(cell.font?.bold);
-      const font = isBold ? bold : regular;
-      const align: Align = (cell.alignment?.horizontal as Align)
-        ?? (numberIn(cell) !== null ? 'right' : 'left');
-
-      /*
-       * ข้อความที่ล้นออกนอกช่องตัวเอง คือข้อความอิสระที่คนทำไฟล์ไม่ได้จัดให้พอดีคอลัมน์
-       * เช่นที่อยู่ผู้ส่งกับที่อยู่ผู้รับ ซึ่งในไฟล์ตั้งไว้ 12 pt เล็กกว่าหัวข้ออื่นในใบเดียวกัน
-       * พอย่อทั้งใบเหลือสองในสามแล้วเล็กจนอ่านยาก จึงยกขึ้นให้ไม่เล็กกว่าหัวข้ออื่น
-       *
-       * ช่องในตารางข้อมูลไม่โดน เพราะแต่ละช่องพอดีคอลัมน์อยู่แล้วไม่ได้ล้น
-       * และต้องเล็กกว่าหัวตารางไว้ ไม่งั้นหัวกับข้อมูลจะกลืนกัน
-       */
-      const natural = (cell.font?.size ?? 11) * scale;
-      const ownWidth = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0) * scale;
-      const spills = font.widthOfTextAtSize(text, natural) > ownWidth - 4;
-
-      const room = roomFor(ri, ci, spanCols, align) - 4;
-      let size = natural;
-
-      // ยกขึ้นเฉพาะเมื่อที่ว่างข้าง ๆ รับขนาดใหม่ไหว ไม่งั้นจะไปโดนย่อกลับจนเล็กกว่าเดิม
-      if (spills) {
-        const raised = Math.max(natural, MIN_SPILL_SIZE * scale);
-        if (font.widthOfTextAtSize(text, raised) <= room) size = raised;
       }
-
-      // ย่อขนาดต่อเมื่อยาวเกินที่ล้นไปช่องว่างข้าง ๆ ได้แล้วจริง ๆ
-      while (size > 4 && font.widthOfTextAtSize(text, size) > room) size -= 0.25;
-
-      const textW = font.widthOfTextAtSize(text, size);
-      const tx = align === 'center' ? x + (w - textW) / 2
-        : align === 'right' ? x + w - textW - 2
-          : x + 2;
-
-      page.drawText(text, {
-        x: tx,
-        y: yTop - h + (h - size * 0.72) / 2,
-        size,
-        font,
-        color: black,
-      });
     }
   }
 

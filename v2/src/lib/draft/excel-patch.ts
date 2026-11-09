@@ -20,19 +20,28 @@ function resolveTarget(target: string) {
   return out.join('/');
 }
 
-/** ตำแหน่งไฟล์ XML ของชีตแรกที่เป็น worksheet */
-export async function firstSheetPath(zip: JSZip) {
+/** ชีตทั้งหมดที่เป็น worksheet ตามลำดับในไฟล์: ชื่อ → ตำแหน่งไฟล์ XML */
+export async function sheetPaths(zip: JSZip): Promise<Array<{ name: string; path: string }>> {
   const wbXml = await zip.file('xl/workbook.xml')!.async('string');
   const relsXml = await zip.file('xl/_rels/workbook.xml.rels')!.async('string');
   const rels: Record<string, { target: string; type: string }> = {};
   for (const m of relsXml.matchAll(/<Relationship\b[^>]*>/g)) {
     rels[attr(m[0], 'Id') ?? ''] = { target: attr(m[0], 'Target') ?? '', type: attr(m[0], 'Type') ?? '' };
   }
+  const out: Array<{ name: string; path: string }> = [];
   for (const m of wbXml.matchAll(/<sheet\b[^>]*>/g)) {
     const rel = rels[attr(m[0], 'r:id') ?? ''];
-    if (rel && rel.type.endsWith('/worksheet')) return resolveTarget(rel.target);
+    if (rel && rel.type.endsWith('/worksheet')) out.push({ name: xmlUnescape(attr(m[0], 'name') ?? ''), path: resolveTarget(rel.target) });
   }
-  throw new Error('ไม่พบชีตข้อมูลในไฟล์ Excel');
+  return out;
+}
+const xmlUnescape = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+
+/** ตำแหน่งไฟล์ XML ของชีตแรกที่เป็น worksheet */
+export async function firstSheetPath(zip: JSZip) {
+  const [first] = await sheetPaths(zip);
+  if (!first) throw new Error('ไม่พบชีตข้อมูลในไฟล์ Excel');
+  return first.path;
 }
 
 function findCell(xml: string, ref: string) {
@@ -44,36 +53,47 @@ function findCell(xml: string, ref: string) {
 
 export async function patchWorkbook(data: Buffer | Uint8Array, values: CellUpdate[], cached: CellUpdate[]): Promise<Buffer> {
   const zip = await JSZip.loadAsync(data);
-  const sheetPath = await firstSheetPath(zip);
-  let xml = await zip.file(sheetPath)!.async('string');
+  const sheets = await sheetPaths(zip);
+  if (!sheets.length) throw new Error('ไม่พบชีตข้อมูลในไฟล์ Excel');
   let formulaRemoved = false;
-
-  const edit = (u: CellUpdate, make: (c: ReturnType<typeof findCell>, ref: string) => string | null) => {
-    const ref = colLetters(u.col) + u.row;
-    const c = findCell(xml, ref);
-    const out = make(c, ref);
-    if (out !== null) xml = xml.slice(0, c.start) + out + xml.slice(c.end);
+  // แก้ทีละชีต — ช่องที่ไม่ระบุชีตอยู่ชีตแรก (ตารางสรุป)
+  const pathOf = (u: CellUpdate) => {
+    if (!u.sheet || u.sheet === sheets[0].name) return sheets[0].path;
+    const hit = sheets.find((s) => s.name === u.sheet);
+    if (!hit) throw new Error(`ไม่พบชีต ${u.sheet} ในไฟล์ Excel`);
+    return hit.path;
   };
-  const withoutT = (attrs: string) => attrs.replace(/\s+t="[^"]*"/, '');
+  const paths = [...new Set([...values, ...cached].map(pathOf))];
+  for (const sheetPath of paths) {
+    let xml = await zip.file(sheetPath)!.async('string');
 
-  for (const u of values) {
-    edit(u, (c, ref) => {
-      const f = /<f\b[^>]*>/.exec(c.body);
-      if (f && attr(f[0], 't') === 'shared' && attr(f[0], 'ref')) {
-        throw new Error(`ช่องเลขเครื่อง ${ref} เป็นสูตรที่ช่องอื่นใช้ร่วม — แก้ช่องนี้ให้เป็นข้อความก่อน`);
-      }
-      if (f) formulaRemoved = true;
-      return `<c${withoutT(c.attrs)} t="inlineStr"><is><t xml:space="preserve">${xmlEscape(u.value)}</t></is></c>`;
-    });
+    const edit = (u: CellUpdate, make: (c: ReturnType<typeof findCell>, ref: string) => string | null) => {
+      const ref = colLetters(u.col) + u.row;
+      const c = findCell(xml, ref);
+      const out = make(c, ref);
+      if (out !== null) xml = xml.slice(0, c.start) + out + xml.slice(c.end);
+    };
+    const withoutT = (attrs: string) => attrs.replace(/\s+t="[^"]*"/, '');
+
+    for (const u of values.filter((v) => pathOf(v) === sheetPath)) {
+      edit(u, (c, ref) => {
+        const f = /<f\b[^>]*>/.exec(c.body);
+        if (f && attr(f[0], 't') === 'shared' && attr(f[0], 'ref')) {
+          throw new Error(`ช่องเลขเครื่อง ${ref} เป็นสูตรที่ช่องอื่นใช้ร่วม — แก้ช่องนี้ให้เป็นข้อความก่อน`);
+        }
+        if (f) formulaRemoved = true;
+        return `<c${withoutT(c.attrs)} t="inlineStr"><is><t xml:space="preserve">${xmlEscape(u.value)}</t></is></c>`;
+      });
+    }
+    for (const u of cached.filter((v) => pathOf(v) === sheetPath)) {
+      edit(u, (c) => {
+        const f = /<f\b[^>]*\/>|<f\b[^>]*>[\s\S]*?<\/f>/.exec(c.body);
+        if (!f) return null;                                   // ไม่ใช่สูตร ไม่ต้องแก้
+        return `<c${withoutT(c.attrs)} t="str">${f[0]}<v>${xmlEscape(u.value)}</v></c>`;
+      });
+    }
+    zip.file(sheetPath, xml);
   }
-  for (const u of cached) {
-    edit(u, (c) => {
-      const f = /<f\b[^>]*\/>|<f\b[^>]*>[\s\S]*?<\/f>/.exec(c.body);
-      if (!f) return null;                                   // ไม่ใช่สูตร ไม่ต้องแก้
-      return `<c${withoutT(c.attrs)} t="str">${f[0]}<v>${xmlEscape(u.value)}</v></c>`;
-    });
-  }
-  zip.file(sheetPath, xml);
 
   // ให้ Excel คำนวณสูตรใหม่ทั้งไฟล์ตอนเปิด
   let wbXml = await zip.file('xl/workbook.xml')!.async('string');

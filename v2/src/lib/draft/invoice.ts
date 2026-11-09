@@ -57,6 +57,8 @@ export type Car = {
 
 /** ช่องเลขเครื่องในส่วน invoice ของผู้ขาย (ที่จะเขียนเลขสุ่มลงไป) */
 export type EngineCell = {
+  /** ชื่อชีต — AICHI รุ่นใหม่แยกตู้ละชีต ช่องเลขเครื่องจึงไม่ได้อยู่ชีตแรกเสมอ */
+  sheet: string;
   row: number; col: number; chassis: string;
   raw: string;     // ข้อความเดิมในช่อง เช่น "HR15" หรือ "LDA-MF6 (GASOLINE/1330)"
   head: string;    // ส่วนเลขเครื่อง เช่น "HR15" / "LDA-MF6"
@@ -143,7 +145,21 @@ export async function readInvoice(data: Buffer | Uint8Array): Promise<Invoice> {
     inv.errors.push('ไม่พบรถในตารางสรุป (แถว 20 ลงไป คอลัมน์ W:AF) — ' +
       'ถ้าเพิ่งกรอกข้อมูล ให้เปิดไฟล์ใน Excel กด Save แล้วอัปโหลดใหม่');
   }
-  inv.engines = layout.kind === 'column' ? enginesByColumn(ws, layout, inv.errors) : enginesByBlock(ws, layout, inv.errors);
+  if (layout.kind === 'column') {
+    inv.engines = enginesByColumn(ws, layout, inv.errors);
+  } else {
+    // ชีตแรก + ชีตอื่นที่เป็นหน้า invoice เหมือนกัน (หัวตาราง WEIGHT / ITEM) — ตามลำดับชีต ตรงกับลำดับรถในตารางสรุป
+    const seen = new Set<string>();
+    for (const [i, sheet] of wb.worksheets.entries()) {
+      const page = i === 0 ? ws : sheetReader(wb, sheet);
+      if (i > 0 && (sheet.name === 'datatariff' || !isInvoicePage(page))) continue;
+      for (const e of enginesByBlock(page, layout, inv.errors)) {
+        if (seen.has(e.chassis)) continue;          // ชีตสำเนาของหน้าเดิม ไม่นับซ้ำ
+        seen.add(e.chassis);
+        inv.engines.push(e);
+      }
+    }
+  }
   return inv;
 }
 
@@ -187,9 +203,17 @@ function readCars(ws: Sheet, errors: string[]): Car[] {
   return cars;
 }
 
-function engineCell(row: number, col: number, chassis: string, raw: string, head: string): EngineCell {
+function engineCell(sheet: string, row: number, col: number, chassis: string, raw: string, head: string): EngineCell {
   const m = FULL_ENGINE.exec(head);
-  return { row, col, chassis, raw, head, existing: m ? { head: m[1], number: m[2] } : null };
+  return { sheet, row, col, chassis, raw, head, existing: m ? { head: m[1], number: m[2] } : null };
+}
+
+/** หน้า invoice แบบก้อน: มีหัวตาราง WEIGHT / ITEM ในคอลัมน์ A / B */
+function isInvoicePage(ws: Sheet) {
+  for (let r = 1; r <= Math.min(ws.maxRow, 60); r++) {
+    if (label(ws.value(r, 1)) === 'WEIGHT' && label(ws.value(r, 2)) === 'ITEM') return true;
+  }
+  return false;
 }
 
 /** ข้อความที่จะเขียนกลับลงช่องเลขเครื่อง เมื่อได้เลขเครื่องเต็มแล้ว */
@@ -213,7 +237,7 @@ function enginesByColumn(ws: Sheet, lay: ColumnLayout, errors: string[]): Engine
       errors.push(`แถว ${r} (${chassis}): ไม่มีเลขเครื่องในคอลัมน์ ${lay.engineCol}`);
       continue;
     }
-    out.push(engineCell(r, eCol, chassis, raw, raw));
+    out.push(engineCell(ws.name, r, eCol, chassis, raw, raw));
   }
   return out;
 }
@@ -230,9 +254,10 @@ function enginesByBlock(ws: Sheet, lay: BlockLayout, errors: string[]): EngineCe
     } else if (lab === lay.engineLabel) {
       const raw = squash(pyStr(value));
       const head = raw.split('(')[0].trim();
-      if (chassis === null) errors.push(`แถว ${r}: พบเลขเครื่องแต่ไม่มี CHASSIS NO. ก่อนหน้า`);
-      else if (!head) errors.push(`แถว ${r} (${chassis}): ไม่มีเลขเครื่องในคอลัมน์ ${BLOCK.valueCol}`);
-      else out.push(engineCell(r, vCol, chassis, raw, head));
+      const where = ws.name ? `ชีต ${ws.name} แถว ${r}` : `แถว ${r}`;
+      if (chassis === null) errors.push(`${where}: พบเลขเครื่องแต่ไม่มี CHASSIS NO. ก่อนหน้า`);
+      else if (!head) errors.push(`${where} (${chassis}): ไม่มีเลขเครื่องในคอลัมน์ ${BLOCK.valueCol}`);
+      else out.push(engineCell(ws.name, r, vCol, chassis, raw, head));
       chassis = null;
     }
   }

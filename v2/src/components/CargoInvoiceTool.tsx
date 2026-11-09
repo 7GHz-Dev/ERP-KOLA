@@ -35,6 +35,8 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
   const [inv, setInv] = useState<CargoInvoice | null>(null);
   const [jobs, setJobs] = useState<JobMatch[]>([]);
   const [jobId, setJobId] = useState('');
+  const [matchedBy, setMatchedBy] = useState<'bl' | 'containers' | 'search'>('bl');
+  const [jobQuery, setJobQuery] = useState('');
   const [tariffs, setTariffs] = useState<Tariff[] | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [adding, setAdding] = useState<number | null>(null);
@@ -43,7 +45,7 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
   const job = jobs.find((j) => j.id === jobId) ?? null;
 
   const reset = () => {
-    setFile(null); setInv(null); setJobs([]); setJobId(''); setTariffs(null); setChosen([]);
+    setFile(null); setInv(null); setJobs([]); setJobId(''); setMatchedBy('bl'); setJobQuery(''); setTariffs(null); setChosen([]);
     setAdding(null); setSaved(null); setError('');
     if (input.current) input.current.value = '';
   };
@@ -55,9 +57,33 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
     try {
       const fd = new FormData();
       fd.set('file', f);
-      const data = await call<{ invoice: CargoInvoice; jobs: JobMatch[] }>('/api/cargo-invoice/parse', { method: 'POST', body: fd });
+      const data = await call<{ invoice: CargoInvoice; jobs: JobMatch[]; matchedBy: 'bl' | 'containers' }>('/api/cargo-invoice/parse', { method: 'POST', body: fd });
       setInv(data.invoice);
       setJobs(data.jobs);
+      setMatchedBy(data.matchedBy);
+      // หาด้วยเลขตู้แล้วเจอหลายงาน: เลือกให้เฉพาะเมื่องานแรกตู้ตรงครบทุกตู้และมากกว่างานอื่น
+      const [top, second] = data.jobs;
+      const sure = data.jobs.length === 1 || (data.matchedBy === 'containers' && top
+        && top.sharedBoxes === data.invoice.containers.length && (second?.sharedBoxes ?? 0) < (top.sharedBoxes ?? 0));
+      setJobId(sure ? top.id : '');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  /** ค้นงานเองด้วย BL / Job No. */
+  async function searchJobs() {
+    const q = jobQuery.trim();
+    if (!q) return;
+    setBusy('กำลังค้นงาน…');
+    setError('');
+    try {
+      const data = await call<{ jobs: JobMatch[] }>(`/api/cargo-invoice/jobs?q=${encodeURIComponent(q)}`, { method: 'GET' });
+      if (!data.jobs.length) throw new Error(`ไม่พบงานที่ BL / Job No. "${q}"`);
+      setJobs(data.jobs);
+      setMatchedBy('search');
       setJobId(data.jobs.length === 1 ? data.jobs[0].id : '');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -113,8 +139,11 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
       : { ok: inv.stated.units === inv.cars.length, text: `รถ ${inv.cars.length} คัน · แถว TOTAL ${inv.stated.units} UNITS` });
     if (inv.stated.weight !== null) out.push({ ok: close(inv.stated.weight, sum('weight')), text: `น้ำหนักรวม ${fmt(sum('weight'))} KG · แถว TOTAL ${fmt(inv.stated.weight)}` });
     else out.push({ ok: true, text: `น้ำหนักรวม ${fmt(sum('weight'))} KG` });
-    if (inv.stated.amount !== null) out.push({ ok: close(inv.stated.amount, sum('price')), text: `ราคารวม ${fmt(sum('price'))} · แถว TOTAL ${fmt(inv.stated.amount)}` });
-    else out.push({ ok: true, text: `ราคารวม ${fmt(sum('price'))}` });
+    // ค่าใช้จ่ายอื่นที่บวกอยู่ในยอด TOTAL (เช่น Forwarding ของ JAN TRADING) — ราคารถ + ค่านี้ ต้องเท่ายอด TOTAL
+    const extra = inv.charges.filter((c) => c.inTotal).reduce((s, c) => s + c.amount, 0);
+    const priceText = `ราคารถรวม ${fmt(sum('price'))}${extra ? ` + ค่าใช้จ่ายอื่น ${fmt(extra)}` : ''}`;
+    if (inv.stated.amount !== null) out.push({ ok: close(inv.stated.amount, sum('price') + extra), text: `${priceText} · แถว TOTAL ${fmt(inv.stated.amount)}` });
+    else out.push({ ok: true, text: priceText });
     const bad = inv.cars.filter((c) => c.problems.length).length;
     out.push({ ok: bad === 0, text: bad ? `รถ ${bad} คันข้อมูลไม่ครบ (แถวสีแดงด้านล่าง)` : 'ข้อมูลรถครบทุกคัน · ไม่มีเลขตัวถังซ้ำ' });
     if (job) {
@@ -164,7 +193,7 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); }}
             />
             <b>{file ? file.name : 'เลือกไฟล์ Invoice (.xlsx)'}</b>
-            <small>{file ? `${(file.size / 1024).toFixed(0)} KB · กดเพื่อเลือกไฟล์ใหม่` : 'รองรับ MSFZ · AICHI · JAN TRADING (และ JTC · HUAYO) — ไฟล์ดิบจากผู้ขายหรือไฟล์ imp3_ ที่ผูกสูตรแล้วก็ได้'}</small>
+            <small>{file ? `${(file.size / 1024).toFixed(0)} KB · กดเพื่อเลือกไฟล์ใหม่` : 'รองรับ MSFZ · AICHI (ตู้ละชีตก็ได้) · JAN TRADING (และ JTC · HUAYO) — ไฟล์ดิบจากผู้ขายหรือไฟล์ imp3_ ที่ผูกสูตรแล้วก็ได้'}</small>
           </label>
           {inv ? <button type="button" className="button" onClick={reset} disabled={Boolean(busy)}>เริ่มใหม่</button> : null}
         </div>
@@ -183,23 +212,39 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
               <div><span>รูปแบบ</span><b><span className="badge neutral">{inv.pattern || '?'}</span></b><small>{inv.supplier}</small></div>
               <div><span>Invoice No.</span><b>{inv.invoiceNo || '-'}</b></div>
               <div><span>วันที่ Invoice</span><b>{inv.invoiceDate || '-'}</b></div>
-              <div><span>BL No.</span><b>{inv.blNo || '-'}</b></div>
+              <div>
+                <span>BL No.</span>
+                {inv.blNo ? <b>{inv.blNo}</b> : <b className="cgi-warn">ใบไม่ได้กรอก</b>}
+                {inv.blNo ? null : <small>{job?.blNo ? `ใช้ BL ของงาน: ${job.blNo}` : 'จะใช้ BL ของงานที่เลือก'}</small>}
+                {inv.bookingNo ? <small>Booking {inv.bookingNo}</small> : null}
+              </div>
               <div><span>เรือ</span><b>{inv.vessel || '-'}</b></div>
-              <div><span>ตู้</span><b>{inv.containers.length}</b></div>
+              <div><span>ตู้</span><b>{inv.containers.length}</b>{inv.sheets.length > 1 ? <small>{inv.sheets.length} ชีต (ตู้ละชีต)</small> : null}</div>
             </div>
 
             <div className="cgi-job">
               <span className="filter-label">บันทึกเข้างาน</span>
               {jobs.length === 0 ? (
-                <span className="cgi-bad">ไม่พบงานที่ BL {inv.blNo || '-'} ในระบบ — สร้างงานจาก Arrival Notice ก่อน แล้วอัปโหลดใหม่</span>
+                <span className="cgi-bad">
+                  {inv.blNo ? `ไม่พบงานที่ BL ${inv.blNo}` : 'ใบไม่มีเลข BL'} และไม่พบงานที่มีตู้ตรงกับใบนี้ — ค้นงานด้วย BL / Job No. ด้านขวา หรือสร้างงานจาก Arrival Notice ก่อน
+                </span>
               ) : jobs.length === 1 ? (
                 <b><Link href={`/job/${jobs[0].id}`}>{jobs[0].jobNo}</Link> <small>{jobs[0].blNo}</small></b>
               ) : (
                 <select value={jobId} onChange={(e) => setJobId(e.target.value)}>
-                  <option value="">— เลือกงาน ({jobs.length} งานที่ BL ใกล้เคียง) —</option>
-                  {jobs.map((j) => <option key={j.id} value={j.id}>{j.jobNo} · {j.blNo}</option>)}
+                  <option value="">— เลือกงาน ({jobs.length} งาน{matchedBy === 'containers' ? 'ที่มีตู้ตรงกัน' : matchedBy === 'bl' ? 'ที่ BL ใกล้เคียง' : ''}) —</option>
+                  {jobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.jobNo} · {j.blNo ?? '-'}{matchedBy === 'containers' ? ` · ตู้ตรง ${j.sharedBoxes}/${inv.containers.length}` : ''}
+                    </option>
+                  ))}
                 </select>
               )}
+              {jobs.length > 0 && matchedBy === 'containers' ? <small className="muted">หาจากเลขตู้ในใบ (ใบไม่มีเลข BL)</small> : null}
+              <form className="cgi-jobsearch" onSubmit={(e) => { e.preventDefault(); void searchJobs(); }}>
+                <input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="ไม่ใช่งานนี้? ค้น BL / Job No." />
+                <button type="submit" className="button tiny" disabled={Boolean(busy) || jobQuery.trim().length < 4}>ค้น</button>
+              </form>
               {job?.finalInvoice ? (
                 <span className={job.fnStatus === 'APPROVED' ? 'cgi-bad' : 'cgi-warn'}>
                   มี Final Invoice อยู่แล้ว (v{job.finalInvoice.version}{job.fnStatus ? ` · FN ${job.fnStatus === 'APPROVED' ? 'อนุมัติแล้ว' : job.fnStatus === 'PENDING' ? 'รออนุมัติ' : 'ถูกตีกลับ'}` : ''}) — บันทึกครั้งนี้จะเป็น v{job.finalInvoice.version + 1}
@@ -210,6 +255,19 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
             <ul className="cgi-checks">
               {checks.map((c) => <li key={c.text} className={c.ok ? 'ok' : 'bad'}>{c.ok ? '✓' : '⚠'} {c.text}</li>)}
             </ul>
+            {inv.charges.length ? (
+              <div className="cgi-charges">
+                <span className="filter-label">ยอดอื่นในใบ (ไม่ใช่ราคารถ — ไม่เขียนลงตารางสรุป)</span>
+                <ul>
+                  {inv.charges.map((c) => (
+                    <li key={`${c.sheet}-${c.row}`}>
+                      {c.label} · <b>{fmt(c.amount)}</b>
+                      <small>{c.inTotal ? ' บวกอยู่ในยอด TOTAL' : ' แจ้งไว้เฉยๆ (รวมในราคา CIF แล้ว)'}</small>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
 
           {/* ---------- 3. ตารางรถ + พิกัด ---------- */}
@@ -251,6 +309,7 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
                         <CarRow
                           key={`${c.no}-${c.chassis}`}
                           car={c}
+                          multiSheet={inv.sheets.length > 1}
                           tariff={tariffs?.[i] ?? null}
                           code={chosen[i] ?? ''}
                           onPick={(code) => setChosen((prev) => prev.map((p, k) => (k === i ? code : p)))}
@@ -301,9 +360,9 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
 }
 
 function CarRow({
-  car, tariff, code, onPick, adding, onAdd, onAdded,
+  car, multiSheet, tariff, code, onPick, adding, onAdd, onAdded,
 }: {
-  car: CargoCar; tariff: Tariff | null; code: string; onPick: (code: string) => void;
+  car: CargoCar; multiSheet: boolean; tariff: Tariff | null; code: string; onPick: (code: string) => void;
   adding: boolean; onAdd: () => void; onAdded: () => Promise<void>;
 }) {
   const bad = car.problems.length > 0;
@@ -334,7 +393,7 @@ function CarRow({
         </td>
       </tr>
       {bad ? (
-        <tr className="cgi-badrow"><td /><td colSpan={10}>⚠ {car.problems.join(' · ')} <small>(แถว {car.row} ในไฟล์)</small></td></tr>
+        <tr className="cgi-badrow"><td /><td colSpan={10}>⚠ {car.problems.join(' · ')} <small>({multiSheet ? `ชีต ${car.sheet} ` : ''}แถว {car.row} ในไฟล์)</small></td></tr>
       ) : null}
       {adding && tariff ? <tr><td /><td colSpan={10}><AddRule car={car} tariff={tariff} onAdded={onAdded} /></td></tr> : null}
     </>

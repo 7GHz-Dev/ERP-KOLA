@@ -28,12 +28,17 @@ export async function POST(request: Request) {
   if (typeof file === 'string') return json({ error: file }, 400);
 
   const jobId = String(form.get('jobId') ?? '');
-  const [job] = await db.select({ id: jobs.id, jobNo: jobs.jobNo, isArchived: jobs.isArchived })
+  const [job] = await db.select({ id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo, isArchived: jobs.isArchived })
     .from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job || job.isArchived) return json({ error: 'ไม่พบงานที่จะบันทึก Final Invoice' }, 400);
 
   const inv = await parseCargoInvoice(file.bytes);
   if (inv.errors.length) return json({ error: `ไฟล์มีปัญหา: ${inv.errors[0]}` }, 400);
+  // ใบที่ช่อง B/L ว่าง ใช้ BL ของงานที่เลือก — worker สร้าง Draft ต้องมี BL ในตารางสรุป (P14)
+  if (!inv.blNo) {
+    if (!job.blNo) return json({ error: `ใบนี้ไม่มีเลข BL และงาน ${job.jobNo} ก็ยังไม่มีเลข BL — ใส่ BL ให้งานก่อน` }, 400);
+    inv.blNo = job.blNo.replace(/\s/g, '').toUpperCase();
+  }
   const bad = inv.cars.find((c) => c.problems.length);
   if (bad) return json({ error: `รถคันที่ ${bad.no} (${bad.chassis || '-'}) ข้อมูลไม่ครบ: ${bad.problems[0]}` }, 400);
 

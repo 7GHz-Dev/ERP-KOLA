@@ -169,7 +169,8 @@ export function buildCsv(a: Analysis, data: DraftData, placeholder = false) {
   return { text, bytes: encodeTis620(text), totals: totals(data.csv, rows) };
 }
 
-export type CellUpdate = { row: number; col: number; value: string };
+/** sheet = ชื่อชีต (ไม่ระบุ = ชีตแรก ที่มีตารางสรุป) */
+export type CellUpdate = { sheet?: string; row: number; col: number; value: string };
 
 /** ช่องที่ต้องเขียนลง Excel: เลขเครื่อง (คันที่เติมเลข) + ค่าที่คำนวณไว้ของสูตร use_desc_good2 */
 export function excelUpdates(a: Analysis, placeholder = false) {
@@ -178,7 +179,7 @@ export function excelUpdates(a: Analysis, placeholder = false) {
     if (!FILL.includes(line.status)) continue;
     const number = placeholder && line.status === NEW ? '0000000' : line.number;
     const full = placeholder && line.status === NEW ? `${line.engine.head}-0000000` : line.full_engine;
-    values.push({ row: line.engine.row, col: line.engine.col, value: engineValueWith(line.engine, full) });
+    values.push({ sheet: line.engine.sheet, row: line.engine.row, col: line.engine.col, value: engineValueWith(line.engine, full) });
     cached.push({ row: line.car.row, col: colIndex(SUMMARY_COLS.desc2), value: addNumber(line.car.desc2, number) });
   }
   return { values, cached };
