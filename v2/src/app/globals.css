@@ -2609,3 +2609,7 @@ table.data td.col-lib { min-width: 300px; }
 .nav-group.nav-sub { margin-top: -6px; padding-left: 12px; }
 .nav-group.nav-sub .nav-group-title { font-size: 10px; opacity: .85; }
 .nav-sub-arrow { color: #1aae39; font-weight: 700; }
+/* Bookings table: แถบ 12 เดือนล่าสุด */
+.recent-bar { flex-wrap: wrap; }
+.recent-bar .recent-all { font-weight: 700; }
+.recent-older { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-basis: 100%; }

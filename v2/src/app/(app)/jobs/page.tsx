@@ -3,13 +3,13 @@ import { jobs } from '@/db/schema';
 import { requireUserReady } from '@/lib/auth';
 import { readParams, sheetColumns } from '@/lib/columns';
 import { JobTable, Tabs } from '@/components/JobTable';
-import { etaInPeriod, etaPeriodCounts, listJobs } from '@/lib/queries/jobs';
+import { etaInPeriod, etaPeriodCounts, etaSince, listJobs } from '@/lib/queries/jobs';
 import { ExportTemplateButton } from '@/components/ExportTemplateButton';
 import { jobCreatedConditions, validJobDate } from '@/lib/job-created-date';
 import { JobCreatedDateFilter } from '@/components/JobCreatedDateFilter';
 import { sheetRowClass } from '@/lib/register-sheet';
-import { PeriodFilter } from '@/components/PeriodFilter';
-import { periodParams, readPeriod } from '@/lib/eta-period';
+import { RecentPeriodFilter } from '@/components/RecentPeriodFilter';
+import { etaViewParams, readEtaView, recentFrom } from '@/lib/eta-period';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,10 +24,14 @@ export const dynamic = 'force-dynamic';
  * ใช้ตอนอยากตามหางานใดงานหนึ่งโดยไม่รู้ว่ามันค้างอยู่ขั้นไหน
  */
 
+/*
+ * เปิดมาเห็นงานที่กำลังดำเนินการก่อน — เป็นสิ่งที่ทีมเปิดหน้านี้มาดูบ่อยที่สุด
+ * "เสร็จสิ้น" = ได้เลขใบขนแล้ว (customs_status = FILED) เงื่อนไขเดิมของแท็บ "ยื่นใบขนแล้ว"
+ */
 const TABS = [
-  { key: 'all', label: 'ทั้งหมด' },
   { key: 'active', label: 'กำลังดำเนินการ' },
-  { key: 'done', label: 'ยื่นใบขนแล้ว' },
+  { key: 'done', label: 'เสร็จสิ้น' },
+  { key: 'all', label: 'ทั้งหมด' },
 ];
 
 const SEARCH_KEYS = [
@@ -42,15 +46,17 @@ export default async function JobsPage({
   await requireUserReady();
   const params = await searchParams;
   const { one, search, sortBy, sortDir, carry } = readParams(params, SEARCH_KEYS);
-  const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'all';
+  const tab = TABS.some((t) => t.key === one('tab')) ? one('tab') : 'active';
   const createdFrom = validJobDate(one('createdFrom'));
   const createdTo = validJobDate(one('createdTo'));
   if (createdFrom) carry.createdFrom = createdFrom;
   if (createdTo) carry.createdTo = createdTo;
-  // ปุ่มปี/เดือนของ ETA — ติดไปกับทุกลิงก์ (แท็บ · ค้นหา · เรียง) เหมือนตัวกรองอื่น
-  const period = readPeriod(one('year'), one('month'));
+  // แถบ ETA — ค่าตั้งต้น 12 เดือนล่าสุด · ติดไปกับทุกลิงก์ (แท็บ · ค้นหา · เรียง) เหมือนตัวกรองอื่น
+  const etaView = readEtaView(one('eta'), one('year'), one('month'));
   const baseCarry = { ...carry };
-  Object.assign(carry, periodParams(period));
+  Object.assign(carry, etaViewParams(etaView));
+  const etaWhere = etaView.kind === 'recent' ? etaSince(recentFrom())
+    : etaView.kind === 'period' ? etaInPeriod(etaView.period) : undefined;
 
   const tabWhere = () => [
     ...jobCreatedConditions(sql`${jobs.createdAt}`, createdFrom, createdTo),
@@ -59,7 +65,7 @@ export default async function JobsPage({
   ];
   const [{ rows, total }, periods] = await Promise.all([
     listJobs({
-      where: () => [...tabWhere(), etaInPeriod(period)],
+      where: () => [...tabWhere(), etaWhere],
       search,
       sortBy: sortBy ?? 'jobNo',
       sortDir,
@@ -73,7 +79,7 @@ export default async function JobsPage({
     <>
       <div className="page-head with-action">
         <div>
-          <h1>BOOKINGS</h1>
+          <h1>Bookings table</h1>
           <p>งานทุกใบตามตารางงานเดิม · ส้ม = MUO · ม่วง = BY TRUCK · ขาว = MU ยังไม่ส่งแพลนลากตู้ · คลิกเลขลำดับเพื่อดูสรุปงานและไฟล์แนบ</p>
         </div>
         {/* หน้านี้เห็นทุกงาน จึงโหลดได้ทั้งสองแบบ */}
@@ -86,7 +92,7 @@ export default async function JobsPage({
       <Tabs basePath="/jobs" items={TABS} active={tab} carry={carry} />
 
       <JobCreatedDateFilter key={`${createdFrom}:${createdTo}`} createdFrom={createdFrom} createdTo={createdTo} />
-      <PeriodFilter basePath="/jobs" carry={{ ...baseCarry, tab }} period={period} counts={periods} />
+      <RecentPeriodFilter basePath="/jobs" carry={{ ...baseCarry, tab }} view={etaView} counts={periods} />
 
       <JobTable
         basePath="/jobs"

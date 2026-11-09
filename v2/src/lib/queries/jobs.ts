@@ -316,6 +316,11 @@ export async function listJobs(filter: JobFilter = {}) {
 
 export type JobRow = Awaited<ReturnType<typeof listJobs>>['rows'][number];
 
+/** ETA ตั้งแต่วันที่นี้เป็นต้นไป (รวมเรือที่ยังไม่เข้า) — แถบ "12 เดือนล่าสุด" ของ Bookings table */
+export function etaSince(from: string): SQL {
+  return sql`${jobs.eta} >= ${from}::date`;
+}
+
 /** ETA อยู่ในปี/เดือนที่เลือก (ปุ่มปี/เดือนเหนือตาราง) — ไม่ได้เลือกคืน undefined = ไม่กรอง */
 export function etaInPeriod(p: Period): SQL | undefined {
   const range = periodRange(p);

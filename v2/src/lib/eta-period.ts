@@ -53,3 +53,69 @@ export function periodCounts(rows: PeriodCount[], year: number | null) {
     months,
   };
 }
+
+/* ---------- ทะเบียนงาน (Bookings table): 12 เดือนล่าสุดเป็นค่าตั้งต้น ---------- */
+
+/**
+ * มุมที่เลือกของแถบ ETA ในหน้า Bookings table
+ *   recent  12 เดือนล่าสุด (ค่าตั้งต้น) — ETA ตั้งแต่ต้นเดือนที่ 11 ก่อนเดือนนี้ ไม่จำกัดปลาย (เรือที่ยังไม่เข้าก็เห็น)
+ *   all     ทุกงาน (?eta=all)
+ *   period  ปี / เดือนที่กดเลือก (?year=&month=) — แบบเดียวกับแถบเดิมของหน้าลากตู้
+ */
+export type EtaView = { kind: 'recent' } | { kind: 'all' } | { kind: 'period'; period: Period };
+
+export function readEtaView(eta: string, year: string, month: string): EtaView {
+  if (eta === 'all') return { kind: 'all' };
+  const period = readPeriod(year, month);
+  return period.year ? { kind: 'period', period } : { kind: 'recent' };
+}
+
+export function etaViewParams(v: EtaView): Record<string, string> {
+  if (v.kind === 'all') return { eta: 'all' };
+  if (v.kind === 'period') return periodParams(v.period);
+  return {};
+}
+
+/** เดือนปัจจุบันตามเวลาไทย */
+export function currentMonth(now = new Date()): { year: number; month: number } {
+  const [y, m] = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }).split('-').map(Number);
+  return { year: y, month: m };
+}
+
+const monthIndex = (p: { year: number; month: number }) => p.year * 12 + (p.month - 1);
+const fromIndex = (i: number) => ({ year: Math.floor(i / 12), month: (i % 12) + 1 });
+
+/** เดือนแรกของช่วง 12 เดือนล่าสุด (นับเดือนนี้เป็นเดือนที่ 12) */
+export function recentStart(now = new Date()) {
+  return fromIndex(monthIndex(currentMonth(now)) - 11);
+}
+
+/** วันแรกของช่วง 12 เดือนล่าสุด — ใช้เป็นเงื่อนไข SQL (etaSince) */
+export function recentFrom(now = new Date()) {
+  const s = recentStart(now);
+  return `${s.year}-${pad(s.month)}-01`;
+}
+
+/** "พ.ย. 69" — ปี พ.ศ. สองหลักแบบที่ทีมเขียนกัน */
+export const monthLabel = (p: { year: number; month: number }) => `${MONTHS_TH[p.month - 1]} ${String(p.year + 543).slice(-2)}`;
+
+/**
+ * ปุ่มเดือนของแถบ 12 เดือนล่าสุด — ใหม่สุดก่อน
+ * เริ่มที่เดือนนี้ (หรือเดือนที่มี ETA ไกลสุดถ้าเรือยังไม่เข้า) ไล่ย้อนไปถึงเดือนแรกของช่วง
+ * พร้อมยอดรวมของช่วง และปีก่อนหน้าที่ยังมีงาน (ปุ่ม "ปีก่อนหน้า")
+ */
+export function recentBar(rows: PeriodCount[], now = new Date()) {
+  const start = monthIndex(recentStart(now));
+  const latest = Math.max(monthIndex(currentMonth(now)), ...rows.map((r) => monthIndex(r)));
+  const byMonth = new Map(rows.map((r) => [monthIndex(r), r.count]));
+  const months = [];
+  for (let i = latest; i >= start; i -= 1) months.push({ ...fromIndex(i), count: byMonth.get(i) ?? 0 });
+  const recentTotal = rows.filter((r) => monthIndex(r) >= start).reduce((s, r) => s + r.count, 0);
+  const allTotal = rows.reduce((s, r) => s + r.count, 0);
+  const older = new Map<number, number>();
+  for (const r of rows) if (monthIndex(r) < start) older.set(r.year, (older.get(r.year) ?? 0) + r.count);
+  return {
+    months, recentTotal, allTotal, start: fromIndex(start),
+    olderYears: [...older].sort((a, b) => b[0] - a[0]).map(([year, count]) => ({ year, count })),
+  };
+}
