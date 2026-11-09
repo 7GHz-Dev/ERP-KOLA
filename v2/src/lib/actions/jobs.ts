@@ -15,6 +15,7 @@ import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 import { resolveWaitingBlsForJob } from '@/lib/waiting-bl-store';
 import { jobIsOtherCargo, requireJobActor } from '@/lib/job-actor';
+import { assertSalePrice } from '@/lib/sale/price-store';
 
 /**
  * การแก้ไขข้อมูลทั้งหมดผ่าน server action
@@ -820,6 +821,8 @@ async function submitDraftForReviewImpl(formData: FormData) {
   if (!job.draftRefNo) throw new Error('ยังไม่มีเลข Ref No. ต้องสร้าง Draft ให้เสร็จก่อน');
   if (job.draftStatus === 'SUBMITTED') throw new Error('ส่งให้ FAH ตรวจอยู่แล้ว');
   if (job.customsStatus === 'FILED') throw new Error('งานนี้ได้เลขใบขนแล้ว ไม่ต้องส่งตรวจซ้ำ');
+  // ราคาเก็บลูกค้าจาก Sale ต้องยืนยันก่อนยิงใบขน (lib/sale/price-store.ts)
+  await assertSalePrice(jobId);
 
   await db.update(jobs).set({
     draftStatus: 'SUBMITTED', draftRejectReason: null,
@@ -840,6 +843,8 @@ async function fileCustomsEntryImpl(formData: FormData) {
   // Other cargo: Head Officer บันทึกเลขใบขนเองได้ (ไม่มีขั้น Senior Officer ตรวจ Draft)
   const user = await requireJobActor(jobId, ['FAH']);
   const declarationNo = required(formData.get('declarationNo'), 'เลขที่ใบขน', 120);
+  // ราคาเก็บลูกค้าจาก Sale ต้องยืนยันก่อนยิงใบขน (lib/sale/price-store.ts)
+  await assertSalePrice(jobId);
 
   const [existing] = await db.select().from(customsEntries)
     .where(eq(customsEntries.jobId, jobId)).orderBy(desc(customsEntries.updatedAt)).limit(1);

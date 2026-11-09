@@ -13,6 +13,7 @@ import { deleteJobs } from '@/lib/actions/job-delete';
 import Link from 'next/link';
 import { hasArrivalFiles, listJobs, otherQueue, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { queueCounts } from '@/lib/queries/dashboard';
+import { priceStatus } from '@/lib/sale/price-store';
 import { DRAFT_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 import { DraftWorkerBar } from '@/components/DraftWorkerBar';
 
@@ -52,7 +53,11 @@ function columnsFor(
   sub: 'wait' | 'approve',
   other: boolean,
   signed: Column[] = [],
+  /** ราคา Sale ของแถวในแท็บ Draft — null = ไม่รู้ (ยังไม่ได้รัน migrate:sale) ไม่ล็อก */
+  prices: Map<string, { confirmed: boolean }> | null = null,
 ): Column[] {
+  const priceLocked = (id: string) => Boolean(prices && !prices.get(id)?.confirmed);
+  const lockBadge = <span className="badge rejected" title="Sale ต้องกำหนดและยืนยันราคาเก็บลูกค้าก่อนยิงใบขน">🔒 รอราคาจาก Sale</span>;
   // งาน Other cargo กดแล้วอนุมัติทันที — ใช้คำว่า "ยืนยัน" แทน "ส่งอนุมัติ" ให้ตรงกับที่เกิดขึ้นจริง
   const sendLabel = (type: 'AN' | 'FN', rejected: boolean) =>
     (other ? (type === 'AN' ? 'ยืนยันเข้าตารางหลัก' : 'ยืนยัน Final Invoice') : rejected ? 'ส่งใหม่' : 'ส่งอนุมัติ');
@@ -122,10 +127,14 @@ function columnsFor(
             {draftBadge(r)}
             <ShowReason reason={r.draftStatus === 'HUB_ERROR' ? r.draftRejectReason : null} />
             {r.draftStatus === 'SENT_TO_HUB' && r.draftTaskId ? <DraftLocalLaunch jobId={r.id} taskId={r.draftTaskId} /> : null}
-            {r.draftStatus !== 'SENT_TO_HUB' && r.currentFiles?.FINAL_INVOICE ? (
-              <SubmitDraftLocal jobId={r.id} label={r.draftRefNo ? 'สร้าง Draft ใหม่' : 'สร้าง Draft'} />
-            ) : null}
-            <FileCustomsForm jobId={r.id} />
+            {priceLocked(r.id) ? lockBadge : (
+              <>
+                {r.draftStatus !== 'SENT_TO_HUB' && r.currentFiles?.FINAL_INVOICE ? (
+                  <SubmitDraftLocal jobId={r.id} label={r.draftRefNo ? 'สร้าง Draft ใหม่' : 'สร้าง Draft'} />
+                ) : null}
+                <FileCustomsForm jobId={r.id} />
+              </>
+            )}
           </div>
         ),
       }];
@@ -139,7 +148,7 @@ function columnsFor(
           <div className="row-actions">
             {draftBadge(r)}
             <ShowReason reason={r.draftStatus === 'REJECTED' || r.draftStatus === 'HUB_ERROR' ? r.draftRejectReason : null} />
-            {sub === 'wait' ? (
+            {sub === 'wait' && priceLocked(r.id) ? lockBadge : sub === 'wait' ? (
               <DraftActions
                 jobId={r.id}
                 draftStatus={r.draftStatus}
@@ -320,6 +329,9 @@ export async function PendingView({
     tab === 'signed' ? signedColumns(false) : Promise.resolve([] as Column[]),
   ]);
 
+  // แท็บ Draft: งานที่ Sale ยังไม่ยืนยันราคา ยิงใบขนไม่ได้ — ซ่อนปุ่มแล้วขึ้นป้าย 🔒 แทน
+  const prices = tab === 'draft' ? await priceStatus(rows.map((r) => r.id)) : null;
+
   const tabsWithCount = tabs.map((t) => ({ ...t, count: counts[t.key] || undefined }));
 
   /*
@@ -332,7 +344,7 @@ export async function PendingView({
   const table = (
     <JobTable
       basePath={basePath}
-      columns={columnsFor(tab, sub, other, signed)}
+      columns={columnsFor(tab, sub, other, signed, prices)}
       rows={rows}
       total={total}
       carry={fullCarry}

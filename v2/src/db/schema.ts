@@ -522,3 +522,90 @@ export const waitingBls = pgTable('waiting_bls', {
   keyIdx: index('waiting_bls_key_idx').on(t.blKey),
   openIdx: index('waiting_bls_open_idx').on(t.resolvedAt, t.cancelledAt),
 }));
+
+/* ---------------- Sale: ราคาเก็บลูกค้า + ค่าใช้จ่ายพิเศษจาก SHIPME ---------------- */
+
+/**
+ * ราคาที่ Sale กำหนดเก็บลูกค้าของงานหนึ่ง (หัว) — confirmed_at มีค่า = ยืนยันแล้ว ยิงใบขนได้
+ * รายการราคาอยู่ที่ job_price_lines · total เก็บซ้ำไว้ให้ตารางรายการอ่านได้โดยไม่ต้องรวมใหม่
+ */
+export const jobPriceSets = pgTable('job_price_sets', {
+  jobId: text('job_id').primaryKey().references(() => jobs.id, { onDelete: 'cascade' }),
+  currency: text('currency').default('THB').notNull(),
+  total: numeric('total', { precision: 18, scale: 2 }).default('0').notNull(),
+  note: text('note'),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  confirmedBy: text('confirmed_by'),
+  updatedBy: text('updated_by'),
+  updatedAt: updatedAt(),
+});
+
+export const jobPriceLines = pgTable('job_price_lines', {
+  id: id(),
+  jobId: text('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+  lineNo: integer('line_no').notNull(),
+  description: text('description').notNull(),
+  /** CONTAINER = ต่อตู้ · JOB = ต่องาน */
+  unit: text('unit').notNull(),
+  quantity: numeric('quantity', { precision: 12, scale: 2 }).notNull(),
+  unitPrice: numeric('unit_price', { precision: 18, scale: 2 }).notNull(),
+  amount: numeric('amount', { precision: 18, scale: 2 }).notNull(),
+}, (t) => ({ jobIdx: index('job_price_lines_job_idx').on(t.jobId, t.lineNo) }));
+
+/**
+ * ค่าใช้จ่ายพิเศษที่ ERP SHIPME ส่งมา (หนึ่งชุดใบแจ้งหนี้ของ BL หนึ่งใบ) และผลการเจรจาของ Sale
+ * สถานะ: NEW (เพิ่งรับ) → NEGOTIATING (Sale บันทึกแล้ว) → SUBMITTED (ส่งให้ Supervisor) → APPROVED / RETURNED
+ */
+export const specialCharges = pgTable('special_charges', {
+  id: id(),
+  /** เลขชุดจาก SHIPME — ส่งซ้ำด้วยเลขเดิม = อัปเดตชุดเดิม ไม่สร้างใหม่ */
+  shipmeBatchId: text('shipme_batch_id').notNull(),
+  blNo: text('bl_no').notNull(),
+  jobId: text('job_id'),
+  invoiceNo: text('invoice_no'),
+  issuedAt: timestamp('issued_at', { withTimezone: true }),
+  currency: text('currency').default('THB').notNull(),
+  requestedTotal: numeric('requested_total', { precision: 18, scale: 2 }).default('0').notNull(),
+  agreedTotal: numeric('agreed_total', { precision: 18, scale: 2 }),
+  shipmeNote: text('shipme_note'),
+  status: text('status').default('NEW').notNull(),
+  saleNote: text('sale_note'),
+  saleBy: text('sale_by'),
+  saleAt: timestamp('sale_at', { withTimezone: true }),
+  reviewNote: text('review_note'),
+  reviewBy: text('review_by'),
+  reviewAt: timestamp('review_at', { withTimezone: true }),
+  receivedAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  batchKey: uniqueIndex('special_charges_batch_key').on(t.shipmeBatchId),
+  statusIdx: index('special_charges_status_idx').on(t.status),
+}));
+
+export const specialChargeItems = pgTable('special_charge_items', {
+  id: id(),
+  chargeId: text('charge_id').notNull().references(() => specialCharges.id, { onDelete: 'cascade' }),
+  lineNo: integer('line_no').notNull(),
+  code: text('code'),
+  description: text('description').notNull(),
+  quantity: numeric('quantity', { precision: 12, scale: 2 }).default('1').notNull(),
+  requestedAmount: numeric('requested_amount', { precision: 18, scale: 2 }).notNull(),
+  agreedAmount: numeric('agreed_amount', { precision: 18, scale: 2 }),
+  shipmeNote: text('shipme_note'),
+  saleNote: text('sale_note'),
+}, (t) => ({ chargeIdx: index('special_charge_items_charge_idx').on(t.chargeId, t.lineNo) }));
+
+/** รูป/ไฟล์แนบ — SHIPME ส่งมากับชุด หรือหลักฐานการเจรจาที่ Sale แนบเอง */
+export const specialChargeFiles = pgTable('special_charge_files', {
+  id: id(),
+  chargeId: text('charge_id').notNull().references(() => specialCharges.id, { onDelete: 'cascade' }),
+  /** SHIPME = มากับข้อมูลจาก ERP SHIPME · SALE = หลักฐานที่ Sale แนบ */
+  source: text('source').notNull(),
+  storageKey: text('storage_key').notNull(),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type'),
+  sizeBytes: integer('size_bytes'),
+  note: text('note'),
+  uploadedBy: text('uploaded_by'),
+  uploadedAt: createdAt(),
+}, (t) => ({ chargeIdx: index('special_charge_files_charge_idx').on(t.chargeId) }));

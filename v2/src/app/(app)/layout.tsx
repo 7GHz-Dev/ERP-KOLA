@@ -35,7 +35,7 @@ const NAV: NavGroup[] = [
      * ภาพรวมงานกับทะเบียนงานเป็นมุมของฝั่ง KOLA จึงไม่ต้องมีในเมนูของสองคนนี้
      * เมนูสั้นลงเหลือเฉพาะงานของตัวเอง ซึ่งช่วยมากตอนใช้บนมือถือ
      */
-    label: 'Import Dept.', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY', 'ACCOUNT'],
+    label: 'Import Dept.', color: '#a4a097', roles: [], hideFor: ['ANN', 'MAY', 'ACCOUNT', 'SALE', 'SALE_SUPERVISOR'],
     items: [
       { href: '/overview', label: 'Dashboard' },
       { href: '/jobs', label: 'Bookings table' },
@@ -85,6 +85,20 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/other/msfz', label: 'Other cargo, import decl. (MSFZ)', count: 'otherMsfz' },
       { href: '/other/transit', label: 'Other cargo, import decl. (Transit)', count: 'otherTransit' },
+    ],
+  },
+  {
+    // ฝ่ายขาย — ราคาเก็บลูกค้า (ต้องยืนยันก่อนยิงใบขน) และเจรจาค่าใช้จ่ายพิเศษกับ SHIPME
+    label: 'Sale Officer', color: '#8e24aa', roles: ['SALE', 'SALE_SUPERVISOR'],
+    items: [
+      { href: '/sale/pricing', label: 'กำหนดราคา', count: 'salePricingWait' },
+      { href: '/sale/charges', label: 'ค่าใช้จ่ายพิเศษ SHIPME', count: 'saleChargesTodo' },
+    ],
+  },
+  {
+    label: 'Sale Supervisor', color: '#8e24aa', roles: ['SALE_SUPERVISOR'],
+    items: [
+      { href: '/sale/charges?tab=review', label: 'ตรวจสอบการเจรจา', count: 'saleChargesReview' },
     ],
   },
   {

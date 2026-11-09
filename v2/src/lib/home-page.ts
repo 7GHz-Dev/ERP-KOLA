@@ -12,6 +12,8 @@ const HOME: Record<string, string> = {
   ACCOUNT: '/account/invoice-print',
   MAY: '/may/do-pay',
   ANN: '/do-exchange',
+  SALE: '/sale/pricing',
+  SALE_SUPERVISOR: '/sale/charges',
 };
 
 export function homePageFor(role: string | null | undefined): string {

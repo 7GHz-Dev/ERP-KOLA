@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { automationTasks } from '@/db/schema';
+import { priceStatus } from '@/lib/sale/price-store';
 import { requireUserReady } from '@/lib/auth';
 import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
@@ -62,10 +63,13 @@ export default async function FahDraftPage({
       .orderBy(desc(automationTasks.createdAt)).limit(1),
     isCustomsSimulation(),
   ]);
-  const [tasks, monitors] = await Promise.all([
+  const [tasks, monitors, prices] = await Promise.all([
     tab === 'done' ? new Map() : latestCustomsTasks(rows.map((r) => r.id)),
     tab === 'waiting' ? onlineWorkers({ mode: CUSTOMS_WORKER_MODE }) : Promise.resolve([]),
+    // ราคาเก็บลูกค้าจาก Sale — ยังไม่ยืนยันยิงใบขนไม่ได้ (null = ยังไม่ได้รัน migrate:sale ไม่ล็อก)
+    tab === 'review' ? priceStatus(rows.map((r) => r.id)) : Promise.resolve(null),
   ]);
+  const priceLocked = (id: string) => Boolean(prices && !prices.get(id)?.confirmed);
 
   const columns: Column[] =
     tab === 'done'
@@ -97,7 +101,9 @@ export default async function FahDraftPage({
                  {t?.status === 'ERROR' && t.error
                    ? <span className="badge rejected" title={t.error}>ใบขนถูกยกเลิกใน NETBAY</span>
                    : null}
-                 <SubmitCustomsDone jobId={r.id} simulate={simulation} />
+                 {priceLocked(r.id)
+                   ? <span className="badge rejected" title="Sale ต้องกำหนดและยืนยันราคาเก็บลูกค้าก่อน">🔒 รอราคาจาก Sale</span>
+                   : <SubmitCustomsDone jobId={r.id} simulate={simulation} />}
                  <RejectDraftButton jobId={r.id} />
                </div>
              );

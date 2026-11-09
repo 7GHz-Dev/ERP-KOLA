@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { automationTasks, customsEntries, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { requireJobActor } from '@/lib/job-actor';
+import { assertSalePrice } from '@/lib/sale/price-store';
 import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId, required, runAction } from './common';
 import { reuseOpenTask, TASK_TYPES } from '@/lib/automation';
@@ -25,6 +26,8 @@ import { netbayCredentials } from '@/lib/netbay-accounts';
 async function submitDraftTaskImpl(formData: FormData) {
   const jobId = required(formData.get('jobId'), 'งาน', 80);
   const user = await requireJobActor(jobId, ['PAINT']);
+  // ราคาเก็บลูกค้าจาก Sale ต้องยืนยันก่อนยิงใบขน (lib/sale/price-store.ts)
+  await assertSalePrice(jobId);
   // บัญชี NETBAY ที่เลือกไว้ก่อนกด — ว่าง = บัญชีประจำเครื่องที่กด (.env.local)
   const netbayUser = String(formData.get('netbayUser') ?? '').trim().slice(0, 80);
   if (netbayUser && !netbayCredentials(netbayUser)) throw new Error(`ไม่รู้จักบัญชี NETBAY "${netbayUser}"`);
@@ -68,6 +71,8 @@ async function submitDraftTaskImpl(formData: FormData) {
 async function submitCustomsTaskImpl(formData: FormData) {
   const user = await requireActiveSession(['FAH']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
+  // ราคาเก็บลูกค้าจาก Sale ต้องยืนยันก่อนยิงใบขน (lib/sale/price-store.ts)
+  await assertSalePrice(jobId);
 
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');

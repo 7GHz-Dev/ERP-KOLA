@@ -32,8 +32,30 @@ export async function dashboardSummary() {
  * เวลาที่เพิ่มจึงทับซ้อนกับ query ของหน้า ไม่ได้บวกเข้าไปตรง ๆ
  */
 export async function navCounts() {
-  const [main, waitingBl, people] = await Promise.all([navCountsMain(), waitingBlCount(), queueCounts(PERSON_QUEUES)]);
-  return { ...main, waitingBl, ...people };
+  const [main, waitingBl, people, sale] = await Promise.all([navCountsMain(), waitingBlCount(), queueCounts(PERSON_QUEUES), saleCounts()]);
+  return { ...main, waitingBl, ...people, ...sale };
+}
+
+/**
+ * ตัวเลขเมนู Sale — ตารางมาจาก npm run migrate:sale ยังไม่รันก็เป็น 0 ไม่ทำให้เมนูทั้งระบบล้ม
+ *   salePricingWait   งานที่เข้าตารางหลักแล้ว ยังไม่ยืนยันราคา และยังไม่ได้เลขใบขน (ตรงกับแท็บ "รอกำหนดราคา")
+ *   saleChargesTodo   ค่าใช้จ่ายพิเศษใหม่จาก SHIPME หรือถูกส่งกลับให้แก้
+ *   saleChargesReview รอ SALE SUPERVISOR ตรวจ
+ */
+async function saleCounts() {
+  try {
+    const [row] = await db.execute<{ pricing: number; todo: number; review: number }>(sql`
+      select
+        (select count(*) from jobs j
+          where j.is_archived = false and j.customs_status <> 'FILED'
+            and (select a.status from approvals a where a.job_id = j.id and a.approval_type = 'AN' order by a.requested_at desc limit 1) = 'APPROVED'
+            and not exists (select 1 from job_price_sets ps where ps.job_id = j.id and ps.confirmed_at is not null))::int as pricing,
+        (select count(*) from special_charges where status in ('NEW', 'RETURNED'))::int as todo,
+        (select count(*) from special_charges where status = 'SUBMITTED')::int as review`);
+    return { salePricingWait: Number(row?.pricing ?? 0), saleChargesTodo: Number(row?.todo ?? 0), saleChargesReview: Number(row?.review ?? 0) };
+  } catch {
+    return { salePricingWait: 0, saleChargesTodo: 0, saleChargesReview: 0 };
+  }
 }
 
 /*

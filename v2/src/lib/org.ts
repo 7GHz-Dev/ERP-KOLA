@@ -43,6 +43,12 @@ export const DEPARTMENTS = [
     roles: ['ACCOUNT'],
   },
   {
+    key: 'SALES',
+    label: 'ขาย (Sale)',
+    company: 'KOLA' as CompanyKey,
+    roles: ['SALE', 'SALE_SUPERVISOR'],
+  },
+  {
     key: 'SYSTEM',
     label: 'ผู้ดูแลระบบ',
     company: 'KOLA' as CompanyKey,
@@ -85,6 +91,14 @@ export const ROLE_INFO: Record<string, { label: string; detail: string }> = {
   ACCOUNT: {
     label: 'ACCOUNT',
     detail: 'เลือกเลข BL หลายใบเพื่อดึง Invoice DO มาพิมพ์รวมกัน',
+  },
+  SALE: {
+    label: 'SALE OFFICER',
+    detail: 'กำหนดราคาเก็บลูกค้า (ต้องกำหนดก่อนยิงใบขน) และเจรจาค่าใช้จ่ายพิเศษกับ SHIPME พร้อมหลักฐาน',
+  },
+  SALE_SUPERVISOR: {
+    label: 'SALE SUPERVISOR',
+    detail: 'ทำได้ทุกอย่างของ SALE OFFICER และตรวจสอบ / อนุมัติผลการเจรจาค่าใช้จ่ายพิเศษ',
   },
 };
 
