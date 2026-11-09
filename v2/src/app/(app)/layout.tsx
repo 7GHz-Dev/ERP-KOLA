@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { ActionAlert } from '@/components/ActionAlert';
 import { AssistantChat } from '@/components/AssistantChat';
+import { JobTracker } from '@/components/JobTracker';
 import { DisclosureBehavior } from '@/components/Interactions';
 import { SideNav } from '@/components/SideNav';
 import { SidebarToggle } from '@/components/SidebarToggle';
@@ -231,6 +232,8 @@ export default async function AppLayout({
         {children}
       </main>
       {drawer}
+      {/* เช็คสถานะ BL (หลอดขั้นงาน ไม่ใช้ AI) — ทุกคน · วางเหนือปุ่มผู้ช่วยเมื่อมีปุ่มนั้น */}
+      <JobTracker stacked={homePageFor(user.role) === '/overview'} />
       {/* ผู้ช่วยถามข้อมูล — role เดียวกับหน้าภาพรวมงาน (API ตรวจสิทธิ์ซ้ำอีกชั้น) */}
       {homePageFor(user.role) === '/overview' ? <AssistantChat /> : null}
     </div>

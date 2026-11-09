@@ -67,8 +67,9 @@ export default async function JobsPage({
     listJobs({
       where: () => [...tabWhere(), etaWhere],
       search,
-      sortBy: sortBy ?? 'jobNo',
-      sortDir,
+      // ค่าตั้งต้น: ETA เก่าสุดขึ้นก่อน — งานที่เรือเข้ามานานที่สุดคืองานที่ต้องตามก่อน
+      sortBy: sortBy ?? 'eta',
+      sortDir: sortBy ? sortDir : 'asc',
     }),
     etaPeriodCounts(tabWhere),
   ]);
@@ -100,8 +101,8 @@ export default async function JobsPage({
         rows={rows}
         total={total}
         carry={{ ...carry, tab }}
-        sortBy={sortBy ?? 'jobNo'}
-        sortDir={sortDir}
+        sortBy={sortBy ?? 'eta'}
+        sortDir={sortBy ? sortDir : 'asc'}
         empty="ไม่พบงานที่ตรงกับคำค้น"
         hint="อยากเห็นเฉพาะงานที่ค้างในขั้นตอนของคุณ ให้ใช้เมนูงานคงค้าง"
         rowClass={sheetRowClass}
