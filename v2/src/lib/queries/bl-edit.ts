@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
-import { files, jobs } from '@/db/schema';
+import { approvals, files, jobs, masterRecords } from '@/db/schema';
+import { OTHER_KINDS } from '@/lib/other-cargo';
 
 /**
  * ข้อมูลของงานสำหรับแผงแก้ข้อมูล BL พร้อมไฟล์ต้นทางไว้เปิดดูคู่กัน
@@ -26,9 +27,20 @@ export async function loadBlEdit(jobId: string) {
       inArray(files.category, ['ARRIVAL_NOTICE', 'BL']),
     ));
 
+  // ลบงานได้ตราบที่ AN ยังไม่ถูกอนุมัติ (ยังไม่เข้าตารางหลัก) — ดู actions/job-delete.ts
+  const appr = await db.select({ status: approvals.status }).from(approvals).where(eq(approvals.jobId, jobId));
+  // ลบแล้วกลับไปรายการที่งานนี้อยู่ — Other cargo อยู่หน้า Other job ของ Head Officer
+  const [type] = job.jobTypeId
+    ? await db.select({ code: masterRecords.code }).from(masterRecords).where(eq(masterRecords.id, job.jobTypeId)).limit(1)
+    : [];
+  const code = (type?.code ?? '').trim().toUpperCase();
+  const kind = Object.entries(OTHER_KINDS).find(([, k]) => k.code === code)?.[0];
   const byCategory = new Map(rows.map((r) => [r.category, r]));
   return {
     job,
+    deletable: !appr.some((a) => a.status === 'APPROVED'),
+    waitingApproval: appr.some((a) => a.status === 'PENDING'),
+    returnTo: kind ? `/other/${kind}?tab=bl` : '/pending?tab=bl',
     // ใบที่รับเข้ามาเป็นหลักขึ้นก่อน อีกใบเป็นตัวสำรองให้สลับดูได้
     source: byCategory.get(job.sourceType === 'BL' ? 'BL' : 'ARRIVAL_NOTICE')
       ?? byCategory.get('ARRIVAL_NOTICE') ?? byCategory.get('BL'),

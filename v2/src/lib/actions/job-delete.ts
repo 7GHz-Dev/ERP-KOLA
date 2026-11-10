@@ -1,10 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, files, jobs } from '@/db/schema';
-import { requireActiveSession } from '@/lib/auth';
+import { requireJobsActor } from '@/lib/job-actor';
 import { removeFile } from '@/lib/storage';
 import { logActivity, runAction } from './common';
 
@@ -17,14 +18,17 @@ import { logActivity, runAction } from './common';
  * แถวในตารางลูกหายตามด้วย foreign key cascade — BL ตู้ ไฟล์ ประวัติ คำขออนุมัติ
  * แต่ไฟล์ใน storage ไม่ได้หายตาม ต้องสั่งลบเอง ไม่งั้นจะเหลือไฟล์ลอยที่ไม่มีใครอ้างถึง
  *
- * จำกัดเฉพาะงานที่ยังอยู่ขั้น "รอส่งอนุมัติ AN" เท่านั้น
- * งานที่เดินไปไกลกว่านั้นมีคนอื่นใช้ข้อมูลต่อแล้ว ลบทิ้งจะกระทบงานของฝ่ายอื่น
+ * ลบได้ตราบที่งานยังไม่เข้าตารางหลัก (AN ยังไม่ถูกอนุมัติ) — ทั้งที่ยังไม่ส่ง ถูกตีกลับ หรือส่งไปรอ Head Officer อนุมัติอยู่
+ * งานที่ส่งไปรออนุมัติ ลบแล้วคำขออนุมัติหายตามไปด้วย (cascade) คิวของ Head Officer จึงไม่ค้าง
+ * งานที่อนุมัติเข้าตารางหลักแล้วมีคนอื่นใช้ข้อมูลต่อ ลบทิ้งจะกระทบงานของฝ่ายอื่น — ใช้ซ่อนที่ Master Data แทน
+ *
+ * Import Officer ลบได้ · Head Officer ลบได้เฉพาะงาน Other cargo (MO / TO) ที่ดูแลเอง
  */
 async function deleteJobsImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
   const ids = String(formData.get('jobIds') ?? '')
     .split(',').map((v) => v.trim()).filter(Boolean);
   if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
+  const user = await requireJobsActor(ids, ['PAINT']);
 
   const rows = await db
     .select({ id: jobs.id, jobNo: jobs.jobNo, isArchived: jobs.isArchived })
@@ -33,10 +37,8 @@ async function deleteJobsImpl(formData: FormData) {
   if (!rows.length) throw new Error('ไม่พบงานที่เลือก');
 
   /*
-   * ตรวจว่าทุกใบยังลบได้จริงก่อนเริ่มลบ
-   *
-   * ใบที่เคยส่งอนุมัติแล้ว (มีแถวใน approvals ที่ไม่ใช่ REJECTED) แปลว่ามีคนเห็นข้อมูลไปแล้ว
-   * ถ้าเป็น REJECTED คือถูกตีกลับมาให้แก้ ซึ่งยังอยู่ในมือ PAINT อยู่ ลบได้
+   * ตรวจว่าทุกใบยังลบได้จริงก่อนเริ่มลบ — ใบไหนมีคำขออนุมัติที่ APPROVED แล้ว (AN เข้าตารางหลัก) ลบไม่ได้
+   * PENDING (รอ Head Officer) กับ REJECTED (ถูกตีกลับ) ยังไม่เข้าตารางหลัก ลบได้
    */
   const appr = await db
     .select({ jobId: approvals.jobId, status: approvals.status })
@@ -44,10 +46,10 @@ async function deleteJobsImpl(formData: FormData) {
     .where(inArray(approvals.jobId, ids));
 
   const blocked = rows.filter((r) =>
-    appr.some((a) => a.jobId === r.id && a.status !== 'REJECTED'));
+    appr.some((a) => a.jobId === r.id && a.status === 'APPROVED'));
   if (blocked.length) {
     throw new Error(
-      `ลบไม่ได้ ${blocked.length} รายการเพราะส่งอนุมัติไปแล้ว: `
+      `ลบไม่ได้ ${blocked.length} รายการเพราะอนุมัติเข้าตารางหลักแล้ว: `
       + blocked.map((b) => b.jobNo).join(', '),
     );
   }
@@ -78,6 +80,12 @@ async function deleteJobsImpl(formData: FormData) {
 
   revalidatePath('/pending');
   revalidatePath('/jobs');
+  revalidatePath('/nam/pending');
+  revalidatePath('/other', 'layout');
+
+  // ลบจากหน้าแก้ BL ของงานนั้น — หน้าเดิมไม่มีแล้ว พากลับไปที่รายการ
+  const back = String(formData.get('returnTo') ?? '');
+  if (back.startsWith('/') && !back.startsWith('//')) redirect(back);
 }
 
 export async function deleteJobs(formData: FormData) {

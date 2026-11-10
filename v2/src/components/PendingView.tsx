@@ -2,8 +2,7 @@ import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
 import {
   AcknowledgeInvoice, DraftActions, EofficeRequestForm, FileCustomsForm, MergeEofficeButton,
-  RequestApproval, ShowReason, UploadForm,
-} from '@/components/ActionForms';
+  RequestApproval, ShowReason, UploadForm, DeleteJob } from '@/components/ActionForms';
 import { DraftLocalLaunch, SubmitDraftLocal } from '@/components/DraftLocalRun';
 import { signedColumns } from '@/components/SignedColumns';
 import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
@@ -91,6 +90,8 @@ function columnsFor(
           <div className="row-actions">
             <ApprovalBadge status={r.anStatus} />
             <ShowReason reason={r.anStatus === 'REJECTED' ? r.anReason : null} />
+            {/* ยังไม่เข้าตารางหลัก ลบได้ทั้งตอนรอส่ง และตอนส่งไปรอ Head Officer อนุมัติ */}
+            {sub === 'approve' ? <DeleteJob jobId={r.id} jobNo={r.jobNo} waiting /> : null}
             {sub === 'wait' ? (
               <>
                 {/*
@@ -98,6 +99,7 @@ function columnsFor(
                   เป็นลิงก์จริง จึงส่งต่อและกดรีเฟรชได้
                 */}
                 <Link className="button tiny" href={`/bl-edit/${r.id}`}>แก้ไข</Link>
+                <DeleteJob jobId={r.id} jobNo={r.jobNo} />
                 {hasFile(r) ? (
                   <RequestApproval jobId={r.id} type="AN" label={sendLabel('AN', r.anStatus === 'REJECTED')} auto={other} />
                 ) : other ? (
@@ -438,7 +440,7 @@ export async function PendingView({
           confirmText={other
             ? 'ยืนยัน {n} รายการเข้าตารางหลักใช่ไหม · Other cargo อนุมัติให้ทันที'
             : 'ส่งอนุมัติ {n} รายการใช่ไหม · ส่งแล้วแก้ไขไม่ได้จนกว่าจะมีผลตัดสิน'}
-          extra={other ? undefined : {
+          extra={{
             action: deleteJobs,
             label: 'ลบ {n} รายการ',
             danger: true,

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateBlInfo } from '@/lib/actions/jobs';
+import { deleteJobs } from '@/lib/actions/job-delete';
 import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 import { SearchSelect, SearchText } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
@@ -64,14 +65,17 @@ function Opts({ list }: { list: Option[] }) {
 }
 
 export function BlEditPanel({
-  job, options, source, other,
+  job, options, source, other, deletable,
 }: {
   job: BlEditJob;
   options: Opts;
   source?: PreviewDoc;
   other?: PreviewDoc;
+  /** งานยังไม่เข้าตารางหลัก ลบได้ · waiting = ส่งไปรอ Head Officer อนุมัติอยู่ */
+  deletable?: { waiting: boolean; returnTo: string } | null;
 }) {
   const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
   const [shown, setShown] = useState(source?.id ?? '');
   // SearchSelect เป็นช่องพิมพ์ค้นหา ค่าจึงต้องเก็บเองแล้วส่งผ่าน hidden
   const [personId, setPersonId] = useState(job.personId ?? '');
@@ -296,6 +300,27 @@ export function BlEditPanel({
 
         {/* ปุ่มติดอยู่ท้ายแผงเสมอ ฟอร์มยาวกว่าจอจึงไม่ต้องเลื่อนลงไปหา */}
         <div className="bl-edit-actions">
+          {/* ปุ่มธรรมดา (ไม่ใช่ฟอร์มซ้อนในฟอร์มบันทึก) เรียกคำสั่งลบตรง ๆ หลังยืนยัน */}
+          {deletable ? (
+            <button
+              type="button"
+              className="button danger bl-edit-delete"
+              disabled={deleting}
+              onClick={() => {
+                const ok = window.confirm(`ลบงาน ${job.jobNo} ถาวรใช่ไหม\n\n`
+                  + 'ข้อมูลงาน ไฟล์ AN/BL รายการตู้ และประวัติจะถูกลบทั้งหมด กู้คืนไม่ได้'
+                  + (deletable.waiting ? '\nงานนี้ส่งไปรอ Head Officer อนุมัติอยู่ — คำขออนุมัติจะถูกยกเลิกไปด้วย' : ''));
+                if (!ok) return;
+                setDeleting(true);
+                const fd = new FormData();
+                fd.set('jobIds', job.id);
+                fd.set('returnTo', deletable.returnTo);
+                void deleteJobs(fd).finally(() => setDeleting(false));
+              }}
+            >
+              {deleting ? 'กำลังลบ…' : 'ลบงานนี้'}
+            </button>
+          ) : null}
           <button type="button" className="button" onClick={() => router.back()}>ยกเลิก</button>
           <button type="submit" className="button primary">บันทึก</button>
         </div>

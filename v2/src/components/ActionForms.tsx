@@ -10,6 +10,7 @@ import { createEofficeRequest } from '@/lib/actions/eoffice';
 import { DEFAULT_CURRENCY, DEFAULT_OFFICER_POSITION, DEFAULT_OFFICER_PREFIX, formatAmount, OFFICER_PREFIXES } from '@/lib/eoffice-officer';
 import { undoEofficeHandover } from '@/lib/actions/eoffice-handover';
 import { saveMasterRecord } from '@/lib/actions/master';
+import { deleteJobs } from '@/lib/actions/job-delete';
 import { ConfirmSubmit, PopoverCancel, PopoverHead } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
 import type { Option } from '@/lib/queries/master';
@@ -50,6 +51,29 @@ export function RequestApproval({
         detail={auto
           ? 'งาน Other cargo อนุมัติให้ทันที งานจะย้ายไปขั้นถัดไป'
           : 'ส่งแล้วรายการจะย้ายไปแท็บรออนุมัติ และแก้ไขไม่ได้จนกว่าจะมีผลตัดสิน'}
+      />
+    </form>
+  );
+}
+
+/**
+ * ลบงานที่ยังไม่เข้าตารางหลัก (AN ยังไม่อนุมัติ) — ใบที่คีย์ผิดหรือซ้ำ
+ * waiting = ส่งไปรอ Head Officer อนุมัติอยู่ ลบแล้วคำขออนุมัติหายไปด้วย จึงเตือนให้รู้
+ * returnTo = ลบจากหน้าของงานนั้นเอง ลบเสร็จพากลับไปหน้ารายการ
+ */
+export function DeleteJob({
+  jobId, jobNo, waiting = false, returnTo, label = 'ลบ',
+}: { jobId: string; jobNo: string; waiting?: boolean; returnTo?: string; label?: string }) {
+  return (
+    <form action={deleteJobs} className="inline-form">
+      <input type="hidden" name="jobIds" value={jobId} />
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
+      <ConfirmSubmit
+        label={label}
+        tone="danger"
+        confirm={`ลบงาน ${jobNo} ถาวรใช่ไหม`}
+        detail={'ข้อมูลงาน ไฟล์ AN/BL รายการตู้ และประวัติจะถูกลบทั้งหมด กู้คืนไม่ได้'
+          + (waiting ? ' · งานนี้ส่งไปรอ Head Officer อนุมัติอยู่ — คำขออนุมัติจะถูกยกเลิกไปด้วย' : '')}
       />
     </form>
   );

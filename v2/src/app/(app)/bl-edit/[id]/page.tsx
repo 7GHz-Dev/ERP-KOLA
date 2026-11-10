@@ -24,7 +24,8 @@ export default async function BlEditPage({ params }: { params: Promise<{ id: str
           <Link className="cell-link" href="/pending">กลับไปหน้างานคงค้าง</Link>
         </p>
       </div>
-      <BlEditPanel job={data.job} options={options} source={data.source} other={data.other} />
+      <BlEditPanel job={data.job} options={options} source={data.source} other={data.other}
+        deletable={data.deletable ? { waiting: data.waitingApproval, returnTo: data.returnTo } : null} />
     </>
   );
 }

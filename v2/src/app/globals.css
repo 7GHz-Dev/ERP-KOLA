@@ -1543,6 +1543,7 @@ table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-w
   padding: 10px 0 2px; margin-top: 4px;
   background: var(--canvas); border-top: 1px solid var(--line);
 }
+.bl-edit-actions .bl-edit-delete { margin-right: auto; }
 .job-drawer .drawer-content:has(> .bl-edit) { display: flex; padding: 12px; overflow: hidden; }
 .main > .bl-edit { height: calc(100vh - 150px); min-height: 460px; }
 

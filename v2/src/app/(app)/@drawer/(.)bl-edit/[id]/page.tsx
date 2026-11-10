@@ -33,6 +33,7 @@ export default async function BlEditDrawer({ params }: { params: Promise<{ id: s
         options={options}
         source={data.source}
         other={data.other}
+        deletable={data.deletable ? { waiting: data.waitingApproval, returnTo: data.returnTo } : null}
       />
     </FileDrawerShell>
   );
