@@ -217,9 +217,16 @@ async function checkDrafts(drafts: ShipmentDraft[]) {
   return rows;
 }
 
+/**
+ * ใครนำเข้าได้ — ปกติเป็นงานของ Import Officer
+ * นำเข้าจากหน้า Waiting list (sourceType=BL) Senior / Head Officer ทำได้ด้วย เหมือนรับงานจาก BL ทีละใบ
+ */
+const importRoles = (formData: FormData) =>
+  (formData.get('sourceType') === 'BL' ? ['PAINT', 'FAH', 'NAMKANG'] : ['PAINT']);
+
 /** ตรวจไฟล์แล้วคืนผลให้ดูก่อน ยังไม่เขียนอะไรลงฐานข้อมูล */
 async function previewShipmentCsvImpl(formData: FormData): Promise<PreviewResult> {
-  await requireActiveSession(['PAINT']);
+  await requireActiveSession(importRoles(formData));
   const { drafts, skipped, hasHeader, fileName } = await parseUpload(formData);
   const rows = await checkDrafts(drafts);
   return { rows: rows.map(({ ids: _ids, ...r }) => r), skipped, hasHeader, fileName };
@@ -287,7 +294,8 @@ async function nextContainerNos(tx: Tx, code: string, count: number): Promise<st
  * ที่ต้องมานั่งไล่ลบเอง ซึ่งเสี่ยงกว่าการนำเข้าใหม่ทั้งไฟล์
  */
 async function importShipmentCsvImpl(formData: FormData) {
-  const user = await requireActiveSession(['PAINT']);
+  const user = await requireActiveSession(importRoles(formData));
+  const fromBl = formData.get('sourceType') === 'BL';
   const { drafts, fileName } = await parseUpload(formData);
   const checked = await checkDrafts(drafts);
 
@@ -342,8 +350,9 @@ async function importShipmentCsvImpl(formData: FormData) {
          * ซึ่งเป็นสถานะเดียวกับงานที่รับจาก AN แล้วรอคีย์ BL ต่อ
          * ใช้สถานะเดิมจึงไม่ต้องเพิ่มคิวใหม่ให้ทุกหน้าจอต้องรู้จัก
          */
-        status: 'WAITING_ENTER_BL',
-        sourceType: 'AN',
+        // นำเข้าจากหน้า Waiting list = งานจาก BL ที่ยังรอ Arrival Notice จากสายเรือ
+        status: fromBl ? 'WAITING_ARRIVAL_NOTICE_BL' : 'WAITING_ENTER_BL',
+        sourceType: fromBl ? 'BL' : 'AN',
         product: 'รถยนต์เก่าใช้แล้ว',
         unitAmount: d.unitAmount,
         grossWeight: d.grossWeight,
@@ -398,6 +407,7 @@ async function importShipmentCsvImpl(formData: FormData) {
   revalidatePath('/overview');
   revalidatePath('/jobs');
   revalidatePath('/intake/attach');
+  revalidatePath('/waiting-list');
 
   return { imported: created.length, duplicates, jobNos: created.map((c) => c.jobNo) };
 }

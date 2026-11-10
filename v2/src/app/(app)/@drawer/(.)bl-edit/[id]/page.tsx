@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import { BlEditPanel } from '@/components/BlEditPanel';
 import { FileDrawerShell } from '@/components/FileDrawerShell';
-import { requireJobPage } from '@/lib/job-actor';
-import { loadBlEdit } from '@/lib/queries/bl-edit';
+import { requireBlEditorPage } from '@/lib/job-actor';
+import { backTo, loadBlEdit } from '@/lib/queries/bl-edit';
 import { intakeOptions } from '@/lib/queries/master';
 
 export const dynamic = 'force-dynamic';
@@ -15,8 +15,8 @@ export const dynamic = 'force-dynamic';
  */
 export default async function BlEditDrawer({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Other cargo (MO / TO): Head Officer เปิดได้ด้วย
-  await requireJobPage(id, ['PAINT']);
+  // Other cargo (MO / TO): Head Officer · งานใน Waiting list: Senior / Head Officer เปิดได้ด้วย
+  const user = await requireBlEditorPage(id);
   const [data, options] = await Promise.all([loadBlEdit(id), intakeOptions()]);
   if (!data) notFound();
 
@@ -33,7 +33,7 @@ export default async function BlEditDrawer({ params }: { params: Promise<{ id: s
         options={options}
         source={data.source}
         other={data.other}
-        deletable={data.deletable ? { waiting: data.waitingApproval, returnTo: data.returnTo } : null}
+        deletable={data.deletable ? { waiting: data.waitingApproval, returnTo: backTo(data, user.role) } : null}
       />
     </FileDrawerShell>
   );

@@ -7,11 +7,10 @@ import { IntakeBatch } from '@/components/IntakeBatch';
 import { ShipmentImport } from '@/components/ShipmentImport';
 import { AttachArrival } from '@/components/AttachArrival';
 import { Tabs } from '@/components/JobTable';
-import { createJobFromIntake, intakeDefaults } from '@/lib/actions/intake';
+import { createJobFromIntake } from '@/lib/actions/intake';
 import { importShipmentCsv, previewShipmentCsv } from '@/lib/actions/shipment-import';
 import { attachArrivalFile, attachableBls } from '@/lib/actions/attach-arrival';
-import { intakeOptions, settingValue } from '@/lib/queries/master';
-import { activeParseTemplates } from '@/lib/parse-template-store';
+import { batchDefaults, intakeSetup } from '@/lib/queries/intake-setup';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,13 +68,7 @@ export default async function IntakePage({
    * ส่งลงไปให้ฝั่งเบราว์เซอร์ เพราะการอ่าน PDF ทั้งหมดทำในเบราว์เซอร์
    * ไฟล์จึงยังไม่ถูกส่งขึ้นเซิร์ฟเวอร์จนกว่าผู้ใช้จะกดบันทึก เหมือนเดิม
    */
-  const [options, ids, demDays, detDays, templates] = await Promise.all([
-    intakeOptions(),
-    intakeDefaults(),
-    settingValue('DEM_FREE_DAYS', '5'),
-    settingValue('DET_FREE_DAYS', '3'),
-    activeParseTemplates(),
-  ]);
+  const { options, defaults, templates } = await intakeSetup();
 
   /*
    * รายการ BL ดึงเฉพาะตอนเปิดแท็บแนบไฟล์
@@ -84,13 +77,11 @@ export default async function IntakePage({
   const blChoices = tab === 'attach' ? await attachableBls() : [];
 
   // เปิดจากหน้า Other job → Job Type ตั้งต้นเป็น MO / TO แทน MU
-  if (otherType) ids.jobTypeId = options.jobTypes.find((t) => t.code?.toUpperCase() === otherType)?.id ?? ids.jobTypeId;
+  if (otherType) defaults.jobTypeId = options.jobTypes.find((t) => t.code?.toUpperCase() === otherType)?.id ?? defaults.jobTypeId;
   const backTo = otherType
     ? { href: `/other/${otherType === 'MO' ? 'msfz' : 'transit'}`, label: '← กลับไป Other cargo' }
     : sourceType === 'BL' ? { href: '/waiting-list', label: '← กลับไป Waiting list' } : null;
 
-  const pick = (list: { code: string | null; name: string }[], code: string) =>
-    list.find((o) => o.code?.toUpperCase() === code)?.name ?? list[0]?.name ?? '';
 
   return (
     <>
@@ -118,15 +109,7 @@ export default async function IntakePage({
           sourceType={sourceType}
           templates={templates}
           options={{ shippers: options.shippers }}
-          defaults={{
-            consigneeId: ids.consigneeId,
-            notifyId: ids.notifyId,
-            portId: ids.portId,
-            jobTypeId: ids.jobTypeId,
-            demDays,
-            detDays,
-            containerType: pick(options.containerTypes, '40'),
-          }}
+          defaults={batchDefaults(defaults)}
           action={createJobFromIntake}
         />
       ) : (
@@ -134,16 +117,7 @@ export default async function IntakePage({
           sourceType={sourceType}
           templates={templates}
           options={options}
-          defaults={{
-            consigneeId: ids.consigneeId,
-            notifyId: ids.notifyId,
-            portId: ids.portId,
-            jobTypeId: ids.jobTypeId,
-            demDays,
-            detDays,
-            containerType: pick(options.containerTypes, '40'),
-            packageType: pick(options.packageTypes, 'UNIT'),
-          }}
+          defaults={defaults}
           action={createJobFromIntake}
         />
       )}

@@ -438,6 +438,11 @@ const BASE_QUEUE = {
     eq(jobs.sourceType, 'BL'),
     or(isNull(an.status), ne(an.status, 'APPROVED')),
   ],
+  /** Waiting list แท็บ "เข้าตารางหลักแล้ว" — งานจาก BL ที่ AN ผ่านแล้ว */
+  waitingListDone: () => ({ an }: JoinContext) => [
+    eq(jobs.sourceType, 'BL'),
+    eq(an.status, 'APPROVED'),
+  ],
 
   /** งานคงค้าง แท็บ 1 — รอส่งอนุมัติ AN / รออนุมัติ */
   pendingBl: (sub: 'wait' | 'approve') => ({ an }: JoinContext) => [

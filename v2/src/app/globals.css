@@ -2453,6 +2453,11 @@ table.data td.col-lib { min-width: 300px; }
 .wbl-form textarea { resize: vertical; }
 .wbl-actions { display: flex; gap: 8px; align-items: end; }
 .wbl-hint { margin: 0; font-size: 12px; color: var(--muted); }
+/* Waiting list — กล่องนำเข้างานจาก BL ด้านบนรายการ */
+.wl-import { padding: 12px 14px; margin-bottom: 14px; display: grid; gap: 10px; }
+.wl-import-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.wl-import-head > b { color: var(--blue); }
+.wl-import-head > .button { margin-left: auto; }
 .wbl-search { min-width: 280px; padding: 6px 10px; font: inherit; border: 1px solid var(--line); border-radius: 6px; }
 @media (max-width: 640px) { .wbl-form .wide { grid-column: 1 / -1; } .wbl-search { min-width: 0; flex: 1; } }
 /* หน้ารับ AN: BL นี้มีใน Waiting BL */

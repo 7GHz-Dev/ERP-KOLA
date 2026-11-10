@@ -32,8 +32,8 @@ export async function dashboardSummary() {
  * เวลาที่เพิ่มจึงทับซ้อนกับ query ของหน้า ไม่ได้บวกเข้าไปตรง ๆ
  */
 export async function navCounts() {
-  const [main, waitingBl, people, sale] = await Promise.all([navCountsMain(), waitingBlCount(), queueCounts(PERSON_QUEUES), saleCounts()]);
-  return { ...main, waitingBl, ...people, ...sale };
+  const [main, people, sale] = await Promise.all([navCountsMain(), queueCounts(PERSON_QUEUES), saleCounts()]);
+  return { ...main, ...people, ...sale };
 }
 
 /**
@@ -89,21 +89,6 @@ const PERSON_QUEUES = {
   otherMsfz: otherOpen('MO'),
   otherTransit: otherOpen('TO'),
 };
-
-/**
- * Waiting BL ที่ยังรอ AN — แยก query และกลืน error ไว้
- * ตาราง waiting_bls ต้องสร้างด้วย npm run migrate:waiting-bl ก่อน ถ้าเผลอ deploy ก่อนรัน
- * ตัวเลขนี้เป็น 0 แทนที่เมนูทุกหน้าจะล้มตามไปด้วย
- */
-async function waitingBlCount(): Promise<number> {
-  try {
-    const [row] = await db.execute<{ n: number }>(sql`
-      select count(*)::int as n from waiting_bls where resolved_at is null and cancelled_at is null`);
-    return Number(row?.n ?? 0);
-  } catch {
-    return 0;
-  }
-}
 
 async function navCountsMain() {
   const an = latestApproval('AN');

@@ -58,7 +58,6 @@
     "test:eoffice": "tsx --tsconfig tsconfig.json tests/eoffice-officer.ts",
     "test:table-filter": "tsx --tsconfig tsconfig.json tests/table-filter.ts",
     "test:register": "tsx --tsconfig tsconfig.json tests/register-sheet.ts",
-    "test:waiting-bl": "tsx --tsconfig tsconfig.json tests/waiting-bl.ts",
     "test:cargo-invoice": "tsx --tsconfig tsconfig.json tests/cargo-invoice.ts",
     "test:eta-recent": "tsx --tsconfig tsconfig.json tests/eta-recent.ts",
     "test:sale": "tsx --tsconfig tsconfig.json tests/sale.ts"

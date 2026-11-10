@@ -2,6 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, files, jobs, masterRecords } from '@/db/schema';
 import { OTHER_KINDS } from '@/lib/other-cargo';
+import { roleAllows } from '@/lib/auth';
 
 /**
  * ข้อมูลของงานสำหรับแผงแก้ข้อมูล BL พร้อมไฟล์ต้นทางไว้เปิดดูคู่กัน
@@ -46,4 +47,10 @@ export async function loadBlEdit(jobId: string) {
       ?? byCategory.get('ARRIVAL_NOTICE') ?? byCategory.get('BL'),
     other: byCategory.get(job.sourceType === 'BL' ? 'ARRIVAL_NOTICE' : 'BL'),
   };
+}
+
+/** ลบงานแล้วกลับไปไหน — Senior / Head Officer ทำงานจากหน้า Waiting list ส่วน Import Officer จากงานคงค้าง */
+export function backTo(data: { job: { sourceType: string | null }; returnTo: string }, role: string) {
+  if (data.job.sourceType === 'BL' && !roleAllows(role, ['PAINT']) && !data.returnTo.startsWith('/other/')) return '/waiting-list';
+  return data.returnTo;
 }

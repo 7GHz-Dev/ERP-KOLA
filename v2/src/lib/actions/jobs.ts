@@ -13,8 +13,7 @@ import { canEditBlAtDo } from '@/lib/do-letter';
 import { hasBlBrackets } from '@/lib/bl-format';
 import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
-import { resolveWaitingBlsForJob } from '@/lib/waiting-bl-store';
-import { jobIsOtherCargo, requireJobActor } from '@/lib/job-actor';
+import { jobIsOtherCargo, requireJobActor, requireBlEditor } from '@/lib/job-actor';
 import { assertSalePrice } from '@/lib/sale/price-store';
 
 /**
@@ -86,9 +85,6 @@ async function requestApprovalImpl(formData: FormData) {
     await db.update(jobs).set({ status: approved, updatedBy: user.id, updatedAt: new Date() }).where(eq(jobs.id, jobId));
     await recordStatus(jobId, null, approved, `${type} อนุมัติอัตโนมัติ — Other cargo (Head Officer ทำเอง)`, user.id);
     await logActivity(user.id, `AUTO_APPROVE_${type}`, 'APPROVAL', autoId, { jobId });
-    if (type === 'AN') {
-      await resolveWaitingBlsForJob(jobId, user.id).catch((e) => console.error('ปิด Waiting BL ไม่สำเร็จ', e));
-    }
     revalidatePath('/other/msfz');
     revalidatePath('/other/transit');
     return;
@@ -217,12 +213,8 @@ async function decideApprovalImpl(formData: FormData) {
   await recordStatus(approval.jobId, approval.status, next,
     decision === 'REJECTED' ? `ตีกลับ: ${reason}` : 'อนุมัติแล้ว', user.id);
   await logActivity(user.id, `DECIDE_${approval.approvalType}`, 'APPROVAL', approvalId, { decision });
-  // AN ผ่าน = BL เข้าตารางหลักแล้ว → ปิดรายการ Waiting BL ที่เลข BL ตรงกัน
-  // ปิดไม่สำเร็จก็ไม่ทำให้การอนุมัติล้ม — รายการยังค้างให้ยกเลิกเองได้
-  if (decision === 'APPROVED' && approval.approvalType === 'AN') {
-    await resolveWaitingBlsForJob(approval.jobId, user.id)
-      .catch((e) => console.error('ปิด Waiting BL ไม่สำเร็จ', e));
-  }
+  // งานจาก BL ที่ AN ผ่านแล้วย้ายไปแท็บ "เข้าตารางหลักแล้ว" ของ Waiting list
+  revalidatePath('/waiting-list');
 
   revalidatePath('/pending');
   revalidatePath('/nam/approve');
@@ -703,7 +695,7 @@ async function rejectDraftImpl(formData: FormData) {
  */
 async function updateBlInfoImpl(formData: FormData) {
   const jobId = required(formData.get('jobId'), 'งาน', 80);
-  const user = await requireJobActor(jobId, ['PAINT']);
+  const user = await requireBlEditor([jobId]);  // Senior / Head Officer แก้งานใน Waiting list ได้ด้วย
 
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');

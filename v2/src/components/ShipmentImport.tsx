@@ -18,8 +18,10 @@ import type { PreviewResult } from '@/lib/actions/shipment-import';
 type Done = { imported: number; duplicates: number; jobNos: string[] };
 
 export function ShipmentImport({
-  preview, confirm,
+  preview, confirm, sourceType = 'AN',
 }: {
+  /** BL = นำเข้าจากหน้า Waiting list — งานเข้า Waiting list รอ Arrival Notice */
+  sourceType?: 'AN' | 'BL';
   preview: (formData: FormData) => Promise<PreviewResult | undefined>;
   confirm: (formData: FormData) => Promise<Done | undefined>;
 }) {
@@ -40,6 +42,7 @@ export function ShipmentImport({
     try {
       const fd = new FormData();
       fd.set('file', picked);
+      fd.set('sourceType', sourceType);
       const res = await preview(fd);
       if (res) setResult(res);
     } catch (e) {
@@ -55,6 +58,7 @@ export function ShipmentImport({
     try {
       const fd = new FormData();
       fd.set('file', file.current);
+      fd.set('sourceType', sourceType);
       const res = await confirm(fd);
       if (res) { setDone(res); setResult(null); }
     } catch (e) {

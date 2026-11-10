@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { approvals, files, jobs } from '@/db/schema';
-import { requireJobsActor } from '@/lib/job-actor';
+import { requireBlEditor } from '@/lib/job-actor';
 import { removeFile } from '@/lib/storage';
 import { logActivity, runAction } from './common';
 
@@ -22,13 +22,13 @@ import { logActivity, runAction } from './common';
  * งานที่ส่งไปรออนุมัติ ลบแล้วคำขออนุมัติหายตามไปด้วย (cascade) คิวของ Head Officer จึงไม่ค้าง
  * งานที่อนุมัติเข้าตารางหลักแล้วมีคนอื่นใช้ข้อมูลต่อ ลบทิ้งจะกระทบงานของฝ่ายอื่น — ใช้ซ่อนที่ Master Data แทน
  *
- * Import Officer ลบได้ · Head Officer ลบได้เฉพาะงาน Other cargo (MO / TO) ที่ดูแลเอง
+ * Import Officer ลบได้ · Head Officer ลบงาน Other cargo (MO / TO) ได้ · Senior / Head Officer ลบงานใน Waiting list ได้ (ดู requireBlEditor)
  */
 async function deleteJobsImpl(formData: FormData) {
   const ids = String(formData.get('jobIds') ?? '')
     .split(',').map((v) => v.trim()).filter(Boolean);
   if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
-  const user = await requireJobsActor(ids, ['PAINT']);
+  const user = await requireBlEditor(ids);
 
   const rows = await db
     .select({ id: jobs.id, jobNo: jobs.jobNo, isArchived: jobs.isArchived })
@@ -81,6 +81,7 @@ async function deleteJobsImpl(formData: FormData) {
   revalidatePath('/pending');
   revalidatePath('/jobs');
   revalidatePath('/nam/pending');
+  revalidatePath('/waiting-list');
   revalidatePath('/other', 'layout');
 
   // ลบจากหน้าแก้ BL ของงานนั้น — หน้าเดิมไม่มีแล้ว พากลับไปที่รายการ

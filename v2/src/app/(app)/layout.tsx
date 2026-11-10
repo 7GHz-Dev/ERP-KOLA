@@ -65,7 +65,6 @@ const NAV: NavGroup[] = [
       { href: '/fah/fn', label: 'Approve cargo Invoice', count: 'pendingFn' },
       { href: '/fah/draft', label: 'Submit import decl.', count: 'draftReview' },
       // BL ที่ลูกค้าแจ้งมาทางอื่น (กรอกคร่าว ๆ) — รายการเดียวกับของ Head Officer
-      { href: '/waiting-bl', label: 'Waiting BL (ข้อมูลจากลูกค้า)', count: 'waitingBl' },
     ],
   },
   {
@@ -76,7 +75,6 @@ const NAV: NavGroup[] = [
       { href: '/nam/approve', label: 'Approve B/L', count: 'pendingAn' },
       { href: '/nam/customer', label: 'Upload cargo Invoice', count: 'namCustomerWait' },
       { href: '/nam/haul', label: 'Transport Request', count: 'haulWait' },
-      { href: '/waiting-bl', label: 'Waiting BL (ข้อมูลจากลูกค้า)', count: 'waitingBl' },
     ],
   },
   {
