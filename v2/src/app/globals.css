@@ -2765,3 +2765,26 @@ table.data td.col-lib { min-width: 300px; }
 .charge-review textarea { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; }
 .charge-log { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
 .charge-log small { color: var(--muted); }
+
+/* ---------- ACCOUNT: Total cost ---------- */
+.tc-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tc-table thead th.tc-group { text-align: center; border-left: 1px solid rgba(255,255,255,.25); }
+.tc-table thead tr + tr th { background: #24506f; font-size: 11px; }
+.tc-table td.tc-wht { color: #9a3412; }
+.tc-table td.tc-sum { background: #f4f8fb; }
+.tc-table .tc-sticky { position: sticky; left: 0; z-index: 1; }
+.tc-table tbody td.tc-sticky { background: var(--surface); box-shadow: inset -1px 0 0 var(--line); }
+/* หัวตาราง 2 ชั้น: ชั้นล่างตรึงต่อจากชั้นบน (36px) · หัว BL ตรึงทั้งบนและซ้าย ต้องอยู่เหนือหัวอื่น */
+.tc-table thead tr + tr th { top: 36px; }
+.tc-table thead th.tc-sticky { z-index: 4; }
+.tc-table tfoot td { border-top: 2px solid var(--navy); font-weight: 600; background: #eef4f8; }
+.tc-table tbody tr.tc-skipped td { color: var(--muted); text-decoration-color: var(--muted); }
+.tc-table tbody tr.tc-skipped td.num { text-decoration: line-through; }
+.tc-table .tc-note { white-space: normal; min-width: 220px; }
+.tc-table .small { font-size: 11px; }
+.tc-cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 14px; }
+.tc-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 150px; }
+.tc-card span { display: block; color: var(--muted); font-size: 12px; }
+.tc-card b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.tc-card.main { border-color: var(--navy); }
+.tc-h2 { font-size: 15px; margin: 16px 0 8px; }

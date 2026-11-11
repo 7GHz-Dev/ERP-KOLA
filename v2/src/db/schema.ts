@@ -609,3 +609,45 @@ export const specialChargeFiles = pgTable('special_charge_files', {
   uploadedBy: text('uploaded_by'),
   uploadedAt: timestamp('uploaded_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({ chargeIdx: index('special_charge_files_charge_idx').on(t.chargeId) }));
+
+/* ---------------- ACCOUNT: Total cost ราย BL จาก ERP SHIPME ---------------- */
+
+/**
+ * ค่าใช้จ่ายของ BL หนึ่งใบตามที่ SHIPME ส่งมาตอนจัดชุดใบแจ้งหนี้ ADV (สเปก: docs/SHIPME-COSTS-API.md)
+ * BL ละแถว (bl_key ไม่ซ้ำ) — ส่งซ้ำ = แทนรายการทั้งหมดของ BL นั้นด้วยชุดล่าสุด
+ * จัดหมวด / หัก ณ ที่จ่าย คิดตอนอ่าน (src/lib/total-cost/cost.ts) ไม่ได้เก็บผลไว้
+ */
+export const shipmeCosts = pgTable('shipme_costs', {
+  id: id(),
+  blKey: text('bl_key').notNull(),
+  blNo: text('bl_no').notNull(),
+  jobId: text('job_id'),
+  customer: text('customer'),
+  batchName: text('batch_name'),
+  /** [{ number, kind, issueDate, batchName }] ใบแจ้งหนี้ ADV ของ BL ที่ส่งมาครั้งล่าสุด */
+  invoicesJson: text('invoices_json').default('[]').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  blIdx: uniqueIndex('shipme_costs_bl_key').on(t.blKey),
+  updatedIdx: index('shipme_costs_updated_idx').on(t.updatedAt),
+}));
+
+export const shipmeCostLines = pgTable('shipme_cost_lines', {
+  id: id(),
+  costId: text('cost_id').notNull().references(() => shipmeCosts.id, { onDelete: 'cascade' }),
+  lineNo: integer('line_no').notNull(),
+  /** INVOICE = ใบแจ้งหนี้ ADV · SETTLEMENT = ใบปิดบัญชีชิปปิ้ง · TRANSPORT = ชีตงานขนส่ง */
+  source: text('source').notNull(),
+  /** เลขที่ใบแจ้งหนี้ / ชื่อใบปิดบัญชี */
+  ref: text('ref'),
+  /** V / NV ของใบแจ้งหนี้ */
+  kind: text('kind'),
+  /** คีย์ช่องฝั่ง SHIPME (เช่น overtime, seal) */
+  sourceKey: text('source_key'),
+  label: text('label').notNull(),
+  /** ยอดก่อน VAT */
+  amount: numeric('amount', { precision: 18, scale: 2 }).notNull(),
+  vat: numeric('vat', { precision: 18, scale: 2 }).default('0').notNull(),
+  note: text('note'),
+}, (t) => ({ costIdx: index('shipme_cost_lines_cost_idx').on(t.costId, t.lineNo) }));

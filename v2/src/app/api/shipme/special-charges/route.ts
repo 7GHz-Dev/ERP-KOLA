@@ -1,7 +1,7 @@
-import { timingSafeEqual } from 'node:crypto';
 import { parseShipmePayload } from '@/lib/sale/charges';
 import { receiveFromShipme } from '@/lib/sale/charge-store';
 import { isMissingTable } from '@/lib/sale/price-store';
+import { shipmeAuthorized } from '@/lib/shipme-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -14,17 +14,9 @@ export const maxDuration = 60;
  */
 const err = (status: number, error: string) => Response.json({ ok: false, error }, { status });
 
-function authorized(request: Request) {
-  const key = process.env.SHIPME_API_KEY ?? '';
-  const got = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
-  if (!key || !got) return false;
-  const a = Buffer.from(got); const b = Buffer.from(key);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function POST(request: Request) {
   if (!process.env.SHIPME_API_KEY) return err(503, 'ยังไม่ได้ตั้ง SHIPME_API_KEY บนเซิร์ฟเวอร์');
-  if (!authorized(request)) return err(401, 'API key ไม่ถูกต้อง');
+  if (!shipmeAuthorized(request)) return err(401, 'API key ไม่ถูกต้อง');
   const body = await request.json().catch(() => null);
   const parsed = parseShipmePayload(body);
   if (!parsed.ok) return err(400, parsed.error);

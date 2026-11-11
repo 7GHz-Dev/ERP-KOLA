@@ -60,7 +60,9 @@
     "test:register": "tsx --tsconfig tsconfig.json tests/register-sheet.ts",
     "test:cargo-invoice": "tsx --tsconfig tsconfig.json tests/cargo-invoice.ts",
     "test:eta-recent": "tsx --tsconfig tsconfig.json tests/eta-recent.ts",
-    "test:sale": "tsx --tsconfig tsconfig.json tests/sale.ts"
+    "test:sale": "tsx --tsconfig tsconfig.json tests/sale.ts",
+    "migrate:total-cost": "tsx scripts/migrate-total-cost.ts",
+    "test:total-cost": "tsx --tsconfig tsconfig.json tests/total-cost.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

@@ -118,6 +118,7 @@ const NAV: NavGroup[] = [
     label: 'ACCOUNT', color: '#00838f', roles: ['ACCOUNT'],
     items: [
       { href: '/account/invoice-print', label: 'พิมพ์ Invoice DO' },
+      { href: '/account/total-cost', label: 'Total cost' },
     ],
   },
   {

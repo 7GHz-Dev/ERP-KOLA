@@ -89,8 +89,8 @@ export const ROLE_INFO: Record<string, { label: string; detail: string }> = {
     detail: 'รอแลก DO — กรอกยอดชำระจาก Invoice DO และคัดลอกข้อความเบิก',
   },
   ACCOUNT: {
-    label: 'ACCOUNT',
-    detail: 'เลือกเลข BL หลายใบเพื่อดึง Invoice DO มาพิมพ์รวมกัน',
+    label: 'ACCOUNT OFFICER',
+    detail: 'พิมพ์ Invoice DO รวมหลาย BL และดู Total cost — ค่าใช้จ่ายราย BL จาก ERP SHIPME (DO / DEM / LIFT / STORAGE … พร้อม VAT และหัก ณ ที่จ่าย 3%)',
   },
   SALE: {
     label: 'SALE OFFICER',
