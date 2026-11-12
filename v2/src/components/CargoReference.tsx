@@ -178,7 +178,7 @@ const E_EMPTY = { date: '', number: '', full: '', chassis: '', bl: '', invoice: 
 
 function EngineTable() {
   const [f, setF] = useState(E_EMPTY);
-  const [issues, setIssues] = useState(false);
+  const [issue, setIssue] = useState<'' | 'number' | 'chassis'>('');
   const [data, setData] = useState<{ rows: EngineRow[]; total: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -188,7 +188,7 @@ function EngineTable() {
   useEffect(() => {
     const ctl = new AbortController();
     const timer = setTimeout(() => {
-      const q = new URLSearchParams({ kind: 'engine', ...(issues ? { issues: '1' } : {}) });
+      const q = new URLSearchParams({ kind: 'engine', ...(issue ? { issue } : {}) });
       for (const [k, v] of Object.entries(f)) if (v.trim()) q.set(k, v.trim());
       setLoading(true);
       setError('');
@@ -199,10 +199,10 @@ function EngineTable() {
         .finally(() => { if (!ctl.signal.aborted) setLoading(false); });
     }, 350);
     return () => { clearTimeout(timer); ctl.abort(); };
-  }, [f, issues]);
+  }, [f, issue]);
 
-  const filtered = issues || Object.values(f).some(Boolean);
-  const only = (k: keyof typeof E_EMPTY, v: string) => { setIssues(false); setF({ ...E_EMPTY, [k]: v }); };
+  const filtered = Boolean(issue) || Object.values(f).some(Boolean);
+  const only = (k: keyof typeof E_EMPTY, v: string) => { setIssue(''); setF({ ...E_EMPTY, [k]: v }); };
 
   return (
     <>
@@ -211,10 +211,15 @@ function EngineTable() {
           {data ? <>{filtered ? 'ตรงที่ค้น' : 'ทั้งหมด'} <b>{data.total.toLocaleString()}</b> แถว{data.total > data.rows.length ? ` · แสดงล่าสุด ${data.rows.length}` : ''}</> : 'กำลังโหลด…'}
           {loading && data ? <span className="ai-dot" /> : null}
         </span>
-        <button type="button" className={`chip-toggle small${issues ? ' on' : ''}`} onClick={() => setIssues(!issues)}>
-          ⚠ เฉพาะที่มีปัญหา (เลขซ้ำ / ตัวถังหลายเลข)
+        <button type="button" className={`chip-toggle small${issue === 'number' ? ' on' : ''}`} onClick={() => setIssue(issue === 'number' ? '' : 'number')}
+          title="เลขสุ่มเดียวกันถูกใช้กับหลายตัวถัง — ผิด เลขต้องไม่ซ้ำ">
+          ⚠ เลขซ้ำต่างตัวถัง
         </button>
-        {filtered ? <button type="button" className="button tiny" onClick={() => { setF(E_EMPTY); setIssues(false); }}>ล้างตัวกรอง</button> : null}
+        <button type="button" className={`chip-toggle small${issue === 'chassis' ? ' on' : ''}`} onClick={() => setIssue(issue === 'chassis' ? '' : 'chassis')}
+          title="ตัวถังเดียวได้หลายเลข — มักเป็นรถคันเดิมที่ออกเลขซ้ำรอบ ควรตรวจ">
+          ตัวถังมีหลายเลข
+        </button>
+        {filtered ? <button type="button" className="button tiny" onClick={() => { setF(E_EMPTY); setIssue(''); }}>ล้างตัวกรอง</button> : null}
         <small className="muted">เลขสุ่ม 7 หลักต้องไม่ซ้ำกันทั้งตาราง · ตัวถังเดิมปกติใช้เลขเดิม</small>
       </div>
       {error ? <p className="cgi-error">⚠️ โหลดเลขเครื่องไม่ได้: {error}</p> : null}

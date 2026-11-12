@@ -103,19 +103,23 @@ const multiChassisSql = sql`select ${engineNumbers.chassis} from ${engineNumbers
 
 /**
  * รายการเลขเครื่องที่ระบบออกไปแล้ว — ค้นแยกทีละคอลัมน์ (มีคำนั้นอยู่ ไม่สนตัวพิมพ์เล็กใหญ่)
- * onlyIssues = เฉพาะแถวที่เลขซ้ำ หรือตัวถังมีหลายเลข · คืนแถวล่าสุดก่อน ไม่เกิน limit แถว + จำนวนที่ตรงทั้งหมด
+ * issue = 'number' เฉพาะเลขที่ถูกใช้กับหลายตัวถัง · 'chassis' เฉพาะตัวถังที่มีหลายเลข
+ * คืนแถวล่าสุดก่อน ไม่เกิน limit แถว + จำนวนที่ตรงทั้งหมด
  */
-export async function searchEngineNumbers(filter: EngineFilter, onlyIssues: boolean, limit = 200) {
+export async function searchEngineNumbers(filter: EngineFilter, issue: 'number' | 'chassis' | null, limit = 200) {
   const conds = [];
   for (const k of ENGINE_FILTERS) {
     const v = String(filter[k] ?? '').trim().replace(/[%_\\]/g, '');
     if (v) conds.push(sql`${ENGINE_COL[k]} ilike ${`%${v}%`}`);
   }
-  if (onlyIssues) conds.push(sql`(${engineNumbers.number} in (${dupNumbersSql}) or ${engineNumbers.chassis} in (${multiChassisSql}))`);
+  if (issue === 'number') conds.push(sql`${engineNumbers.number} in (${dupNumbersSql})`);
+  if (issue === 'chassis') conds.push(sql`${engineNumbers.chassis} in (${multiChassisSql})`);
   const where = conds.length ? and(...conds) : undefined;
   const [rows, [{ total }]] = await Promise.all([
+    // แถวที่มีปัญหาเรียงตามเลข/ตัวถัง ให้คู่ที่ซ้ำกันอยู่ติดกัน
     db.select().from(engineNumbers).where(where)
-      .orderBy(sql`${engineNumbers.dateRan} desc nulls last`, sql`${engineNumbers.createdAt} desc`).limit(limit),
+      .orderBy(...(issue === 'number' ? [engineNumbers.number] : issue === 'chassis' ? [engineNumbers.chassis] : []),
+        sql`${engineNumbers.dateRan} desc nulls last`, sql`${engineNumbers.createdAt} desc`).limit(limit),
     db.select({ total: sql<number>`count(*)::int` }).from(engineNumbers).where(where),
   ]);
   const numbers = [...new Set(rows.map((r) => r.number))];
