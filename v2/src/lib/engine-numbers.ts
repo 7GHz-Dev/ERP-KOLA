@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { inArray, or, sql } from 'drizzle-orm';
+import { and, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { engineNumbers } from '@/db/schema';
 import { newId } from '@/lib/actions/common';
@@ -85,4 +85,55 @@ export async function issueEngineNumbers(input: IssueInput): Promise<{ number: s
     if (values.length) await tx.insert(engineNumbers).values(values);
     return issued;
   });
+}
+
+export const ENGINE_FILTERS = ['number', 'full', 'chassis', 'bl', 'invoice', 'date', 'file'] as const;
+export type EngineFilter = Partial<Record<(typeof ENGINE_FILTERS)[number], string>>;
+export type EngineListRow = EngineRow & { id: string; invoice: string; file: string; jobId: string | null };
+
+const ENGINE_COL = {
+  number: engineNumbers.number, full: engineNumbers.fullEngine, chassis: engineNumbers.chassis, bl: engineNumbers.blNo,
+  invoice: engineNumbers.invoiceNo, date: engineNumbers.dateRan, file: engineNumbers.sourceFile,
+} as const;
+
+/** เลขสุ่มที่ถูกใช้กับหลายตัวถัง (ผิด — เลขต้องไม่ซ้ำ) */
+const dupNumbersSql = sql`select ${engineNumbers.number} from ${engineNumbers} group by 1 having count(distinct ${engineNumbers.chassis}) > 1`;
+/** ตัวถังที่ได้เลขมากกว่าหนึ่งเลข (ควรตรวจ — ปกติคันเดิมใช้เลขเดิม) */
+const multiChassisSql = sql`select ${engineNumbers.chassis} from ${engineNumbers} group by 1 having count(distinct ${engineNumbers.number}) > 1`;
+
+/**
+ * รายการเลขเครื่องที่ระบบออกไปแล้ว — ค้นแยกทีละคอลัมน์ (มีคำนั้นอยู่ ไม่สนตัวพิมพ์เล็กใหญ่)
+ * onlyIssues = เฉพาะแถวที่เลขซ้ำ หรือตัวถังมีหลายเลข · คืนแถวล่าสุดก่อน ไม่เกิน limit แถว + จำนวนที่ตรงทั้งหมด
+ */
+export async function searchEngineNumbers(filter: EngineFilter, onlyIssues: boolean, limit = 200) {
+  const conds = [];
+  for (const k of ENGINE_FILTERS) {
+    const v = String(filter[k] ?? '').trim().replace(/[%_\\]/g, '');
+    if (v) conds.push(sql`${ENGINE_COL[k]} ilike ${`%${v}%`}`);
+  }
+  if (onlyIssues) conds.push(sql`(${engineNumbers.number} in (${dupNumbersSql}) or ${engineNumbers.chassis} in (${multiChassisSql}))`);
+  const where = conds.length ? and(...conds) : undefined;
+  const [rows, [{ total }]] = await Promise.all([
+    db.select().from(engineNumbers).where(where)
+      .orderBy(sql`${engineNumbers.dateRan} desc nulls last`, sql`${engineNumbers.createdAt} desc`).limit(limit),
+    db.select({ total: sql<number>`count(*)::int` }).from(engineNumbers).where(where),
+  ]);
+  const numbers = [...new Set(rows.map((r) => r.number))];
+  const chassis = [...new Set(rows.map((r) => r.chassis))];
+  // นับทั้งตาราง ไม่ใช่แค่หน้านี้ — เลขที่ซ้ำกับแถวนอกผลค้นก็ต้องเห็น
+  const [byNumber, byChassis] = await Promise.all([
+    numbers.length ? db.select({ k: engineNumbers.number, n: sql<number>`count(distinct ${engineNumbers.chassis})::int` })
+      .from(engineNumbers).where(inArray(engineNumbers.number, numbers)).groupBy(engineNumbers.number) : Promise.resolve([]),
+    chassis.length ? db.select({ k: engineNumbers.chassis, n: sql<number>`count(distinct ${engineNumbers.number})::int` })
+      .from(engineNumbers).where(inArray(engineNumbers.chassis, chassis)).groupBy(engineNumbers.chassis) : Promise.resolve([]),
+  ]);
+  const dupNumber = new Map(byNumber.filter((r) => r.n > 1).map((r) => [r.k, r.n]));
+  const multiChassis = new Map(byChassis.filter((r) => r.n > 1).map((r) => [r.k, r.n]));
+  return {
+    total,
+    rows: rows.map((r) => ({
+      ...toRow(r), id: r.id, invoice: r.invoiceNo ?? '', file: r.sourceFile ?? '', jobId: r.jobId,
+      numberUsedBy: dupNumber.get(r.number) ?? 1, chassisNumbers: multiChassis.get(r.chassis) ?? 1,
+    })),
+  };
 }

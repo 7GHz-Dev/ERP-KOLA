@@ -6,6 +6,7 @@ import { Fragment, useMemo, useRef, useState } from 'react';
 import type { CargoCar, CargoInvoice } from '@/lib/cargo-invoice/parse';
 import type { JobMatch } from '@/lib/cargo-invoice/jobs';
 import type { TariffResult, TariffRule } from '@/lib/cargo-invoice/tariff';
+import { CargoReference } from './CargoReference';
 
 /**
  * Create Cargo Invoice — อัปโหลด Invoice Excel → ระบบจัดเรียงให้ตรวจ → ดึงพิกัด (เพิ่มรุ่นใหม่ได้) → บันทึก Final Invoice
@@ -26,7 +27,7 @@ async function call<T>(url: string, init: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
+export function CargoInvoiceTool() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -41,6 +42,7 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
   const [chosen, setChosen] = useState<string[]>([]);
   const [adding, setAdding] = useState<number | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
+  const [rulesVersion, setRulesVersion] = useState(0);
 
   const job = jobs.find((j) => j.id === jobId) ?? null;
 
@@ -315,7 +317,7 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
                           onPick={(code) => setChosen((prev) => prev.map((p, k) => (k === i ? code : p)))}
                           adding={adding === i}
                           onAdd={() => setAdding(adding === i ? null : i)}
-                          onAdded={async () => { setAdding(null); await fetchTariffs(); router.refresh(); }}
+                          onAdded={async () => { setAdding(null); setRulesVersion((n) => n + 1); await fetchTariffs(); }}
                         />
                       ))}
                     </Fragment>
@@ -353,8 +355,8 @@ export function CargoInvoiceTool({ added }: { added: TariffRule[] }) {
         </>
       ) : null}
 
-      {/* ---------- กฎพิกัดที่เพิ่มเอง ---------- */}
-      <AddedRules rules={added} onChanged={() => router.refresh()} />
+      {/* ---------- ข้อมูลอ้างอิง: Datatariff + เลขเครื่องที่ระบบออก ---------- */}
+      <CargoReference version={rulesVersion} onChanged={() => { if (tariffs) void fetchTariffs(); }} />
     </div>
   );
 }
@@ -450,42 +452,5 @@ function AddRule({ car, tariff, onAdded }: { car: CargoCar; tariff: Tariff; onAd
       {err ? <p className="cgi-error">⚠️ {err}</p> : null}
       <button type="button" className="button primary" disabled={busy} onClick={() => void submit()}>{busy ? 'กำลังบันทึก…' : 'บันทึกพิกัด'}</button>
     </div>
-  );
-}
-
-function AddedRules({ rules, onChanged }: { rules: TariffRule[]; onChanged: () => void }) {
-  const [busy, setBusy] = useState('');
-  if (!rules.length) return null;
-  async function remove(r: TariffRule) {
-    if (!window.confirm(`ปิดกฎพิกัด ${r.brand} ${r.model} ${r.fuel} → ${r.code}?`)) return;
-    setBusy(r.id);
-    try {
-      await call(`/api/cargo-invoice/rules?id=${encodeURIComponent(r.id)}`, { method: 'DELETE' });
-      onChanged();
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy('');
-    }
-  }
-  return (
-    <details className="cgi-card cgi-rules">
-      <summary>พิกัดที่เพิ่มเอง {rules.length} กฎ (นอกเหนือจากตารางหลัก)</summary>
-      <div className="table-wrap">
-        <table className="data">
-          <thead><tr><th>ยี่ห้อ</th><th>รุ่น</th><th>เชื้อเพลิง</th><th className="num">CC</th><th className="num">น้ำหนัก</th><th>พิกัด</th><th /></tr></thead>
-          <tbody>
-            {rules.map((r) => (
-              <tr key={r.id}>
-                <td>{r.brand}</td><td>{r.model}</td><td>{r.fuel}</td>
-                <td className="num">{r.ccMin}-{r.ccMax}</td><td className="num">{r.wMin}-{r.wMax}</td>
-                <td><b>{r.code}</b></td>
-                <td><button type="button" className="button tiny" disabled={busy === r.id} onClick={() => void remove(r)}>ปิดกฎ</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
   );
 }

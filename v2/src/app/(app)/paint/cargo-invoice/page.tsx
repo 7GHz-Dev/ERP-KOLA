@@ -1,5 +1,4 @@
 import { requireUserReady } from '@/lib/auth';
-import { addedRules } from '@/lib/cargo-invoice/tariff';
 import { CargoInvoiceTool } from '@/components/CargoInvoiceTool';
 
 export const dynamic = 'force-dynamic';
@@ -12,14 +11,13 @@ export const dynamic = 'force-dynamic';
  */
 export default async function CargoInvoicePage() {
   await requireUserReady(['PAINT']);
-  const added = await addedRules();
   return (
     <>
       <div className="page-head">
         <h1>Create Cargo Invoice</h1>
-        <p>อัปโหลด Invoice Excel → ระบบจัดเรียงรถตามตู้และตรวจยอดให้ → ดึงพิกัดศุลกากร (รถรุ่นใหม่เพิ่มพิกัดได้) → บันทึกเป็น Final Invoice</p>
+        <p>อัปโหลด Invoice Excel → ระบบจัดเรียงรถตามตู้และตรวจยอดให้ → ดึงพิกัดศุลกากร (รถรุ่นใหม่เพิ่มพิกัดได้) → บันทึกเป็น Final Invoice · ด้านล่างมีตาราง Datatariff และเลขเครื่องที่ระบบออกไว้ตรวจซ้ำ</p>
       </div>
-      <CargoInvoiceTool added={added.sort((a, b) => `${a.brand}${a.model}`.localeCompare(`${b.brand}${b.model}`))} />
+      <CargoInvoiceTool />
     </>
   );
 }

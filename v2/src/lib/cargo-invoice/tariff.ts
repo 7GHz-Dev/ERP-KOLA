@@ -118,3 +118,31 @@ export function suggestCcRange(rules: TariffRule[], cc: number | null): { ccMin:
   const [ccMin, ccMax] = best.split('-').map(Number);
   return { ccMin, ccMax };
 }
+
+export type RuleIssue = { kind: 'dup' | 'conflict'; with: string; code: string };
+export type CheckedRule = TariffRule & { issues: RuleIssue[] };
+
+/**
+ * ตรวจตาราง datatariff ทั้งชุด — กฎของรถชื่อเดียวกัน (ยี่ห้อ+รุ่น+เชื้อเพลิง) ที่ช่วง CC และน้ำหนักทับกัน
+ *   dup      พิกัดเดียวกัน — ซ้ำ ไม่มีผลกับผลลัพธ์แต่ควรลบออก
+ *   conflict คนละพิกัด — รถคันเดียวได้หลายพิกัด ทำให้คนต้องเลือกเองตอนดึงพิกัด
+ */
+export function checkRules(rules: TariffRule[]): CheckedRule[] {
+  const groups = new Map<string, TariffRule[]>();
+  for (const r of rules) groups.set(ruleKey(r), [...(groups.get(ruleKey(r)) ?? []), r]);
+  const issues = new Map<string, RuleIssue[]>();
+  const label = (r: TariffRule) => (r.source === 'added' ? `เพิ่มเอง #${r.seq}` : `ลำดับ ${r.seq}`);
+  for (const list of groups.values()) {
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        if (a.ccMin > b.ccMax || b.ccMin > a.ccMax || a.wMin > b.wMax || b.wMin > a.wMax) continue;
+        const kind = a.code === b.code ? 'dup' : 'conflict';
+        issues.set(a.id, [...(issues.get(a.id) ?? []), { kind, with: label(b), code: b.code }]);
+        issues.set(b.id, [...(issues.get(b.id) ?? []), { kind, with: label(a), code: a.code }]);
+      }
+    }
+  }
+  return rules.map((r) => ({ ...r, issues: issues.get(r.id) ?? [] }));
+}

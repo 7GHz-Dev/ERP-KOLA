@@ -2788,3 +2788,23 @@ table.data td.col-lib { min-width: 300px; }
 .tc-card b { font-size: 18px; font-variant-numeric: tabular-nums; }
 .tc-card.main { border-color: var(--navy); }
 .tc-h2 { font-size: 15px; margin: 16px 0 8px; }
+
+/* Create Cargo Invoice: ข้อมูลอ้างอิง (Datatariff + เลขเครื่องที่ระบบออก) — หัวคอลัมน์พิมพ์ค้นได้ */
+.cgr-tabs { display: flex; gap: 6px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+.cgr-tabs button {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none; border: 0;
+  border-bottom: 2px solid transparent; padding: 6px 12px; margin-bottom: -1px; cursor: pointer;
+}
+.cgr-tabs button.on { color: var(--blue); border-bottom-color: var(--blue); }
+.cgr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.cgr-wrap { max-height: 560px; }
+.cgr-filter {
+  font: inherit; font-size: 12px; font-weight: 400; width: 100%; min-width: 70px; box-sizing: border-box;
+  padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink);
+}
+.cgr-filter:focus { outline: none; border-color: var(--blue); }
+.cgr-table tr.cgr-conflict td { background: var(--red-soft); }
+.cgr-table tr.cgr-dup td { background: var(--amber-soft); }
+.cgr-issues { display: flex; flex-wrap: wrap; gap: 4px; white-space: normal; max-width: 340px; }
+.cgr-issues button.badge { border: 0; cursor: pointer; font: inherit; font-size: 11px; }
+.cgr-file { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
