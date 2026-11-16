@@ -5,7 +5,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { bls, containers, jobSequences, jobs, masterRecords } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
-import { decodeCsv, readSheet, toDrafts, type ShipmentDraft } from '@/lib/shipment-import';
+import { decodeCsv, readPasted, readSheet, toDrafts, type ShipmentDraft } from '@/lib/shipment-import';
 import { readXlsx } from '@/lib/shipment-xlsx';
 import { logActivity, newId, recordStatus, runAction } from './common';
 
@@ -119,9 +119,40 @@ function lookup(pool: MasterRow[], type: string, value: string): string | null {
  * .xls รุ่นเก่า (ก่อน Excel 2007) อ่านไม่ได้เพราะเป็นคนละรูปแบบไฟล์กันคนละเรื่อง
  * บอกให้ไปบันทึกใหม่ดีกว่าปล่อยให้เปิดแล้วพังเป็นข้อความที่อ่านไม่ออก
  */
+/** ชื่อที่ใช้แทนชื่อไฟล์ เมื่อข้อมูลมาจากการวางข้อความ — ขึ้นในผลตรวจและบันทึกกิจกรรม */
+const PASTED_NAME = 'ข้อมูลที่วางจากตาราง';
+
+/**
+ * ข้อความที่ copy มาจากตาราง Excel แล้ววางในช่อง — คั่นช่องด้วย Tab
+ *
+ * ทางลัดสำหรับงานไม่กี่แถว ไม่ต้อง Save ไฟล์แยกออกมาก่อน
+ * อ่านด้วยกฎจับคอลัมน์ชุดเดียวกับไฟล์ จึงวางได้ทั้งแบบมีและไม่มีหัวคอลัมน์
+ */
+function parsePasted(text: string) {
+  if (text.length > MAX_BYTES) throw new Error('ข้อความยาวเกินไป — แบ่งวางทีละส่วน');
+  const { rows, hasHeader } = readPasted(text);
+  if (!rows.length) throw new Error('ไม่มีข้อมูลในช่องที่วาง');
+  return { rows, hasHeader, fileName: PASTED_NAME };
+}
+
 async function parseUpload(formData: FormData) {
+  const pasted = formData.get('text');
+  const { rows, hasHeader, fileName } = typeof pasted === 'string' && pasted.trim()
+    ? parsePasted(pasted)
+    : await parseFile(formData);
+
+  if (rows.length > MAX_ROWS) {
+    throw new Error(`ข้อมูลมี ${rows.length} แถว เกิน ${MAX_ROWS} แถวที่รับได้ — แบ่งแล้วนำเข้าทีละส่วน`);
+  }
+
+  const { drafts, skipped } = toDrafts(rows);
+  if (!drafts.length) throw new Error('ไม่พบแถวที่มีเลข BL หรือชื่อเรือ — ตรวจว่าเลือกไฟล์ถูกแผ่น หรือ copy ครบทุกคอลัมน์หรือยัง');
+  return { drafts, skipped, hasHeader, fileName };
+}
+
+async function parseFile(formData: FormData) {
   const blob = formData.get('file');
-  if (!(blob instanceof File) || blob.size === 0) throw new Error('กรุณาเลือกไฟล์');
+  if (!(blob instanceof File) || blob.size === 0) throw new Error('กรุณาเลือกไฟล์ หรือวางข้อมูลจากตาราง');
   if (blob.size > MAX_BYTES) throw new Error('ไฟล์ต้องมีขนาดไม่เกิน 4 MB');
 
   // ตรวจ .xls ก่อน เพราะรูปแบบไฟล์คนละเรื่องกับ .xlsx แม้ชื่อจะคล้ายกัน
@@ -138,13 +169,7 @@ async function parseUpload(formData: FormData) {
     ? await readXlsx(bytes)
     : readSheet(decodeCsv(new Uint8Array(bytes)));
   if (!rows.length) throw new Error('ไฟล์ไม่มีข้อมูล');
-  if (rows.length > MAX_ROWS) {
-    throw new Error(`ไฟล์มี ${rows.length} แถว เกิน ${MAX_ROWS} แถวที่รับได้ — แบ่งไฟล์แล้วนำเข้าทีละส่วน`);
-  }
-
-  const { drafts, skipped } = toDrafts(rows);
-  if (!drafts.length) throw new Error('ไม่พบแถวที่มีเลข BL หรือชื่อเรือ — ตรวจว่าเลือกไฟล์ถูกแผ่นหรือยัง');
-  return { drafts, skipped, hasHeader, fileName: blob.name };
+  return { rows, hasHeader, fileName: blob.name };
 }
 
 /**

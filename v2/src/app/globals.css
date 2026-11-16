@@ -372,6 +372,18 @@ a.file-link:hover { text-decoration: underline; }
 }
 .drop-zone:hover { border-color: var(--blue); background: var(--blue-soft); }
 .drop-zone input { display: block; margin: 10px auto 0; }
+/* ช่องวางข้อมูลที่ copy จากตาราง Excel — ข้อความคั่นด้วย Tab จึงใช้ตัวอักษรความกว้างเท่ากัน */
+.paste-import { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.paste-import label { font-size: 12px; color: var(--muted); }
+.paste-import textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; tab-size: 4;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: inherit;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto;
+}
+.paste-import textarea:focus { outline: none; border-color: var(--blue); }
+.paste-import-actions { display: flex; gap: 8px; }
 .read-status {
   margin: 8px 0 14px; padding: 8px 11px; border-radius: 6px;
   background: var(--canvas); color: var(--muted); font-size: 12px;

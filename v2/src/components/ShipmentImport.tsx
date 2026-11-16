@@ -25,25 +25,33 @@ export function ShipmentImport({
   preview: (formData: FormData) => Promise<PreviewResult | undefined>;
   confirm: (formData: FormData) => Promise<Done | undefined>;
 }) {
-  const file = useRef<File | null>(null);
+  /*
+   * แหล่งข้อมูลที่ตรวจไปล่าสุด — ไฟล์ หรือข้อความที่วางจากตาราง
+   * ตอนยืนยันส่งตัวเดียวกับที่ตรวจขึ้นไปอ่านใหม่ ไม่ใช่ข้อความที่อาจแก้ในช่องไปแล้วหลังกดตรวจ
+   */
+  const source = useRef<{ file: File } | { text: string } | null>(null);
+  const [pasted, setPasted] = useState('');
   const [result, setResult] = useState<PreviewResult | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  async function pick(list: FileList | null) {
-    const picked = list?.[0];
-    if (!picked) return;
-    file.current = picked;
+  function formOf(src: { file: File } | { text: string }) {
+    const fd = new FormData();
+    if ('file' in src) fd.set('file', src.file);
+    else fd.set('text', src.text);
+    fd.set('sourceType', sourceType);
+    return fd;
+  }
+
+  async function check(src: { file: File } | { text: string }) {
+    source.current = src;
     setResult(null);
     setDone(null);
     setError('');
     setBusy(true);
     try {
-      const fd = new FormData();
-      fd.set('file', picked);
-      fd.set('sourceType', sourceType);
-      const res = await preview(fd);
+      const res = await preview(formOf(src));
       if (res) setResult(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -51,16 +59,23 @@ export function ShipmentImport({
     setBusy(false);
   }
 
+  function pick(list: FileList | null) {
+    const picked = list?.[0];
+    if (picked) void check({ file: picked });
+  }
+
   async function save() {
-    if (!file.current) return;
+    if (!source.current) return;
     setBusy(true);
     setError('');
     try {
-      const fd = new FormData();
-      fd.set('file', file.current);
-      fd.set('sourceType', sourceType);
-      const res = await confirm(fd);
-      if (res) { setDone(res); setResult(null); }
+      const res = await confirm(formOf(source.current));
+      if (res) {
+        setDone(res);
+        setResult(null);
+        // นำเข้าแล้วล้างช่อง กันกดตรวจ/นำเข้าชุดเดิมซ้ำโดยไม่ตั้งใจ
+        if ('text' in source.current) setPasted('');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -82,9 +97,40 @@ export function ShipmentImport({
           type="file"
           accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
           disabled={busy}
-          onChange={(e) => void pick(e.target.files)}
+          onChange={(e) => { pick(e.target.files); e.target.value = ''; }}
         />
       </label>
+
+      <div className="paste-import">
+        <label htmlFor="shipment-paste">
+          หรือวางข้อมูลที่ copy จากตาราง Excel — เลือกแถวทั้งแถวแล้ว Ctrl+C / ⌘C มาวางที่นี่
+          (มีหรือไม่มีหัวคอลัมน์ก็ได้ · เลขลำดับแถวหน้าสุดระบบตัดให้)
+        </label>
+        <textarea
+          id="shipment-paste"
+          rows={5}
+          value={pasted}
+          disabled={busy}
+          placeholder={'1024\tMUNNA BY\t16/6/2026\tMSFZ - รถยนต์เก่า\tY\tS\t…'}
+          onChange={(e) => setPasted(e.target.value)}
+          spellCheck={false}
+        />
+        <div className="paste-import-actions">
+          <button
+            type="button"
+            className="button"
+            disabled={busy || !pasted.trim()}
+            onClick={() => void check({ text: pasted })}
+          >
+            ตรวจข้อมูลที่วาง
+          </button>
+          {pasted ? (
+            <button type="button" className="button" disabled={busy} onClick={() => setPasted('')}>
+              ล้างช่อง
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       {error ? <p className="drawer-note warn">{error}</p> : null}
 
@@ -144,7 +190,7 @@ export function ShipmentImport({
 
           <div className="batch-foot">
             <span>
-              ไฟล์ {result.fileName} · พร้อมนำเข้า {fresh.length} งาน
+              {source.current && 'text' in source.current ? '' : 'ไฟล์ '}{result.fileName} · พร้อมนำเข้า {fresh.length} งาน
               {dup ? ` · ข้ามใบที่มีอยู่แล้ว ${dup} ใบ` : ''}
               {warned ? ` · มีคำเตือน ${warned} แถว` : ''}
               {result.skipped ? ` · ข้ามบรรทัดว่าง ${result.skipped} บรรทัด` : ''}
@@ -169,7 +215,7 @@ export function ShipmentImport({
         </>
       ) : null}
 
-      {busy && !result ? <p className="batch-note">กำลังตรวจไฟล์…</p> : null}
+      {busy && !result ? <p className="batch-note">กำลังตรวจข้อมูล…</p> : null}
     </div>
   );
 }

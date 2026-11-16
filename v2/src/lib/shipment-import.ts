@@ -156,6 +156,74 @@ export function readSheet(content: string): { rows: SheetRow[]; hasHeader: boole
   return rowsFromGrid(grid);
 }
 
+/**
+ * ตัดข้อความที่ copy มาจากตาราง (Excel / Google Sheets) เป็นตาราง
+ *
+ * คลิปบอร์ดของ Excel คั่นช่องด้วย Tab และคั่นแถวด้วยขึ้นบรรทัดใหม่
+ * ช่องที่มีขึ้นบรรทัดหรือ Tab อยู่ข้างในจะถูกครอบด้วย "…" และ " ข้างในเขียนเป็น ""
+ *
+ * ถือว่าเครื่องหมายคำพูดเปิดช่องได้เฉพาะเมื่ออยู่ต้นช่องเท่านั้น
+ * เพราะ Excel ไม่ครอบช่องธรรมดาที่มี " อยู่กลางข้อความ เช่น 40" HC
+ * ถ้านับ " ทุกตัวแบบ CSV ช่องนั้นจะกลืนแถวที่เหลือทั้งหมดเข้าไป
+ */
+export function tsvGrid(content: string): string[][] {
+  const text = content.replace(/^﻿/, '');
+  const grid: string[][] = [];
+  let row: string[] = [];
+  let cur = '';
+  let i = 0;
+
+  const endCell = () => { row.push(cur); cur = ''; };
+  const endRow = () => {
+    endCell();
+    if (row.some((c) => c.trim())) grid.push(row);
+    row = [];
+  };
+
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '"' && cur === '') {
+      // ช่องที่ถูกครอบ — อ่านจนเจอ " ที่ไม่ได้ตามด้วย " อีกตัว
+      let j = i + 1;
+      let val = '';
+      let closed = false;
+      while (j < text.length) {
+        if (text[j] === '"') {
+          if (text[j + 1] === '"') { val += '"'; j += 2; continue; }
+          closed = true;
+          j += 1;
+          break;
+        }
+        val += text[j];
+        j += 1;
+      }
+      const next = text[j];
+      if (closed && (next === undefined || next === '\t' || next === '\n' || next === '\r')) {
+        cur = val;
+        i = j;
+        continue;
+      }
+      // ไม่ได้เป็นช่องที่ถูกครอบจริง — อ่านเป็นข้อความธรรมดา
+    }
+    if (c === '\t') { endCell(); i += 1; continue; }
+    if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i += 1;
+      endRow();
+      i += 1;
+      continue;
+    }
+    cur += c;
+    i += 1;
+  }
+  endRow();
+  return grid;
+}
+
+/** อ่านข้อความที่วางมาจากตาราง — ตัดเป็นตารางแล้วส่งต่อให้ rowsFromGrid() */
+export function readPasted(content: string): { rows: SheetRow[]; hasHeader: boolean } {
+  return rowsFromGrid(tsvGrid(content));
+}
+
 /* ---------------- แปลงค่าในช่อง ---------------- */
 
 /**

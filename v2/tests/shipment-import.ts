@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-  blKey, decodeCsv, fixShipline, readSheet, sheetDate, sheetNumber,
-  splitBlNo, splitContainers, splitCsvLine, splitVessel, toDrafts,
+  blKey, decodeCsv, fixShipline, readPasted, readSheet, sheetDate, sheetNumber,
+  splitBlNo, splitContainers, splitCsvLine, splitVessel, toDrafts, tsvGrid,
 } from '../src/lib/shipment-import';
 import { candidateNumbers, matchBl, type BlChoice } from '../src/lib/match-bl';
 import { TEMPLATE_COLUMNS } from '../src/lib/template-columns';
@@ -229,7 +229,51 @@ function decodeTests() {
   console.log('PASS: ถอดรหัสไฟล์ — UTF-8 มี/ไม่มี BOM และ Windows-874 จาก Excel ภาษาไทย');
 }
 
+/** แถวที่ผู้ใช้ copy จากตาราง Excel มาวาง — คั่นด้วย Tab มีเลขลำดับแถวนำหน้า */
+const PASTED = [
+  '1024', 'MUNNA BY', '16/6/2026', 'MSFZ - รถยนต์เก่า', 'Y', 'S', '18/6/2026', '19/6/2026', '19/6/2026',
+  'JAMIL CO. LTD.', '6', '011GX03365',
+  'BEAU5916457,TIIU4607790,TXGU7829347,WHSU5372347,WHSU5425982,WHSU6696886',
+  '26', '34,800', 'WAN HAI', 'WAN HAI 277 V.S058', 'A2', '4664', 'A0160690602214', 'MSFZ', 'KOLA',
+  '6', '-', '5', '21/6/2026', '3', '21/6/2026',
+].join('\t');
+
+function pasteTests() {
+  const { rows, hasHeader } = readPasted(`${PASTED}\n`);
+  assert.equal(hasHeader, false);
+  assert.equal(rows.length, 1, 'บรรทัดว่างท้ายข้อความที่ copy มาต้องไม่นับเป็นแถว');
+  const c = rows[0].cell;
+  assert.equal(c.CUSTOMER, 'MUNNA BY', 'เลขลำดับแถว 1024 ต้องถูกตัดทิ้ง');
+  assert.equal(c.SHIPPER, 'JAMIL CO. LTD.');
+  assert.equal(c['BILL OF LADING'], '011GX03365');
+  assert.equal(c.VESSEL, 'WAN HAI 277 V.S058');
+  assert.equal(c.DET, '3');
+  assert.equal(c['DET DATE'], '21/6/2026');
+
+  const { drafts } = toDrafts(rows);
+  assert.equal(drafts[0].eta, '2026-06-16');
+  assert.equal(drafts[0].containers.length, 6);
+  assert.equal(drafts[0].grossWeight, '34800');
+  assert.equal(drafts[0].voyage, 'S058');
+  assert.equal(drafts[0].names.terminal, 'A2');
+
+  // มีหัวคอลัมน์ และบรรทัดคั่นแบบ Windows
+  const head = TEMPLATE_COLUMNS.join('\t');
+  const withHead = readPasted(`${head}\r\n${PASTED.split('\t').slice(1).join('\t')}\r\n`);
+  assert.equal(withHead.hasHeader, true);
+  assert.equal(withHead.rows[0].cell.SHIPPER, 'JAMIL CO. LTD.');
+
+  // ช่องที่มีขึ้นบรรทัดถูก Excel ครอบด้วย "…" — ต้องไม่ตัดแถวกลางช่อง
+  assert.deepEqual(tsvGrid('a\t"line1\nline2 ""x"""\tb\nc\td'), [['a', 'line1\nline2 "x"', 'b'], ['c', 'd']]);
+  // " กลางข้อความที่ไม่ได้ครอบ ต้องอ่านเป็นตัวอักษรธรรมดา
+  assert.deepEqual(tsvGrid('40" HC\tx\ny\tz'), [['40" HC', 'x'], ['y', 'z']]);
+  assert.deepEqual(tsvGrid('"abc" def\tx'), [['"abc" def', 'x']]);
+
+  console.log('PASS: วางข้อมูลจากตาราง Excel — Tab, เลขลำดับแถว, หัวคอลัมน์, ช่องหลายบรรทัด');
+}
+
 sheetTests();
+pasteTests();
 valueTests();
 draftTests();
 matchTests();
