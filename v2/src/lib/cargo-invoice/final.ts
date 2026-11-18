@@ -3,12 +3,12 @@
  *
  *   1. อ่านไฟล์ใหม่ที่เซิร์ฟเวอร์ แล้วใส่ค่าที่แก้ในตาราง (edit.ts) — โครงไฟล์ ตู้ ลำดับรถ มาจากไฟล์เสมอ
  *   2. เขียนค่าที่แก้กลับลงส่วน invoice ของผู้ขาย (writeCarEdits)
- *   3. JAN TRADING จัดหน้าใหม่ (jan-trading.ts) — Preview ใช้เลขเครื่อง xxxxxxx เพราะยังไม่ออกเลขจริง
+ *   3. JAN TRADING / AICHI จัดหน้าใหม่ (final-layout.ts) — Preview ใช้เลขเครื่อง xxxxxxx เพราะยังไม่ออกเลขจริง
  *   4. เขียนตารางสรุป P:AG ให้ worker สร้าง Draft ใบขน (writeSummary)
  */
 import { applyEdits, engineDesc } from './edit';
 import { enginePrefix, finalEngineText } from './engine-format';
-import { finalizeJanTrading } from './jan-trading';
+import { FINAL_LAYOUT_PATTERNS, finalizeLayout } from './final-layout';
 import { parseCargoInvoice, type CargoCar, type CargoInvoice } from './parse';
 import { writeCarEdits, writeSummary } from './write';
 
@@ -24,11 +24,16 @@ export async function readWithEdits(bytes: Buffer, editsJson: FormDataEntryValue
   return { inv, original };
 }
 
-/** BL ที่ใช้: JAN TRADING ใช้ BL ของงานเสมอ · รูปแบบอื่นใช้ของใบ ใบว่างจึงใช้ของงาน */
+/** BL ที่ใช้: รูปแบบที่ระบบจัดหน้า (JAN TRADING · AICHI) ใช้ BL ของงานเสมอ · รูปแบบอื่นใช้ของใบ ใบว่างจึงใช้ของงาน */
 export function invoiceBl(inv: CargoInvoice, jobBl: string | null | undefined) {
   const job = (jobBl ?? '').replace(/\s/g, '').toUpperCase();
-  return inv.pattern === 'JAN TRADING' ? job || inv.blNo : inv.blNo || job;
+  return FINAL_LAYOUT_PATTERNS.has(inv.pattern) ? job || inv.blNo : inv.blNo || job;
 }
+
+/** รูปแบบที่ใช้เลข Invoice รันของระบบ: คำนำหน้า + เลข (คนแก้เลขได้) */
+export const RUNNING_INVOICE: Record<string, string> = { AICHI: 'AICHI' };
+/** เลขในเลข Invoice ของใบ เช่น "AICHI 325" → 325 */
+export const invoiceNumber = (invoiceNo: string) => Number(/(\d+)\s*$/.exec(invoiceNo)?.[1] ?? 0) || null;
 
 /**
  * ไฟล์ FN Invoice — engineNumbers = เลข 7 หลักของรถแต่ละคัน (null = Preview ยังไม่ออกเลข)
@@ -39,7 +44,7 @@ export async function buildFinalInvoice(
   opts: { tariffs: string[]; engineNumbers: string[] | null },
 ): Promise<Buffer> {
   let source = await writeCarEdits(bytes, original, inv.cars);
-  if (inv.pattern === 'JAN TRADING') {
+  if (FINAL_LAYOUT_PATTERNS.has(inv.pattern)) {
     const nums = opts.engineNumbers;
     const texts = inv.cars.map((c, i) => finalEngineText(c, nums?.[i] ?? ''));
     if (nums) {
@@ -48,10 +53,13 @@ export async function buildFinalInvoice(
         return { ...c, engine, desc2: engineDesc(engine, c.fuel, c.cc, c.year) };
       });
     }
-    source = await finalizeJanTrading(source, {
-      blNo: inv.blNo, engines: texts,
+    source = await finalizeLayout(source, {
+      pattern: inv.pattern, blNo: inv.blNo, engines: texts,
       total: inv.cars.reduce((s, c) => s + (c.price ?? 0), 0),
       weight: inv.cars.reduce((s, c) => s + (c.weight ?? 0), 0),
+      units: inv.cars.length,
+      // เลข Invoice รันของระบบ (AICHI) — save/preview ตั้ง inv.invoiceNo ให้แล้ว
+      invoiceNo: RUNNING_INVOICE[inv.pattern] ? inv.invoiceNo : undefined,
     });
   }
   return writeSummary(source, inv, opts.tariffs);

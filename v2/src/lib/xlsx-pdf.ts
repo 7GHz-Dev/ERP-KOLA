@@ -440,13 +440,23 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
      *
      * ชิดซ้ายล้นไปทางขวา ชิดขวาล้นไปทางซ้าย จัดกลางล้นได้ทั้งสองทาง ตามที่ Excel ทำ
      */
+    /*
+     * ข้อความไม่ล้นข้ามเส้นตาราง — ในตารางที่มีเส้นแบ่งช่อง (เช่นช่องเลขเครื่องของ AICHI) ข้อความที่ล้นทับเส้นอ่านยาก
+     * จึงย่อให้พอดีช่องแทน · ช่องที่ไม่มีเส้นยังล้นไปช่องว่างข้าง ๆ ได้ตามเดิม
+     */
+    const wall = (ri: number, k: number) => {     // มีเส้นระหว่างคอลัมน์ k-1 กับ k (นับจากซ้ายของขอบเขต)
+      const r = area.fromRow + ri;
+      const left = k - 1 >= 0 ? sheet.getCell(r, area.fromCol + k - 1).border?.right : null;
+      const right = k < colW.length ? sheet.getCell(r, area.fromCol + k).border?.left : null;
+      return Boolean(left?.style || right?.style);
+    };
     const roomFor = (ri: number, ci: number, spanCols: number, align: Align) => {
       let room = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0);
       if (align !== 'right') {
-        for (let k = ci + spanCols; k < colW.length && !filled[ri][k]; k += 1) room += colW[k];
+        for (let k = ci + spanCols; k < colW.length && !filled[ri][k] && !wall(ri, k); k += 1) room += colW[k];
       }
       if (align !== 'left') {
-        for (let k = ci - 1; k >= 0 && !filled[ri][k]; k -= 1) room += colW[k];
+        for (let k = ci - 1; k >= 0 && !filled[ri][k] && !wall(ri, k + 1); k -= 1) room += colW[k];
       }
       return room * scale;
     };
@@ -489,13 +499,16 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
 
         // เส้นขอบตามที่ตั้งไว้ในไฟล์
         const b = cell.border;
+        // ความหนาตามชนิดเส้นในไฟล์ — เส้นหนา (medium) แบ่งตู้ให้เห็นต่างจากเส้นบางที่แบ่งคัน
+        const WIDTH: Record<string, number> = { hair: 0.3, thin: 0.6, medium: 1.2, thick: 1.8, double: 1.2 };
         const edge = (
           on: unknown, x1: number, y1: number, x2: number, y2: number,
         ) => {
           if (!on) return;
+          const style = (on as { style?: string }).style;
           page.drawLine({
             start: { x: x1, y: y1 }, end: { x: x2, y: y2 },
-            thickness: 0.6, color: black,
+            thickness: WIDTH[style ?? ''] ?? 0.6, color: black,
           });
         };
         edge(b?.top, x, yTop, x + w, yTop);

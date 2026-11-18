@@ -18,8 +18,9 @@ import { CargoReference } from './CargoReference';
  */
 
 type Tariff = TariffResult & { similar: TariffRule[]; suggest: { ccMin: number; ccMax: number } | null };
+type Suggest = { prefix: string; next: number | null; last: number | null };
 type Saved = {
-  jobId: string; jobNo: string; fileId: string; version: number; pdf: boolean;
+  jobId: string; jobNo: string; fileId: string; version: number; pdf: boolean; invoiceNo: string;
   /** JAN TRADING: เลขเครื่องที่ออกใหม่ / ใช้เลขเดิม */
   engines: { issued: number; reused: number } | null;
 };
@@ -48,6 +49,9 @@ export function CargoInvoiceTool() {
   const [cars, setCars] = useState<CargoCar[]>([]);
   const [tariffFor, setTariffFor] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
+  /** AICHI: เลข INVOICE NO. รันของระบบ (แก้ได้) */
+  const [suggest, setSuggest] = useState<Suggest | null>(null);
+  const [invoiceNum, setInvoiceNum] = useState('');
   const [jobs, setJobs] = useState<JobMatch[]>([]);
   const [jobId, setJobId] = useState('');
   const [matchedBy, setMatchedBy] = useState<'bl' | 'containers' | 'search'>('bl');
@@ -59,11 +63,12 @@ export function CargoInvoiceTool() {
   const [rulesVersion, setRulesVersion] = useState(0);
 
   const job = jobs.find((j) => j.id === jobId) ?? null;
-  /** JAN TRADING — ระบบจัดหน้า Final Invoice ให้ (BL ของงาน · เลขเครื่อง · ตัดแถว COLOR และค่าใช้จ่ายอื่น) */
-  const jan = inv?.pattern === 'JAN TRADING';
+  /** JAN TRADING · AICHI — ระบบจัดหน้า Final Invoice ให้ (BL ของงาน · เลขเครื่อง · ตัด/ต่อแถว · ยอดรวมทั้ง BL) */
+  const jan = inv?.pattern === 'JAN TRADING' || inv?.pattern === 'AICHI';
+  const numberOk = !suggest || /^[1-9]\d{0,6}$/.test(invoiceNum.trim());
 
   const reset = () => {
-    setFile(null); setInv(null); setCars([]); setTariffFor(''); setJobs([]); setJobId(''); setMatchedBy('bl'); setJobQuery(''); setTariffs(null); setChosen([]);
+    setFile(null); setInv(null); setCars([]); setTariffFor(''); setSuggest(null); setInvoiceNum(''); setJobs([]); setJobId(''); setMatchedBy('bl'); setJobQuery(''); setTariffs(null); setChosen([]);
     setAdding(null); setSaved(null); setError('');
     if (input.current) input.current.value = '';
   };
@@ -75,8 +80,10 @@ export function CargoInvoiceTool() {
     try {
       const fd = new FormData();
       fd.set('file', f);
-      const data = await call<{ invoice: CargoInvoice; jobs: JobMatch[]; matchedBy: 'bl' | 'containers' }>('/api/cargo-invoice/parse', { method: 'POST', body: fd });
+      const data = await call<{ invoice: CargoInvoice; jobs: JobMatch[]; matchedBy: 'bl' | 'containers'; invoiceSuggest: Suggest | null }>('/api/cargo-invoice/parse', { method: 'POST', body: fd });
       setInv(data.invoice);
+      setSuggest(data.invoiceSuggest);
+      setInvoiceNum(data.invoiceSuggest?.next ? String(data.invoiceSuggest.next) : '');
       setCars(data.invoice.cars);
       setJobs(data.jobs);
       setMatchedBy(data.matchedBy);
@@ -140,6 +147,7 @@ export function CargoInvoiceTool() {
       fd.set('jobId', job.id);
       fd.set('tariffs', JSON.stringify(chosen));
       fd.set('edits', JSON.stringify(editsOf(cars)));
+      if (suggest) fd.set('invoiceNo', invoiceNum.trim());
       setSaved(await call<Saved>('/api/cargo-invoice/save', { method: 'POST', body: fd }));
       router.refresh();
     } catch (e) {
@@ -169,6 +177,7 @@ export function CargoInvoiceTool() {
       if (job) fd.set('jobId', job.id);
       fd.set('tariffs', JSON.stringify(chosen));
       fd.set('edits', JSON.stringify(editsOf(cars)));
+      if (suggest && numberOk) fd.set('invoiceNo', invoiceNum.trim());
       const res = await fetch('/api/cargo-invoice/preview', { method: 'POST', body: fd });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
@@ -276,7 +285,29 @@ export function CargoInvoiceTool() {
             ) : null}
             <div className="cgi-head">
               <div><span>รูปแบบ</span><b><span className="badge neutral">{inv.pattern || '?'}</span></b><small>{inv.supplier}</small></div>
-              <div><span>Invoice No.</span><b>{inv.invoiceNo || '-'}</b></div>
+              <div>
+                <span>Invoice No.</span>
+                {suggest ? (
+                  // AICHI: เลขรันของระบบ — แก้ได้ก่อนสร้าง Final Invoice
+                  <label className="cgi-invno">
+                    <b>{suggest.prefix}</b>
+                    <input
+                      value={invoiceNum}
+                      inputMode="numeric"
+                      className={numberOk ? '' : 'is-dup'}
+                      disabled={Boolean(saved)}
+                      onChange={(e) => setInvoiceNum(e.target.value.replace(/[^\d]/g, ''))}
+                    />
+                  </label>
+                ) : <b>{inv.invoiceNo || '-'}</b>}
+                {suggest ? (
+                  <small>
+                    {suggest.last !== null ? `เลขล่าสุดที่ใช้ ${suggest.prefix} ${suggest.last}` : 'ยังไม่เคยออกเลขในระบบ — ตั้งต้นจากเลขในใบ'}
+                    {` · ในใบผู้ขาย ${inv.invoiceNo}`}
+                    {suggest.last !== null && Number(invoiceNum) > 0 && Number(invoiceNum) <= suggest.last ? ' · ⚠ เลขนี้อาจซ้ำกับใบที่ออกไปแล้ว' : ''}
+                  </small>
+                ) : null}
+              </div>
               <div><span>วันที่ Invoice</span><b>{inv.invoiceDate || '-'}</b></div>
               <div>
                 <span>BL No.</span>
@@ -411,7 +442,7 @@ export function CargoInvoiceTool() {
           <section className="cgi-card cgi-save">
             {saved ? (
               <div className="cgi-done">
-                <b>✓ บันทึก Final Invoice แล้ว — งาน <Link href={`/job/${saved.jobId}`}>{saved.jobNo}</Link> (v{saved.version})</b>
+                <b>✓ บันทึก Final Invoice แล้ว — งาน <Link href={`/job/${saved.jobId}`}>{saved.jobNo}</Link> (v{saved.version}){suggest ? ` · ${saved.invoiceNo}` : ''}</b>
                 <span>{saved.pdf ? 'แปลงเป็น PDF สำหรับชุด E-Office ให้แล้ว' : 'แปลง PDF ไม่สำเร็จ — ตอนรวมชุด E-Office ระบบจะลองใหม่'}</span>
                 {saved.engines ? (
                   <span>เลขเครื่อง: ออกใหม่ {saved.engines.issued} คัน{saved.engines.reused ? ` · ใช้เลขเดิม ${saved.engines.reused} คัน` : ''} — ดูได้ที่ตารางเลขเครื่องด้านล่าง</span>
@@ -425,18 +456,19 @@ export function CargoInvoiceTool() {
               <>
                 <p>
                   {!job ? 'เลือกงานที่จะบันทึกก่อน'
+                    : !numberOk ? 'ใส่เลข INVOICE NO. ก่อนบันทึก'
                     : !tariffs ? 'กด "ดึงพิกัด" ก่อนบันทึก'
                       : tariffStale ? 'แก้ข้อมูลรถแล้ว — กด "ดึงพิกัดใหม่" ก่อนบันทึก'
                       : !readyToSave ? 'ยังบันทึกไม่ได้ — ต้องมีพิกัดครบทุกคันและข้อมูลรถครบ'
                         : jan
-                          ? `พร้อมบันทึกเป็น Final Invoice ของงาน ${job.jobNo} · ระบบจัดหน้าแบบ JAN TRADING: ใส่ BL ของงาน · ออกเลขเครื่อง · ตัดแถว COLOR และค่าใช้จ่ายอื่น · TOTAL เป็นราคารถรวม แล้วแปลง PDF พร้อมพิมพ์`
+                          ? `พร้อมบันทึกเป็น Final Invoice ของงาน ${job.jobNo} · ระบบจัดหน้าแบบ ${inv.pattern}: ใส่ BL ของงาน${suggest ? ` · INVOICE NO. ${suggest.prefix} ${invoiceNum}` : ''} · ออกเลขเครื่อง · ${inv.pattern === 'AICHI' ? 'ต่อทุกตู้เป็นชีตเดียว' : 'ตัดแถว COLOR และค่าใช้จ่ายอื่น'} · TOTAL เป็นยอดรวมทั้ง BL แล้วแปลง PDF พร้อมพิมพ์`
                           : `พร้อมบันทึกเป็น Final Invoice ของงาน ${job.jobNo} · ระบบเขียนตารางสรุปและพิกัดลงไฟล์ให้ worker สร้าง Draft ใบขนใช้ต่อ`}
                 </p>
                 <div className="cgi-save-actions">
                   <button type="button" className="button" disabled={Boolean(busy) || inv.errors.length > 0} onClick={() => void showPreview()}>
                     👁 Preview FN Invoice
                   </button>
-                  <button type="button" className="button primary" disabled={!readyToSave || Boolean(busy)} onClick={() => void save()}>
+                  <button type="button" className="button primary" disabled={!readyToSave || !numberOk || Boolean(busy)} onClick={() => void save()}>
                     ④ บันทึก Final Invoice
                   </button>
                 </div>

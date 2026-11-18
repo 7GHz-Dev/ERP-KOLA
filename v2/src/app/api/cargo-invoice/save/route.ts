@@ -6,7 +6,9 @@ import { logActivity } from '@/lib/actions/common';
 import { storeInvoicePdf } from '@/lib/eoffice-bundle';
 import { storeJobFileVersion } from '@/lib/job-files';
 import { enginePrefix, existingEngineNumber } from '@/lib/cargo-invoice/engine-format';
-import { buildFinalInvoice, invoiceBl, readWithEdits } from '@/lib/cargo-invoice/final';
+import { buildFinalInvoice, invoiceBl, readWithEdits, RUNNING_INVOICE } from '@/lib/cargo-invoice/final';
+import { FINAL_LAYOUT_PATTERNS } from '@/lib/cargo-invoice/final-layout';
+import { recordInvoiceNo, runningInvoiceNo } from '@/lib/cargo-invoice/invoice-number';
 import { assignEngineNumbers } from '@/lib/engine-numbers';
 import { allRules, lookup, TARIFF_CODE } from '@/lib/cargo-invoice/tariff';
 import { cargoUser, invoiceFile, json } from '@/lib/cargo-invoice/http';
@@ -21,7 +23,8 @@ export const maxDuration = 60;
  * พิกัดต้องมาจากกฎเสมอ (ตรงตัวเดียว หรือเลือกจากหลายตัวที่ตรง) ไม่มีการพิมพ์พิกัดลอย ๆ
  * จากนั้นเขียนตารางสรุปลงไฟล์ เก็บเป็นเวอร์ชันใหม่ของ FINAL_INVOICE และแปลง PDF สำหรับชุด E-Office
  *
- * JAN TRADING จัดหน้า invoice ให้พร้อมพิมพ์ด้วย (jan-trading.ts): BL ของงาน · ออกเลขเครื่อง · ตัดแถว COLOR และค่าใช้จ่ายอื่น
+ * JAN TRADING · AICHI จัดหน้า invoice ให้พร้อมพิมพ์ด้วย (final-layout.ts): BL ของงาน · ออกเลขเครื่อง · ตัด/ต่อแถว
+ * AICHI ใช้เลข INVOICE NO. รันของระบบ (invoice-number.ts) ที่คนแก้ได้ก่อนบันทึก
  * เลข BL ใช้ของงานเสมอ — ต่อไปปุ่มนี้จะอยู่ในแถวงานที่ Pending job > 3. Final Invoice ซึ่งรู้งานอยู่แล้ว
  */
 export async function POST(request: Request) {
@@ -40,7 +43,13 @@ export async function POST(request: Request) {
   try { read = await readWithEdits(file.bytes, form.get('edits')); } catch (e) { return json({ error: e instanceof Error ? e.message : String(e) }, 400); }
   const { inv, original } = read;
   if (inv.errors.length) return json({ error: `ไฟล์มีปัญหา: ${inv.errors[0]}` }, 400);
-  const jan = inv.pattern === 'JAN TRADING';
+  // JAN TRADING · AICHI — ระบบจัดหน้า Final Invoice ให้ (BL ของงาน · ออกเลขเครื่อง · ตัด/ต่อแถว)
+  const laidOut = FINAL_LAYOUT_PATTERNS.has(inv.pattern);
+  if (RUNNING_INVOICE[inv.pattern]) {
+    const no = runningInvoiceNo(inv.pattern, form.get('invoiceNo'));
+    if (!no) return json({ error: `ใส่เลข INVOICE NO. (${RUNNING_INVOICE[inv.pattern]} ตามด้วยตัวเลข) ก่อนบันทึก` }, 400);
+    inv.invoiceNo = no;
+  }
   // ใบที่ช่อง B/L ว่าง ใช้ BL ของงานที่เลือก — worker สร้าง Draft ต้องมี BL ในตารางสรุป (P14)
   // JAN TRADING ใช้ BL ของงานเสมอ (เขียนลงช่อง B/L NO ของใบด้วย)
   inv.blNo = invoiceBl(inv, job.blNo);
@@ -71,7 +80,7 @@ export async function POST(request: Request) {
 
   let engines: { issued: number; reused: number } | null = null;
   let numbers: string[] | null = null;
-  if (jan) {
+  if (laidOut) {
     // จัดหน้าด้วยเลขสมมติก่อน — ไฟล์ผิดรูปแบบจะได้รู้ก่อนออกเลขเครื่องจริง
     try {
       await buildFinalInvoice(file.bytes, { ...inv }, original, { tariffs, engineNumbers: null });
@@ -86,6 +95,7 @@ export async function POST(request: Request) {
     engines = { issued: assigned.issued, reused: assigned.reused };
   }
   const bytes = await buildFinalInvoice(file.bytes, inv, original, { tariffs, engineNumbers: numbers });
+  await recordInvoiceNo(inv.pattern, inv.invoiceNo);
   const stored = await storeJobFileVersion({
     jobId: job.id, category: 'FINAL_INVOICE', bytes, fileName: file.name,
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -102,5 +112,5 @@ export async function POST(request: Request) {
   revalidatePath('/pending');
   revalidatePath('/fah/fn');
 
-  return json({ ok: true, jobId: job.id, jobNo: job.jobNo, fileId: stored.id, version: stored.version, pdf, engines });
+  return json({ ok: true, jobId: job.id, jobNo: job.jobNo, fileId: stored.id, version: stored.version, pdf, engines, invoiceNo: inv.invoiceNo });
 }

@@ -23,7 +23,7 @@ import { baseRules, lookup } from '../src/lib/cargo-invoice/tariff';
 import { writeSummary } from '../src/lib/cargo-invoice/write';
 import ExcelJS from 'exceljs';
 import { enginePrefix, existingEngineNumber, finalEngineText } from '../src/lib/cargo-invoice/engine-format';
-import { finalizeJanTrading } from '../src/lib/cargo-invoice/jan-trading';
+import { finalizeLayout } from '../src/lib/cargo-invoice/final-layout';
 import { applyEdits, changedFields, EDIT_FIELDS } from '../src/lib/cargo-invoice/edit';
 import { buildFinalInvoice } from '../src/lib/cargo-invoice/final';
 import { analyze, excelUpdates, NEW, REUSE } from '../src/lib/draft/analyze';
@@ -200,7 +200,9 @@ async function janFinal() {
     const engine = `${enginePrefix(c.engine)}-${numbers[i]}`;
     return { ...c, engine, desc2: engineDesc(engine, c.fuel, c.cc, c.year) };
   });
-  const laid = await finalizeJanTrading(src, { blNo, engines: cars.map((c, i) => finalEngineText(inv.cars[i], numbers[i])), total });
+  const laid = await finalizeLayout(src, {
+    pattern: 'JAN TRADING', blNo, engines: cars.map((c, i) => finalEngineText(inv.cars[i], numbers[i])), total, weight: 23550, units: 17,
+  });
   const out = await writeSummary(laid, { ...inv, blNo, cars }, cars.map(() => '87032290'));
 
   /* หน้าใบ */
@@ -220,7 +222,13 @@ async function janFinal() {
   // คันแรก: 4 แถว ผสาน A B E F G
   assert.deepEqual([18, 19, 20, 21].map((r) => text(r, 3)), ['USED TOYOTA', 'CHASSIS NO.', 'ENGINE NO.', 'REG YEAR']);
   assert.equal(text(20, 4), '4GR-1585235(GASOLINE/2490)');
-  for (const col of ['A', 'B', 'E', 'F', 'G']) assert.ok(ws.getCell(`${col}21`).isMerged, `${col}18:${col}21 ต้องผสาน`);
+  // WEIGHT · ITEM · QUANTITY · UNIT PRICE · AMOUNT อยู่บรรทัดแรกของคัน — ไม่ผสานแนวตั้งแล้ว
+  for (const col of ['A', 'B', 'E', 'F', 'G']) assert.ok(!ws.getCell(`${col}19`).isMerged, `${col}18 ต้องไม่ผสานลงมา`);
+  assert.deepEqual(['A', 'B', 'E', 'F', 'G'].map((c) => text(18, c.charCodeAt(0) - 64)), ['1,520 KGS', 'H1', '1 UNIT', '¥183,000', '¥183,000']);
+  // เส้นแบ่ง: บางเหนือคัน · หนาเหนือตู้
+  assert.equal(ws.getCell('D18').border?.top?.style, 'thin');
+  assert.equal(ws.getCell('D22').border?.top?.style, 'thin');
+  assert.equal(ws.getCell('C17').border?.top?.style, 'medium');
   // HONDA FIT SHUTTLE HYBRID: LDA-MF6 (HYBRID-GASOLINE/1330 CC) → LDA-…(GASOLINE/1330)
   const fit = inv.cars.findIndex((c) => c.engine === 'LDA-MF6');
   const engines = all.filter((t, i) => i % 7 === 3 && all[i - 1] === 'ENGINE NO.');
@@ -291,7 +299,7 @@ async function editedFinal() {
   assert.deepEqual(back.warnings, []);
   assert.ok((await xlsxToPdf(out))!.length > 1000);
 
-  /* AICHI (ตู้ละชีต): แก้เลขตัวถังและ CC ของคันในชีตที่สอง — เขียนลงชีตนั้น ช่องเลขเครื่องได้ CC ใหม่ */
+  /* AICHI (ตู้ละชีต): แก้เลขตัวถังและ CC ของคันในชีตที่สอง — เขียนลงชีตนั้นก่อนต่อชีต ช่องเลขเครื่องได้ CC ใหม่ */
   const aSrc = readFileSync(`${DIR}example AICHI cargo invoice Original.xlsx`);
   const a = await parseCargoInvoice(aSrc);
   const k = a.cars.findIndex((c) => c.sheet !== '1');
@@ -305,7 +313,7 @@ async function editedFinal() {
   const aBack = await parseCargoInvoice(aOut);
   assert.equal(aBack.cars[k].chassis, 'TEST-123456');
   assert.equal(aBack.cars[k].cc, 1500);
-  assert.equal(aBack.cars[k].sheet, a.cars[k].sheet);
+  assert.deepEqual(aBack.sheets, ['1'], 'Final Invoice AICHI ต่อทุกตู้เป็นชีตเดียว');
   assert.deepEqual(aBack.cars.map((c, i) => (i === k ? null : c.chassis)), aOriginal.map((c, i) => (i === k ? null : c.chassis)), 'คันอื่นไม่เปลี่ยน');
   const draft = await readInvoice(aOut);
   assert.equal(draft.cars[k].chassis, 'TEST-123456', 'ตารางสรุปใช้ค่าที่แก้');
@@ -313,4 +321,47 @@ async function editedFinal() {
   console.log('✓ แก้ค่าในตาราง: เขียนลงใบตามรูปแบบเดิม (¥ · KGS · เลขเครื่อง) ทุกชีต · TOTAL JAN คำนวณใหม่ · Preview ใช้ xxxxxxx · PDF');
 }
 
-main().then(janFinal).then(editedFinal).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });
+/** 7. AICHI Final Invoice: ต่อทุกชีตเป็นชีตเดียว · INVOICE NO. รันของระบบ · BL ของงาน · เลขเครื่อง · ยอดรวมทั้ง BL */
+async function aichiFinal() {
+  const src = readFileSync(`${DIR}example AICHI cargo invoice Original.xlsx`);
+  const inv = await parseCargoInvoice(src);
+  assert.equal(inv.sheets.length, 6);
+  inv.blNo = 'OOLU2342184670';
+  inv.invoiceNo = 'AICHI 351';
+  const numbers = inv.cars.map((_, i) => String(5646105 + i));
+  const original = inv.cars;
+  const out = await buildFinalInvoice(src, inv, original, { tariffs: inv.cars.map(() => '87032290'), engineNumbers: numbers });
+
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(out as unknown as ArrayBuffer);
+  assert.deepEqual(wb.worksheets.map((w) => w.name), ['1'], 'ชีตตู้อื่นต่อเข้าชีตแรกแล้วลบออก');
+  const ws = wb.worksheets[0];
+  const v = (ref: string) => String(ws.getCell(ref).value ?? '').trim();
+  assert.equal(v('E5'), 'INVOICE NO. : AICHI 351');
+  assert.equal(v('A13'), 'B/L NO. OOLU2342184670');
+  // ตู้แรกเหมือนตัวอย่าง: CONTAINER NO / เลขตู้ / คันละ 6 แถว — ค่าบรรทัดแรก ไม่ผสาน · ราคาไม่ซ้ำลงมา
+  assert.deepEqual([v('A17'), v('A18'), v('A19'), v('B19'), v('E19'), v('G19')], ['CONTAINER NO', 'CSGU7134867', '1200 KGS', 'A1', '1 UNIT', '233620']);
+  assert.ok(!ws.getCell('G20').isMerged && v('G20') === '' && v('F24') === '');
+  assert.equal(v('D22'), 'LDA-5646105(GASOLINE/1330)');
+  assert.equal(v('C22'), 'ENGINE TYPE.');
+  // ตู้ที่สองต่อท้ายตู้แรกแบบตัวอย่าง (แถว 49)
+  assert.deepEqual([v('A49'), v('A50'), v('D54')], ['CONTAINER NO', 'SEGU6530270', 'LDA-5646110(GASOLINE/1330)']);
+  assert.equal(ws.getCell('A49').border?.top?.style, 'medium', 'เส้นหนาเหนือตู้');
+  // แถวสุดท้าย: ยอดรวมทั้ง BL
+  const totalRow = ws.getColumn(1).values.findIndex((x) => String(x ?? '').trim() === 'TOTAL');
+  assert.deepEqual([v(`A${totalRow + 1}`), v(`E${totalRow + 1}`), v(`G${totalRow + 1}`)], ['36,570 KGS', '29 UNITS', '7797851']);
+  assert.equal(ws.pageSetup.printArea, `A1:G${totalRow + 1}`);
+
+  const back = await parseCargoInvoice(out);
+  assert.deepEqual([back.errors, back.warnings], [[], []]);
+  assert.deepEqual([back.invoiceNo, back.blNo, back.cars.length, back.sheets], ['AICHI 351', 'OOLU2342184670', 29, ['1']]);
+  assert.deepEqual(back.stated, { units: 29, weight: 36570, amount: 7797851 });
+  assert.deepEqual(back.containers, inv.containers);
+  const draft = await readInvoice(out);
+  assert.deepEqual(draft.errors, []);
+  assert.equal(draft.engines.filter((e) => e.existing).length, 29, 'worker เห็นเลขเครื่องครบ');
+  assert.ok((await xlsxToPdf(out))!.length > 1000);
+  console.log('✓ AICHI Final Invoice: 6 ชีตต่อเป็นชีตเดียว · AICHI 351 · BL ของงาน · เลขเครื่อง · ค่าบรรทัดแรก · เส้นแบ่งตู้ · ยอดรวมทั้ง BL · PDF');
+}
+
+main().then(janFinal).then(editedFinal).then(aichiFinal).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });

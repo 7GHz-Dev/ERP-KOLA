@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { jobs } from '@/db/schema';
 import { buildFinalInvoice, invoiceBl, readWithEdits } from '@/lib/cargo-invoice/final';
+import { runningInvoiceNo } from '@/lib/cargo-invoice/invoice-number';
 import { cargoReader, invoiceFile, json } from '@/lib/cargo-invoice/http';
 import { xlsxToPdf } from '@/lib/xlsx-pdf';
 
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
   const jobId = String(form.get('jobId') ?? '');
   const [job] = jobId ? await db.select({ blNo: jobs.blNo }).from(jobs).where(eq(jobs.id, jobId)).limit(1) : [];
   inv.blNo = invoiceBl(inv, job?.blNo);
+  inv.invoiceNo = runningInvoiceNo(inv.pattern, form.get('invoiceNo')) ?? inv.invoiceNo;
 
   // พิกัดไม่พิมพ์ใน FN Invoice (อยู่ในตารางสรุปนอกขอบเขตการพิมพ์) — ยังไม่ได้ดึงพิกัดก็ Preview ได้
   let tariffs: string[] = [];

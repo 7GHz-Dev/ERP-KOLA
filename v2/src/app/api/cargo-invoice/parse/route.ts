@@ -1,6 +1,7 @@
 import { parseCargoInvoice } from '@/lib/cargo-invoice/parse';
 import { jobsForInvoice } from '@/lib/cargo-invoice/jobs';
 import { cargoReader, invoiceFile, json } from '@/lib/cargo-invoice/http';
+import { suggestInvoiceNo } from '@/lib/cargo-invoice/invoice-number';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -13,5 +14,7 @@ export async function POST(request: Request) {
   if (typeof file === 'string') return json({ error: file }, 400);
   const invoice = await parseCargoInvoice(file.bytes);
   const { jobs, by } = invoice.errors.length ? { jobs: [], by: 'bl' } : await jobsForInvoice(invoice);
-  return json({ invoice, jobs, matchedBy: by });
+  // AICHI: เลข Invoice รันของระบบ — หน้าเว็บให้แก้ได้ก่อนสร้าง
+  const invoiceSuggest = invoice.errors.length ? null : await suggestInvoiceNo(invoice.pattern, invoice.invoiceNo);
+  return json({ invoice, jobs, matchedBy: by, invoiceSuggest });
 }

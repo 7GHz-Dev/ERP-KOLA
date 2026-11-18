@@ -2629,6 +2629,10 @@ table.data td.col-lib { min-width: 300px; }
 .cgi-table td.cgi-edited { background: var(--amber-soft); }
 .cgi-table tr.cgi-subrow td { font-size: 12px; color: var(--muted); padding-top: 0; }
 .cgi-save-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* AICHI: เลข INVOICE NO. รันของระบบ แก้ได้ */
+.cgi-invno { display: inline-flex; align-items: center; gap: 6px; }
+.cgi-invno input { width: 96px; padding: 4px 8px; font: inherit; font-weight: 600; border: 1px solid var(--line); border-radius: 6px; }
+.cgi-invno input:focus { outline: none; border-color: var(--blue); }
 .cgi-tariff select { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; max-width: 260px; }
 .cgi-tariff select.pick { border-color: #c98a00; background: var(--amber-soft); }
 .cgi-add { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); white-space: normal; max-width: 880px; }
