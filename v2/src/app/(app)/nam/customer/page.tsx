@@ -5,6 +5,8 @@ import {
   ConfirmCustomerButton, RequestEditButton, SurrenderForm, UploadForm,
 } from '@/components/ActionForms';
 import { ClientInChargeCell } from '@/components/ClientInChargeCell';
+import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
+import { confirmCustomerInfoMany } from '@/lib/actions/jobs';
 import { listJobs, QUEUE } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
 
@@ -33,6 +35,13 @@ export default async function NamCustomerPage({
   const done = tab === 'done';
 
   const columns: Column[] = [
+    // ติ๊กหลายงานแล้วยืนยันทีเดียว — เฉพาะงานที่ข้อมูลครบ (Client in Charge · Invoice สินค้า · Surrender)
+    ...(done ? [] : [{
+      label: '', kind: 'actions' as const, className: 'col-pick',
+      header: <PickAllBox />,
+      render: (r: (typeof rows)[number]) => (r.personId && r.currentFiles?.INVOICE_GOODS && r.surrenderStatus !== 'PENDING'
+        ? <PickBox id={r.id} /> : null),
+    }]),
     {
       // อยู่ต้นตารางถัดจากคอลัมน์ No. เพราะเป็นสิ่งแรกที่ NAMKANG ต้องกรอก
       label: 'Client in Charge', searchKey: 'person', kind: 'wrap', className: 'col-client',
@@ -90,6 +99,16 @@ export default async function NamCustomerPage({
     },
   ];
 
+  const table = (
+        <JobTable
+        basePath="/nam/customer"
+        columns={columns}
+        rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
+        empty={done ? 'ยังไม่มีงานที่ยืนยันข้อมูลแล้ว' : 'ไม่มีงานรออัปเดต'}
+        hint="Invoice สินค้ารับได้ทั้ง PDF · รูป · Excel · Word · ครบสามอย่างแล้วจึงยืนยันได้ · ติ๊กหลายงานแล้วยืนยันทีเดียวได้"
+      />
+  );
+
   return (
     <>
       <div className="page-head">
@@ -97,13 +116,16 @@ export default async function NamCustomerPage({
         <p>เลือก Client in Charge · อัปโหลด Invoice สินค้า · ระบุสถานะ Surrender BL แล้วกดยืนยันข้อมูล</p>
       </div>
       <Tabs basePath="/nam/customer" items={TABS} active={tab} carry={carry} />
-      <JobTable
-        basePath="/nam/customer"
-        columns={columns}
-        rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
-        empty={done ? 'ยังไม่มีงานที่ยืนยันข้อมูลแล้ว' : 'ไม่มีงานรออัปเดต'}
-        hint="Invoice สินค้ารับได้ทั้ง PDF · รูป · Excel · Word · ครบสามอย่างแล้วจึงกดยืนยันข้อมูลได้"
-      />
+      {done ? table : (
+        <BulkBar
+          action={confirmCustomerInfoMany}
+          idName="jobIds"
+          label="ยืนยันข้อมูล {n} รายการ"
+          confirmText="ยืนยันข้อมูล {n} รายการใช่ไหม · ยืนยันแล้วแก้ไขต้องขออนุมัติ"
+        >
+          {table}
+        </BulkBar>
+      )}
     </>
   );
 }

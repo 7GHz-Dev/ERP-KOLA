@@ -947,6 +947,27 @@ export async function confirmCustomerInfo(formData: FormData) {
   return runAction(() => confirmCustomerInfoImpl(formData));
 }
 
+/**
+ * ยืนยันข้อมูลลูกค้าหลายงานพร้อมกัน (Upload cargo Invoice > ติ๊กหลายรายการ)
+ * ใช้กติกาเดียวกับทีละงาน · งานที่ยังขาดข้อมูลข้ามไป แล้วบอกว่าใบไหนขาดอะไร
+ */
+export async function confirmCustomerInfoMany(formData: FormData) {
+  return runAction(async () => {
+    const ids = [...new Set(String(formData.get('jobIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean))];
+    if (!ids.length) throw new Error('ยังไม่ได้เลือกงาน');
+    const failed: string[] = [];
+    for (const id of ids) {
+      const fd = new FormData();
+      fd.set('jobId', id);
+      try { await confirmCustomerInfoImpl(fd); } catch (e) {
+        const [j] = await db.select({ blNo: jobs.blNo, jobNo: jobs.jobNo }).from(jobs).where(eq(jobs.id, id)).limit(1);
+        failed.push(`${j?.blNo ?? j?.jobNo ?? id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (failed.length) throw new Error(`ยืนยันแล้ว ${ids.length - failed.length} งาน · ไม่สำเร็จ ${failed.length} งาน — ${failed.slice(0, 5).join(' · ')}`);
+  });
+}
+
 export async function sendEofficeToPartner(formData: FormData) {
   return runAction(() => sendEofficeToPartnerImpl(formData));
 }
