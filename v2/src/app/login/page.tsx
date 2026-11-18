@@ -12,6 +12,8 @@ async function signIn(formData: FormData) {
   try {
     user = await login(username, password);
   } catch (error) {
+    // error ที่ไม่ใช่รหัสผิด/บัญชีถูกระงับ (เช่นต่อฐานข้อมูลไม่ได้) — บันทึกลง log ของ Vercel ไว้ตามหาสาเหตุ
+    if (!(error instanceof AppError)) console.error('LOGIN_ERROR', error);
     const message = error instanceof AppError ? error.message : 'เข้าสู่ระบบไม่สำเร็จ';
     redirect(`/login?error=${encodeURIComponent(message)}`);
   }

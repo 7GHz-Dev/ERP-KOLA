@@ -8,3 +8,8 @@ v2/.next
 v2/test
 v2/tests/fixtures
 test
+
+# ความลับในเครื่อง (.env.local / .env.test / .env.vercel-test) — ห้ามขึ้นไปกับ source ของ deployment
+v2/.env*
+!v2/.env.example
+.env*
