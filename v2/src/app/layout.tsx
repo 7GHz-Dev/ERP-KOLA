@@ -40,13 +40,23 @@ const NAV_INIT = `try{var v=localStorage.getItem('kola-sidebar-hidden');
 if(v==='1'||(v===null&&matchMedia('(max-width:820px)').matches))
 document.documentElement.classList.add('nav-hidden')}catch(e){}`;
 
+/** ระบบทดสอบ (Vercel project erp-kola-test) — แถบบอกทุกหน้า กันสับสนกับระบบจริง */
+const IS_TEST = /erp-kola-test/.test(process.env.VERCEL_PROJECT_PRODUCTION_URL ?? '') || process.env.APP_ENV === 'test';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="th">
       <head>
         <script dangerouslySetInnerHTML={{ __html: NAV_INIT }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {IS_TEST ? (
+          <div className="test-env-banner" role="note">
+            ระบบทดสอบ · ข้อมูลไม่ใช่งานจริง · ไม่ส่ง LINE / Email / TTN / NETBAY ออกไปจริง
+          </div>
+        ) : null}
+        {children}
+      </body>
     </html>
   );
 }
