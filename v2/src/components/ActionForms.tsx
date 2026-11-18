@@ -491,7 +491,7 @@ export function EditBlForm({
       <select name={name} defaultValue={current ?? ''}>
         <option value="">— ไม่ระบุ —</option>
         {list.map((o) => (
-          <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>
+          <option key={o.id} value={o.id}>{o.code && name !== 'jobTypeId' ? `${o.code} · ${o.name}` : o.name}</option>
         ))}
       </select>
     </label>

@@ -85,9 +85,11 @@ const containerList = (raw: string) => [...new Set(
   raw.split(/[\s,;]+/).map(normalizeContainerNo).filter(Boolean),
 )];
 
-const nameOf = (list: Option[], id: string) => {
+/** ชื่อในช่องเลือก — JOB TYPE แสดงชื่อเต็มอย่างเดียว ไม่มีรหัสย่อ */
+const label = (o: Option, nameOnly = false) => (o.code && !nameOnly ? `${o.code} · ${o.name}` : o.name);
+const nameOf = (list: Option[], id: string, nameOnly = false) => {
   const o = list.find((x) => x.id === id);
-  return o ? (o.code ? `${o.code} · ${o.name}` : o.name) : '-';
+  return o ? label(o, nameOnly) : '-';
 };
 
 export function IntakeBatch({
@@ -324,11 +326,11 @@ export function IntakeBatch({
                     )
                   );
                   const select = (key: keyof Fields, list: Option[], blank?: string) => (
-                    locked ? nameOf(list, f[key]) : (
+                    locked ? nameOf(list, f[key], key === 'jobTypeId') : (
                       <select className="batch-input" value={f[key]} onChange={(e) => setField(i, key, e.target.value)}>
                         {blank !== undefined ? <option value="">{blank}</option> : null}
                         {list.map((o) => (
-                          <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>
+                          <option key={o.id} value={o.id}>{label(o, key === 'jobTypeId')}</option>
                         ))}
                       </select>
                     )

@@ -35,7 +35,8 @@ function MasterSelect({ name, list, value, empty = '— ไม่ระบุ �
     <select name={name} defaultValue={value ?? ''}>
       <option value="">{empty}</option>
       {missing ? <option value={value}>(ค่าเดิม — ไม่อยู่ในรายการที่เปิดใช้)</option> : null}
-      {list.map((o) => <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>)}
+      {/* JOB TYPE แสดงชื่อเต็มอย่างเดียว ไม่มีรหัสย่อ */}
+      {list.map((o) => <option key={o.id} value={o.id}>{o.code && name !== 'jobTypeId' ? `${o.code} · ${o.name}` : o.name}</option>)}
     </select>
   );
 }

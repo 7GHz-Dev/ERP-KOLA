@@ -54,11 +54,12 @@ function Field({ label, wide, children }: { label: string; wide?: boolean; child
   );
 }
 
-function Opts({ list }: { list: Option[] }) {
+/** nameOnly — JOB TYPE แสดงชื่อเต็มอย่างเดียว ไม่มีรหัสย่อ */
+function Opts({ list, nameOnly = false }: { list: Option[]; nameOnly?: boolean }) {
   return (
     <>
       {list.map((o) => (
-        <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>
+        <option key={o.id} value={o.id}>{o.code && !nameOnly ? `${o.code} · ${o.name}` : o.name}</option>
       ))}
     </>
   );
@@ -155,7 +156,7 @@ export function BlEditPanel({
           <Field label="JOB TYPE">
             <select name="jobTypeId" defaultValue={job.jobTypeId ?? ''}>
               <option value="">— ไม่ระบุ —</option>
-              <Opts list={options.jobTypes} />
+              <Opts list={options.jobTypes} nameOnly />
             </select>
           </Field>
           <Field label="PRODUCT">

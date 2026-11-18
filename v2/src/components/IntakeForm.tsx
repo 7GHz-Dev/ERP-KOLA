@@ -426,7 +426,7 @@ export function IntakeForm({
             value={jobTypeId}
             onChange={(e) => setJobTypeId(e.target.value)}
           >
-            <Options list={options.jobTypes} />
+            <Options list={options.jobTypes} nameOnly />
           </select>
           {/* บอกว่าทำไมประเภทถึงเปลี่ยนเอง ไม่งั้นผู้ใช้จะงงว่าใครแก้ */}
           {muoApplied ? (
@@ -674,12 +674,13 @@ function withAdded(list: Option[], added: Option[]) {
   return [...list, ...added.filter((a) => !list.some((o) => o.id === a.id))];
 }
 
-function Options({ list }: { list: Option[] }) {
+/** nameOnly — JOB TYPE แสดงชื่อเต็มอย่างเดียว ไม่มีรหัสย่อ */
+function Options({ list, nameOnly = false }: { list: Option[]; nameOnly?: boolean }) {
   return (
     <>
       {list.map((o) => (
         <option key={o.id} value={o.id}>
-          {o.code ? `${o.code} · ${o.name}` : o.name}
+          {o.code && !nameOnly ? `${o.code} · ${o.name}` : o.name}
         </option>
       ))}
     </>
