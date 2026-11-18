@@ -2,13 +2,16 @@
 
 import { useState } from 'react';
 import type { Option } from '@/lib/queries/master';
+import type { IntakeDefaults, IntakeOptions } from '@/components/IntakeForm';
 import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
 import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
 import { matchShipper } from '@/lib/match-shipper';
-import { SearchSelect } from '@/components/SearchSelect';
+import { SearchSelect, SearchText } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { findDuplicateBls } from '@/lib/actions/intake';
-import { dedupeContainers, isBlDuplicateExempt, normalizeBlNo } from '@/lib/intake-checks';
+import {
+  dedupeContainers, isBlDuplicateExempt, normalizeBlNo, normalizeContainerNo,
+} from '@/lib/intake-checks';
 
 /**
  * รับงานทีละหลายใบ — เลือก PDF หลายไฟล์พร้อมกัน หนึ่งไฟล์เป็นหนึ่งงาน
@@ -20,10 +23,12 @@ import { dedupeContainers, isBlDuplicateExempt, normalizeBlNo } from '@/lib/inta
  * ยังใช้ตัวอ่านและ server action ตัวเดียวกับฟอร์มทีละใบ ผลลัพธ์จึงเหมือนกันทุกประการ
  * ต่างแค่จำนวนรอบที่คนต้องกด
  *
- * แก้ได้สองช่องที่ฝั่งเซิร์ฟเวอร์บังคับ — เลข BL กับ Shipper
- * เพราะถ้าขาดสองอย่างนี้จะบันทึกไม่ผ่าน แล้วขึ้น error ที่ผู้ใช้แก้ในหน้านี้ไม่ได้
- * ช่องอื่นแก้ทีหลังได้ที่หน้างานคงค้าง จึงไม่เอามาไว้ตรงนี้
- * ไม่งั้นจะกลายเป็น 20 ฟอร์มซ้อนกันซึ่งอ่านยากกว่าเดิม
+ * คอลัมน์ตรงกับหัวข้อของฟอร์มทีละใบทุกช่อง และแก้ได้ในตาราง
+ * คนคีย์จึงตรวจครบในรอบเดียว ไม่ต้องตามไปแก้รายใบที่หน้างานคงค้างทีหลัง
+ * ช่องที่บังคับก่อนบันทึกยังเป็นเลข BL กับ Shipper เหมือนเดิม (เซิร์ฟเวอร์บังคับสองอย่างนี้)
+ *
+ * กฎ MUO (รถยนต์เก่าที่ notify ไม่ใช่ KOLA) ไม่ได้ทำซ้ำตรงนี้
+ * เซิร์ฟเวอร์ปรับ JOB TYPE ให้ตอนบันทึกอยู่แล้ว ผลจึงเหมือนฟอร์มทีละใบ
  *
  * ตัดหน้ายังไม่รองรับ ใบที่ต้องตัดให้ใช้ฟอร์มทีละใบแทน
  */
@@ -37,24 +42,64 @@ type Row = {
    * เก็บแยกเพราะต้องรู้ว่าอันไหนระบบอ่านมา อันไหนคนแก้เอง ตอนแสดงสถานะ
    */
   blNo: string;
-  /** ค่าที่อ่านได้ ใช้ทั้งแสดงในตารางและส่งขึ้นเซิร์ฟเวอร์ */
+  /** ค่าที่อ่านได้ดิบ ๆ — เก็บไว้เอาซีลกับสายเรือที่อ่านได้ */
   parsed?: ReturnType<typeof parseArrivalText>;
   shipperId?: string;
   shipperName?: string;
+  /** ช่องตามฟอร์มทีละใบ — เริ่มจากค่าที่อ่านได้ + ค่าตั้งต้น แล้วผู้ใช้แก้ในตาราง */
+  f: Fields;
   /** ผลหลังกดบันทึก */
   savedAs?: string;
   saveError?: string;
+};
+
+/**
+ * ช่องของแต่ละใบ ชื่อตรงกับชื่อช่องที่ฟอร์มทีละใบส่งขึ้นเซิร์ฟเวอร์
+ * เลขตู้เก็บเป็นข้อความคั่นด้วยลูกน้ำ แก้ในช่องเดียวได้ ไม่ต้องมีแถวย่อยในตาราง
+ */
+type Fields = {
+  jobTypeId: string; product: string; blType: string; shipline: string;
+  containers: string; containerType: string;
+  unitAmount: string; packageType: string; grossWeight: string;
+  vessel: string; voyage: string; eta: string;
+  consigneeId: string; notifyPartyId: string; personId: string;
+  originPort: string; portId: string; terminalId: string;
+  demDays: string; detDays: string;
+};
+
+const BL_TYPES = ['SWB', 'OBL', 'S', 'TWB', 'HBL', 'MBL', 'Original'];
+
+function startFields(d: IntakeDefaults, p?: ReturnType<typeof parseArrivalText>): Fields {
+  return {
+    jobTypeId: d.jobTypeId ?? '', product: 'รถยนต์เก่าใช้แล้ว',
+    blType: p?.blType || 'SWB', shipline: p?.carrier ?? '',
+    containers: (p?.containers ?? []).join(', '), containerType: d.containerType,
+    unitAmount: p?.unitAmount ?? '', packageType: d.packageType, grossWeight: p?.grossWeight ?? '',
+    vessel: p?.vessel ?? '', voyage: p?.voyage ?? '', eta: p?.eta ?? '',
+    consigneeId: d.consigneeId ?? '', notifyPartyId: d.notifyId ?? '', personId: '',
+    originPort: p?.portOfLoading ?? '', portId: d.portId ?? '', terminalId: '',
+    demDays: d.demDays, detDays: d.detDays,
+  };
+}
+
+/** เลขตู้จากช่องข้อความ — คั่นด้วยลูกน้ำ ช่องว่าง หรือขึ้นบรรทัด ตัดตัวที่ซ้ำออก */
+const containerList = (raw: string) => [...new Set(
+  raw.split(/[\s,;]+/).map(normalizeContainerNo).filter(Boolean),
+)];
+
+const nameOf = (list: Option[], id: string) => {
+  const o = list.find((x) => x.id === id);
+  return o ? (o.code ? `${o.code} · ${o.name}` : o.name) : '-';
 };
 
 export function IntakeBatch({
   sourceType, options, defaults, action, templates = [],
 }: {
   sourceType: 'AN' | 'BL';
-  options: { shippers: Option[] };
+  options: IntakeOptions;
   /** แบบร่างพื้นที่อ่านค่าที่ผู้ดูแลตั้งไว้ — ค่าจากกรอบมาก่อนตัวอ่านอัตโนมัติ */
   templates?: ParseTemplate[];
-  defaults: { containerType: string; jobTypeId: string | null; consigneeId: string | null;
-              notifyId: string | null; portId: string | null; demDays: string; detDays: string };
+  defaults: IntakeDefaults;
   action: (formData: FormData) => Promise<string | void>;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
@@ -95,7 +140,9 @@ export function IntakeBatch({
     const picked = [...list].filter((f) => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
     if (!picked.length) return;
 
-    setRows(picked.map((file) => ({ file, status: 'reading', message: 'กำลังอ่าน…', blNo: '' })));
+    setRows(picked.map((file) => ({
+      file, status: 'reading', message: 'กำลังอ่าน…', blNo: '', f: startFields(defaults),
+    })));
     const readBls: Array<{ blNo: string; carrier: string }> = [];
 
     /*
@@ -131,6 +178,7 @@ export function IntakeBatch({
           ].filter(Boolean).join(' · ') || 'อ่านได้',
           blNo: parsed.blNo,
           parsed,
+          f: startFields(defaults, parsed),
           shipperId: shipper?.id,
           shipperName: shipper?.name,
         }));
@@ -159,6 +207,8 @@ export function IntakeBatch({
 
   const patch = (i: number, next: Partial<Row>) =>
     setRows((cur) => cur.map((r, n) => (n === i ? { ...r, ...next } : r)));
+  const setField = (i: number, key: keyof Fields, value: string) =>
+    setRows((cur) => cur.map((r, n) => (n === i ? { ...r, f: { ...r.f, [key]: value } } : r)));
 
   async function saveAll() {
     /*
@@ -186,24 +236,17 @@ export function IntakeBatch({
       if (row.status !== 'ok' || row.savedAs || !isReady(row)) continue;
 
       const parsed = row.parsed!;
+      const f = row.f;
       const fd = new FormData();
       fd.set('sourceType', sourceType);
       fd.set('file', row.file);
-      fd.set('vessel', parsed.vessel || '-');
-      fd.set('voyage', parsed.voyage);
-      fd.set('eta', parsed.eta);
-      fd.set('blType', parsed.blType || 'SWB');
-      fd.set('shipline', parsed.carrier);
-      fd.set('originPort', parsed.portOfLoading);
-      fd.set('product', 'รถยนต์เก่าใช้แล้ว');
-      fd.set('unitAmount', parsed.unitAmount);
-      fd.set('grossWeight', parsed.grossWeight);
-      fd.set('demDays', defaults.demDays);
-      fd.set('detDays', defaults.detDays);
-      if (defaults.jobTypeId) fd.set('jobTypeId', defaults.jobTypeId);
-      if (defaults.consigneeId) fd.set('consigneeId', defaults.consigneeId);
-      if (defaults.notifyId) fd.set('notifyPartyId', defaults.notifyId);
-      if (defaults.portId) fd.set('portId', defaults.portId);
+      // ค่าที่ผู้ใช้เห็นและแก้ในตาราง — ชื่อช่องเดียวกับฟอร์มทีละใบ
+      for (const key of ['jobTypeId', 'product', 'blType', 'shipline', 'unitAmount', 'packageType',
+        'grossWeight', 'voyage', 'eta', 'consigneeId', 'notifyPartyId', 'personId', 'originPort',
+        'portId', 'terminalId', 'demDays', 'detDays'] as const) {
+        if (f[key]) fd.set(key, f[key]);
+      }
+      fd.set('vessel', f.vessel.trim() || '-');
       // ผู้ใช้ยืนยันเลข BL ซ้ำไปแล้วข้างบน
       if (dupRows.includes(row)) fd.set('allowDuplicateBl', '1');
       // ใช้ค่าที่ผู้ใช้แก้แล้ว ไม่ใช่ค่าที่อ่านได้ดิบ ๆ
@@ -212,10 +255,12 @@ export function IntakeBatch({
         shipperId: row.shipperId ?? '',
         shipperName: row.shipperName ?? '',
       }]));
-      fd.set('containerRows', JSON.stringify(parsed.containers.map((c, n) => ({
+      // ซีลผูกกับเลขตู้ที่อ่านได้ — แก้ลำดับหรือเพิ่มตู้ในช่องแล้วซีลยังตามตู้เดิม
+      const sealOf = new Map(parsed.containers.map((c, n) => [normalizeContainerNo(c), parsed.seals[n] ?? '']));
+      fd.set('containerRows', JSON.stringify(containerList(f.containers).map((c) => ({
         containerNo: c,
-        containerType: defaults.containerType,
-        sealNo: parsed.seals[n] ?? '',
+        containerType: f.containerType,
+        sealNo: sealOf.get(c) ?? '',
       }))));
 
       try {
@@ -251,91 +296,198 @@ export function IntakeBatch({
       {rows.length ? (
         <>
           <div className="table-wrap batch-table">
-            <table className="data">
+            <table className="data batch-full">
               <thead>
                 <tr>
                   <th className="col-no">No.</th>
                   <th>ไฟล์</th>
-                  <th className="batch-col-bl">BL No.</th>
-                  <th className="batch-col-shipper">Shipper</th>
-                  <th>เรือ / เที่ยว</th>
-                  <th>ETA</th>
-                  <th>ตู้</th>
                   <th>สถานะ</th>
+                  <th>JOB TYPE</th>
+                  <th>PRODUCT</th>
+                  <th>BL TYPE</th>
+                  <th>SHIPLINE</th>
+                  <th className="batch-col-shipper">SHIPPER</th>
+                  <th className="batch-col-bl">B/L NO.</th>
+                  <th className="batch-col-wide">CONTAINER NO.</th>
+                  <th>QUANTITY</th>
+                  <th>WEIGHT (KG)</th>
+                  <th>VESSEL</th>
+                  <th>VOYAGE</th>
+                  <th>ETA</th>
+                  <th>CONSIGNEE</th>
+                  <th>NOTIFY PARTY</th>
+                  <th>CLIENT IN CHARGE</th>
+                  <th>PORT OF LOADING</th>
+                  <th>PORT OF DISCHARGE</th>
+                  <th>PORT TERMINAL</th>
+                  <th>DEM FREE (วัน)</th>
+                  <th>DET FREE (วัน)</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr key={`${r.file.name}-${i}`} className={r.savedAs ? 'batch-saved' : undefined}>
-                    <td className="col-no">{i + 1}</td>
-                    <td className="batch-name">
-                      {/* กดดูไฟล์ก่อนแก้ ไม่ต้องเปิดจากโฟลเดอร์เอง */}
-                      <button
-                        type="button"
-                        className="cell-link batch-preview"
-                        onClick={() => setPreview({ url: URL.createObjectURL(r.file), name: r.file.name })}
-                      >
-                        {r.file.name}
-                      </button>
-                    </td>
-                    <td>
-                      {r.savedAs ? r.blNo : (
-                        <input
-                          className={`batch-input${dupOf(r) ? ' is-dup' : ''}`}
-                          value={r.blNo}
-                          placeholder="กรอกเลข BL"
-                          disabled={busy}
-                          onChange={(e) => patch(i, { blNo: e.target.value })}
-                          onBlur={() => void refreshDuplicates(rows.map((x) => ({
-                            blNo: x.blNo, carrier: x.parsed?.carrier ?? '', saved: Boolean(x.savedAs),
-                          })))}
-                        />
-                      )}
-                      {!r.savedAs && dupOf(r) ? <small className="dup-note">⚠️ BL ซ้ำกับ {dupOf(r)}</small> : null}
-                    </td>
-                    <td>
-                      {r.savedAs ? (r.shipperName ?? '-') : (
-                        <div className="batch-shipper">
-                          <SearchSelect
-                            choices={options.shippers}
-                            value={r.shipperId ?? ''}
-                            placeholder="พิมพ์ค้นหา Shipper"
-                            onChange={(id) => patch(i, {
-                              shipperId: id,
-                              shipperName: options.shippers.find((o) => o.id === id)?.name ?? '',
-                            })}
+                {rows.map((r, i) => {
+                  // แถวที่บันทึกแล้วหรือยังอ่านไม่เสร็จ แสดงเป็นข้อความ ไม่ให้แก้
+                  const locked = Boolean(r.savedAs) || r.status !== 'ok' || busy;
+                  const f = r.f;
+                  const input = (key: keyof Fields, opts: { type?: string; narrow?: boolean; placeholder?: string } = {}) => (
+                    locked ? (f[key] || '-') : (
+                      <input
+                        className={`batch-input${opts.narrow ? ' narrow' : ''}`}
+                        type={opts.type ?? 'text'}
+                        value={f[key]}
+                        placeholder={opts.placeholder}
+                        onChange={(e) => setField(i, key, e.target.value)}
+                      />
+                    )
+                  );
+                  const select = (key: keyof Fields, list: Option[], blank?: string) => (
+                    locked ? nameOf(list, f[key]) : (
+                      <select className="batch-input" value={f[key]} onChange={(e) => setField(i, key, e.target.value)}>
+                        {blank !== undefined ? <option value="">{blank}</option> : null}
+                        {list.map((o) => (
+                          <option key={o.id} value={o.id}>{o.code ? `${o.code} · ${o.name}` : o.name}</option>
+                        ))}
+                      </select>
+                    )
+                  );
+                  const byName = (key: 'containerType' | 'packageType', list: Option[]) => (
+                    locked ? f[key] : (
+                      <select className="batch-input narrow" value={f[key]} onChange={(e) => setField(i, key, e.target.value)}>
+                        {list.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
+                      </select>
+                    )
+                  );
+                  const count = containerList(f.containers).length;
+                  return (
+                    <tr key={`${r.file.name}-${i}`} className={r.savedAs ? 'batch-saved' : undefined}>
+                      <td className="col-no">{i + 1}</td>
+                      <td className="batch-name">
+                        {/* กดดูไฟล์ก่อนแก้ ไม่ต้องเปิดจากโฟลเดอร์เอง */}
+                        <button
+                          type="button"
+                          className="cell-link batch-preview"
+                          onClick={() => setPreview({ url: URL.createObjectURL(r.file), name: r.file.name })}
+                        >
+                          {r.file.name}
+                        </button>
+                      </td>
+                      <td>
+                        {r.savedAs ? <span className="badge approved">{r.savedAs}</span>
+                          : r.saveError ? <span className="badge rejected">{r.saveError}</span>
+                          : r.status === 'reading' ? <span className="badge pending">กำลังอ่าน…</span>
+                          : r.status === 'error' ? <span className="badge rejected">{r.message}</span>
+                          : !isReady(r) ? (
+                            /* บอกให้ชัดว่าขาดอะไร จะได้รู้ว่าต้องกรอกช่องไหน */
+                            <span className="badge pending">
+                              ยังขาด: {[
+                                !r.blNo.trim() && 'เลข BL',
+                                !r.shipperId && 'Shipper',
+                              ].filter(Boolean).join(' · ')}
+                            </span>
+                          )
+                          : <span className="badge neutral">{r.message}</span>}
+                      </td>
+                      <td>{select('jobTypeId', options.jobTypes)}</td>
+                      <td>{input('product')}</td>
+                      <td>
+                        {locked ? f.blType : (
+                          <select className="batch-input narrow" value={f.blType} onChange={(e) => setField(i, 'blType', e.target.value)}>
+                            {BL_TYPES.map((v) => <option key={v}>{v}</option>)}
+                          </select>
+                        )}
+                      </td>
+                      <td>{input('shipline')}</td>
+                      <td>
+                        {locked ? (r.shipperName ?? '-') : (
+                          <div className="batch-shipper">
+                            <SearchSelect
+                              choices={options.shippers}
+                              value={r.shipperId ?? ''}
+                              placeholder="พิมพ์ค้นหา Shipper"
+                              onChange={(id) => patch(i, {
+                                shipperId: id,
+                                shipperName: options.shippers.find((o) => o.id === id)?.name ?? '',
+                              })}
+                            />
+                            {/* Shipper ที่ยังไม่มีในระบบ เพิ่มแล้วเลือกให้แถวนี้เลย */}
+                            {r.shipperId ? null : (
+                              <QuickAddMaster
+                                type="shippers"
+                                onAdded={({ id, name }) => patch(i, { shipperId: id, shipperName: name })}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {locked ? (r.blNo || '-') : (
+                          <input
+                            className={`batch-input${dupOf(r) ? ' is-dup' : ''}`}
+                            value={r.blNo}
+                            placeholder="กรอกเลข BL"
+                            onChange={(e) => patch(i, { blNo: e.target.value })}
+                            onBlur={() => void refreshDuplicates(rows.map((x) => ({
+                              blNo: x.blNo, carrier: x.parsed?.carrier ?? '', saved: Boolean(x.savedAs),
+                            })))}
                           />
-                          {/* Shipper ที่ยังไม่มีในระบบ เพิ่มแล้วเลือกให้แถวนี้เลย */}
-                          {r.shipperId ? null : (
-                            <QuickAddMaster
-                              type="shippers"
-                              onAdded={({ id, name }) => patch(i, { shipperId: id, shipperName: name })}
+                        )}
+                        {!r.savedAs && dupOf(r) ? <small className="dup-note">⚠️ BL ซ้ำกับ {dupOf(r)}</small> : null}
+                      </td>
+                      <td>
+                        <div className="batch-pair">
+                          {locked ? (f.containers || '-') : (
+                            <textarea
+                              className="batch-input"
+                              rows={Math.min(4, Math.max(1, count))}
+                              value={f.containers}
+                              placeholder="เลขตู้ คั่นด้วยลูกน้ำ"
+                              onChange={(e) => setField(i, 'containers', e.target.value)}
                             />
                           )}
+                          {byName('containerType', options.containerTypes)}
                         </div>
-                      )}
-                    </td>
-                    <td>{[r.parsed?.vessel, r.parsed?.voyage].filter(Boolean).join(' / ') || '-'}</td>
-                    <td>{r.parsed?.eta || '-'}</td>
-                    <td>{r.parsed?.containers.length || '-'}</td>
-                    <td>
-                      {r.savedAs ? <span className="badge approved">{r.savedAs}</span>
-                        : r.saveError ? <span className="badge rejected">{r.saveError}</span>
-                        : r.status === 'reading' ? <span className="badge pending">กำลังอ่าน…</span>
-                        : r.status === 'error' ? <span className="badge rejected">{r.message}</span>
-                        : !isReady(r) ? (
-                          /* บอกให้ชัดว่าขาดอะไร จะได้รู้ว่าต้องกรอกช่องไหน */
-                          <span className="badge pending">
-                            ยังขาด: {[
-                              !r.blNo.trim() && 'เลข BL',
-                              !r.shipperId && 'Shipper',
-                            ].filter(Boolean).join(' · ')}
-                          </span>
-                        )
-                        : <span className="badge neutral">{r.message}</span>}
-                    </td>
-                  </tr>
-                ))}
+                        <small className="batch-sub">{count} ตู้</small>
+                      </td>
+                      <td>
+                        <div className="batch-pair">
+                          {input('unitAmount', { type: 'number', narrow: true })}
+                          {byName('packageType', options.packageTypes)}
+                        </div>
+                      </td>
+                      <td>{input('grossWeight', { narrow: true })}</td>
+                      <td>{input('vessel')}</td>
+                      <td>{input('voyage', { narrow: true })}</td>
+                      <td>{input('eta', { type: 'date', narrow: true })}</td>
+                      <td>{select('consigneeId', options.consignees, '—')}</td>
+                      <td>{select('notifyPartyId', options.notify, '—')}</td>
+                      <td>
+                        {locked ? nameOf(options.people, f.personId) : (
+                          <SearchSelect
+                            choices={options.people}
+                            value={f.personId}
+                            placeholder="พิมพ์ค้นหาผู้รับผิดชอบ"
+                            onChange={(id) => setField(i, 'personId', id)}
+                          />
+                        )}
+                      </td>
+                      <td>
+                        {locked ? (f.originPort || '-') : (
+                          <SearchText
+                            name={`originPort-${i}`}
+                            choices={options.originPorts}
+                            value={f.originPort}
+                            onChange={(v) => setField(i, 'originPort', v)}
+                            placeholder="เช่น NAGOYA"
+                          />
+                        )}
+                      </td>
+                      <td>{select('portId', options.ports, '—')}</td>
+                      <td>{select('terminalId', options.terminals, '— เลือก —')}</td>
+                      <td>{input('demDays', { type: 'number', narrow: true })}</td>
+                      <td>{input('detDays', { type: 'number', narrow: true })}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -356,10 +508,10 @@ export function IntakeBatch({
             </button>
           </div>
           <p className="batch-note">
-            กดชื่อไฟล์เพื่อเปิดดูเอกสาร · แก้เลข BL และเลือก Shipper ได้ในตารางเลย ·
-            ระบบเติมค่าตั้งต้นให้เหมือนฟอร์มทีละใบ (Consignee · Notify · Port · DEM/DET ·
-            ประเภทงาน) แล้วแก้รายใบทีหลังได้ที่หน้างานคงค้าง ·
-            ใบที่ต้องตัดหน้าหรือแก้รายละเอียดมาก ให้ใช้ฟอร์มทีละใบ
+            กดชื่อไฟล์เพื่อเปิดดูเอกสาร · ทุกช่องตรงกับฟอร์มทีละใบและแก้ในตารางได้ (เลื่อนตารางไปทางขวา) ·
+            ต้องมีเลข BL และ Shipper จึงบันทึกได้ · ค่าที่อ่านไม่ได้ระบบเติมค่าตั้งต้นให้เหมือนฟอร์มทีละใบ ·
+            รถยนต์เก่าที่ Notify ไม่ใช่ KOLA ระบบเปลี่ยน JOB TYPE เป็น MUO ให้ตอนบันทึก ·
+            ใบที่ต้องตัดหน้าหรือมีหลาย BL ให้ใช้ฟอร์มทีละใบ
           </p>
         </>
       ) : null}

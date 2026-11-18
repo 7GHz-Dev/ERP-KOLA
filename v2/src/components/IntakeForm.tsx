@@ -21,13 +21,13 @@ import {
  * และการอ่าน PDF ซึ่งทำในเบราว์เซอร์ ไฟล์จึงไม่ถูกส่งขึ้นเซิร์ฟเวอร์จนกว่าจะกดบันทึก
  */
 
-type Options = {
+export type IntakeOptions = {
   shippers: Option[]; consignees: Option[]; notify: Option[]; people: Option[];
   ports: Option[]; originPorts: Option[]; terminals: Option[]; jobTypes: Option[];
   containerTypes: Option[]; packageTypes: Option[];
 };
 
-type Defaults = {
+export type IntakeDefaults = {
   consigneeId: string | null; notifyId: string | null;
   portId: string | null; jobTypeId: string | null;
   demDays: string; detDays: string;
@@ -67,8 +67,8 @@ export function IntakeForm({
   sourceType, options, defaults, action, templates = [],
 }: {
   sourceType: 'AN' | 'BL';
-  options: Options;
-  defaults: Defaults;
+  options: IntakeOptions;
+  defaults: IntakeDefaults;
   /** แบบร่างพื้นที่อ่านค่าที่ผู้ดูแลตั้งไว้ — ค่าจากกรอบมาก่อนตัวอ่านอัตโนมัติ */
   templates?: ParseTemplate[];
   /** คืนเลขงานที่สร้าง เพื่อขึ้นข้อความแล้วล้างฟอร์มรอใบถัดไป */

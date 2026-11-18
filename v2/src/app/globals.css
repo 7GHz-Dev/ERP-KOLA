@@ -1671,6 +1671,14 @@ table.data td.col-pick, table.data th.col-pick { width: 34px; min-width: 34px; t
 }
 /* ช่องแก้ในตาราง — กว้างพอให้เห็นเลข BL เต็มโดยไม่ดันตารางจนต้องเลื่อน */
 table.data td .batch-input { width: 100%; min-width: 150px; font-size: 12px; }
+/* ตารางหลายใบแบบครบทุกช่องของฟอร์มทีละใบ — กว้างกว่าจอ เลื่อนไปทางขวาได้ */
+table.data.batch-full td { vertical-align: top; }
+table.data.batch-full th { white-space: nowrap; }
+table.data td .batch-input.narrow { min-width: 84px; }
+table.data td textarea.batch-input { min-width: 170px; resize: vertical; line-height: 1.4; }
+table.data th.batch-col-wide { min-width: 270px; }
+.batch-pair { display: flex; gap: 4px; align-items: flex-start; }
+.batch-sub { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
 table.data th.batch-col-bl { min-width: 160px; }
 table.data th.batch-col-shipper { min-width: 230px; }
 .batch-shipper { display: flex; flex-direction: column; gap: 5px; min-width: 220px; }

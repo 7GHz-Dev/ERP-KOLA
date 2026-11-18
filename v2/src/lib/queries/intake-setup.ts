@@ -29,7 +29,3 @@ export async function intakeSetup() {
   return { options, ids, defaults, templates };
 }
 
-/** ฟอร์มหลายใบพร้อมกันไม่มีช่องหน่วยสินค้า */
-export function batchDefaults({ packageType: _unused, ...rest }: Awaited<ReturnType<typeof intakeSetup>>['defaults']) {
-  return rest;
-}

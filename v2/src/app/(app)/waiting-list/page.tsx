@@ -10,7 +10,7 @@ import { ShowReason } from '@/components/ActionForms';
 import { createJobFromIntake } from '@/lib/actions/intake';
 import { importShipmentCsv, previewShipmentCsv } from '@/lib/actions/shipment-import';
 import { queueCounts } from '@/lib/queries/dashboard';
-import { batchDefaults, intakeSetup } from '@/lib/queries/intake-setup';
+import { intakeSetup } from '@/lib/queries/intake-setup';
 import { listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 
 export const dynamic = 'force-dynamic';
@@ -128,8 +128,8 @@ export default async function WaitingListPage({
           <IntakeBatch
             sourceType="BL"
             templates={setup.templates}
-            options={{ shippers: setup.options.shippers }}
-            defaults={batchDefaults(setup.defaults)}
+            options={setup.options}
+            defaults={setup.defaults}
             action={createJobFromIntake}
           />
         ) : mode === 'one' && setup ? (

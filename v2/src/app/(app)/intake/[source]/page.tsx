@@ -10,7 +10,7 @@ import { Tabs } from '@/components/JobTable';
 import { createJobFromIntake } from '@/lib/actions/intake';
 import { importShipmentCsv, previewShipmentCsv } from '@/lib/actions/shipment-import';
 import { attachArrivalFile, attachableBls } from '@/lib/actions/attach-arrival';
-import { batchDefaults, intakeSetup } from '@/lib/queries/intake-setup';
+import { intakeSetup } from '@/lib/queries/intake-setup';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,8 +108,8 @@ export default async function IntakePage({
         <IntakeBatch
           sourceType={sourceType}
           templates={templates}
-          options={{ shippers: options.shippers }}
-          defaults={batchDefaults(defaults)}
+          options={options}
+          defaults={defaults}
           action={createJobFromIntake}
         />
       ) : (
