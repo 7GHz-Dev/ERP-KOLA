@@ -60,7 +60,7 @@ export const col = {
   /** จำนวนวันฟรี ไม่ใช่วันสุดท้าย — ใช้ตอนที่ยังแก้ตัวเลขได้อยู่ */
   demDet: (): Column => ({
     label: 'DEM / DET', align: 'center',
-    render: (r) => `${daysText(r.demDays)} / ${daysText(r.detDays)}`,
+    render: (r) => `${daysText(r.demDays)} / ${daysText(r.detDays)}${r.demDetCombined ? ' (Combine)' : ''}`,
   }),
   lastDem: (): Column => ({
     label: 'Last Date of DEM', sortKey: 'demDays',
@@ -68,7 +68,7 @@ export const col = {
   }),
   lastDet: (): Column => ({
     label: 'Last Date of DET', sortKey: 'detDays',
-    render: (r) => (r.detDays === null ? 'N/A' : formatDate(freeLastDate(r.transportDate, r.detDays))),
+    render: (r) => (r.detDays === null ? 'N/A' : formatDate(freeLastDate(r.eta, r.detDays))),
   }),
   refNo: (): Column => ({
     label: 'Ref No.', searchKey: 'refNo', sortKey: 'draftRefNo',

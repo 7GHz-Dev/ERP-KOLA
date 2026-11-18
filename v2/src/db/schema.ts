@@ -139,6 +139,8 @@ export const jobs = pgTable('jobs', {
   detDays: integer('det_days'),
   /** วันฟรีค่าฝากตู้ที่ท่า (Storage) นับ ETA เป็นวันที่ 1 — ETA 20/11 + 3 วัน = เริ่มมีค่าใช้จ่าย 23/11 */
   storageFreeDays: integer('storage_free_days').default(3).notNull(),
+  /** Combine — DEM กับ DET ใช้จำนวนวันเดียวกัน (กดที่หัวข้อ DET ในแผง Upload Invoice of D/O) */
+  demDetCombined: boolean('dem_det_combined').default(false).notNull(),
   releasePartner: text('release_partner'),
   customerNote: text('customer_note'),
   /** NAMKANG กดยืนยันข้อมูลลูกค้าแล้ว — ใช้แยกแท็บรออัปเดต/อัปเดตแล้ว */

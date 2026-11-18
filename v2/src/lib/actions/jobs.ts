@@ -298,8 +298,10 @@ async function saveDoHandoffImpl(formData: FormData) {
    * ใช้ค่าที่ส่งมาในฟอร์มนี้ก่อน เพราะ FAH มักแก้เลขแล้วกดส่งในครั้งเดียว
    */
   // DEM / DET ตั้งต้น N/A ตั้งแต่ใส่ข้อมูล BL — ต้องมีก่อนส่ง Partner (ใช้ค่าในฟอร์มนี้ก่อน)
+  // Combine (ปุ่มที่หัวข้อ DET) — DEM กับ DET ใช้จำนวนวันเดียวกัน
+  const demDetCombined = formData.has('demDetCombined') ? text(formData.get('demDetCombined'), 2) === '1' : job.demDetCombined;
   const demDays = readDays(formData, 'demDays', job.demDays, 'DEM FREE');
-  const detDays = readDays(formData, 'detDays', job.detDays, 'DET FREE');
+  const detDays = demDetCombined ? demDays : readDays(formData, 'detDays', job.detDays, 'DET FREE');
   const storageFreeDays = readDays(formData, 'storageFreeDays', job.storageFreeDays, 'STORAGE FREE') ?? 3;
   if (sendToPartner && (demDays === null || detDays === null)) {
     throw new Error('กรุณากรอก DEM FREE และ DET FREE (วัน) ก่อนส่งให้ Partner');
@@ -321,7 +323,7 @@ async function saveDoHandoffImpl(formData: FormData) {
 
   await db.update(jobs).set({
     eta, etaIsOfficial: true, transportDate, originPort, portId, terminalId,
-    demDays, detDays, storageFreeDays,
+    demDays, detDays, storageFreeDays, demDetCombined,
     ...(allowBlEdit && blNo ? { blNo } : {}),
     releasePartner: partnerName || job.releasePartner,
     status: sendToPartner ? 'DO_SENT' : job.status,

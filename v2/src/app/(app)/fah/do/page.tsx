@@ -159,6 +159,7 @@ export default async function FahDoPage({
           demDays={r.demDays}
           detDays={r.detDays}
           storageFreeDays={r.storageFreeDays}
+          combined={r.demDetCombined}
           today={today}
         />
       ),
@@ -242,6 +243,7 @@ export default async function FahDoPage({
             demDays: r.demDays,
             detDays: r.detDays,
             storageFreeDays: r.storageFreeDays,
+            demDetCombined: r.demDetCombined,
           }))}
           ports={ports}
           originPorts={originPorts}

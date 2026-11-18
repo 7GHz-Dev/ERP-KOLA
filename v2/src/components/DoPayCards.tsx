@@ -1,3 +1,4 @@
+import { freeLastDate } from '@/lib/free-time';
 import Link from 'next/link';
 import { DoAttachments } from '@/components/DoAttachments';
 import type { DoAttachment } from '@/lib/do-attachments';
@@ -39,7 +40,7 @@ export function DoPayCards({
             <dt>ETA</dt>
             <dd>{formatDate(r.eta)}{r.etaIsOfficial ? ' (OFC)' : ''}</dd>
             <dt>Last DEM</dt>
-            <dd>{r.demDays === null ? 'N/A' : formatDate(addDays(r.eta, r.demDays))}</dd>
+            <dd>{r.demDays === null ? 'N/A' : formatDate(freeLastDate(r.eta, r.demDays))}</dd>
             <dt>SHIPLINE</dt>
             <dd>{r.shipline ?? '-'}</dd>
             <dt>Terminal</dt>

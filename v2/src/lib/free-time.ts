@@ -3,9 +3,12 @@ import { addDays } from '@/lib/format';
 /**
  * วันฟรี DEM / DET / Storage — ใช้ได้ทั้งฝั่งเซิร์ฟเวอร์และเบราว์เซอร์
  *
- *   DEM / DET  null = N/A (ยังไม่ได้กรอก) · วันสุดท้าย = วันตั้งต้น + จำนวนวัน (แบบคอลัมน์ DEM DATE เดิม)
- *   Storage    ค่าตั้งต้น 3 วัน นับ ETA เป็นวันที่ 1 → Last Date Free Time = ETA + จำนวนวัน
- *              เช่น ETA 20/11/2026 ฟรี 3 วัน (20 · 21 · 22) หมด free time / เริ่มมีค่าใช้จ่าย 23/11/2026
+ * นับ ETA เป็นวันที่ 1 ทุกตัว — Last Date = (ETA + จำนวนวัน) − 1 วัน = วันสุดท้ายที่ยังฟรี
+ *   DEM        Last Date of DEM = ETA + DEM FREE − 1
+ *   DET        Last Date of DET = ETA + DET FREE − 1 (ทั้งแบบปกติและ Combine)
+ *              Combine = DEM กับ DET ใช้จำนวนวันเดียวกัน (ปุ่มที่หัวข้อ DET)
+ *   Storage    ตั้งต้น 3 วัน → Last Date = ETA + 3 − 1 เช่น ETA 20/11/2026 → 22/11/2026 (23/11 เริ่มมีค่าใช้จ่าย)
+ *   null = N/A (ยังไม่ได้กรอก) · 0 วัน = ไม่มีวันฟรี
  */
 export const STORAGE_DEFAULT_DAYS = 3;
 
@@ -14,8 +17,8 @@ export const daysText = (n: number | null | undefined) => (n === null || n === u
 
 /** วันสุดท้ายของ free time (YYYY-MM-DD) — ไม่มีวันตั้งต้นหรือยังไม่ได้กรอกจำนวนวันคืน null */
 export function freeLastDate(start: string | null | undefined, days: number | null | undefined): string | null {
-  if (!start || days === null || days === undefined) return null;
-  return addDays(start, days);
+  if (!start || days === null || days === undefined || days <= 0) return null;
+  return addDays(start, days - 1);
 }
 
 export const storageLastDate = (eta: string | null | undefined, days: number | null | undefined) =>
@@ -26,16 +29,16 @@ const diff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) 
 export type Urgency = { level: 'ok' | 'urgent' | 'over'; left: number; text: string };
 
 /**
- * สถานะ free time เทียบวันนี้ — Urgent ตั้งแต่เหลือ 1 วันก่อนหมด (วันสุดท้ายก่อนมีค่าใช้จ่าย) ถึงวันที่เริ่มมีค่าใช้จ่าย
- * เกินแล้ว = เลยวันที่เริ่มมีค่าใช้จ่ายไปแล้ว
+ * สถานะ free time เทียบวันนี้ (lastDate = วันสุดท้ายที่ยังฟรี)
+ *   Urgent  วันนี้หรือพรุ่งนี้เป็นวันสุดท้าย · เกินแล้ว = เลยวันสุดท้าย (มีค่าใช้จ่ายแล้ว)
  */
 export function freeUrgency(lastDate: string | null, today: string): Urgency | null {
   if (!lastDate) return null;
   const left = diff(lastDate, today);
   if (left < 0) return { level: 'over', left, text: `เกิน free time ${-left} วัน` };
-  if (left === 0) return { level: 'urgent', left, text: 'Urgent · เริ่มมีค่าใช้จ่ายวันนี้' };
-  if (left === 1) return { level: 'urgent', left, text: 'Urgent · หมด free time พรุ่งนี้' };
-  return { level: 'ok', left, text: `เหลือ ${left} วัน` };
+  if (left === 0) return { level: 'urgent', left, text: 'Urgent · วันสุดท้ายของ free time' };
+  if (left === 1) return { level: 'urgent', left, text: 'Urgent · free time หมดพรุ่งนี้' };
+  return { level: 'ok', left, text: `เหลือ ${left + 1} วัน` };
 }
 
 /**

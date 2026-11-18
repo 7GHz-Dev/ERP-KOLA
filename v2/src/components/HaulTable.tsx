@@ -4,7 +4,7 @@ import { sheetColumns } from '@/lib/columns';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { demLeft, demUntil, DO_TEXT, haulRiskOf, SHORT_DET_DAYS, todayBangkok } from '@/lib/haul-risk';
 import type { JobRow } from '@/lib/queries/jobs';
-import { freeUrgency, storageLastDate } from '@/lib/free-time';
+import { freeLastDate, freeUrgency, storageLastDate } from '@/lib/free-time';
 import type { HaulSummary, HaulView } from '@/lib/queries/haul';
 
 /**
@@ -106,17 +106,24 @@ export function haulColumns(
     },
   };
   const detCol: Column = {
-    label: 'DET',
-    align: 'center',
+    label: 'DET ฟรีถึง',
+    kind: 'wrap',
     render: (r) => {
-      const d = Number(r.detDays) || 0;
-      if (!d) return '-';
-      return d <= SHORT_DET_DAYS
-        ? <span className="badge rejected" title="free time คืนตู้สั้น — รีบคืน เลี่ยงลากวันศุกร์">{d} วัน</span>
-        : `${d} วัน`;
+      const d = r.detDays;
+      if (d === null) return 'N/A';
+      const last = freeLastDate(r.eta, d);
+      if (!last) return '-';
+      const u = freeUrgency(last, refDay(r));
+      const short = d <= SHORT_DET_DAYS;
+      return (
+        <span className="haul-port">
+          <span>{formatDate(last)} <small>({d} วัน{r.demDetCombined ? ' · Combine' : ''})</small></span>
+          {u && u.level !== 'ok' ? <span className="badge rejected">{u.text}</span>
+            : short ? <span className="badge rejected" title="free time คืนตู้สั้น — รีบคืน เลี่ยงลากวันศุกร์">DET สั้น</span> : null}
+        </span>
+      );
     },
   };
-
   const storageCol: Column = {
     label: 'Storage ฟรีถึง',
     kind: 'wrap',

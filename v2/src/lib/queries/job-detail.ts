@@ -22,7 +22,7 @@ export type JobDetailJob = {
   unitAmount: string | number | null; packageType: string | null;
   grossWeight: string | number | null; goodsValue: string | number | null;
   goodsCurrency: string | null; shipline: string | null; originPort: string | null;
-  demDays: number | null; detDays: number | null; storageFreeDays: number;
+  demDays: number | null; detDays: number | null; storageFreeDays: number; demDetCombined: boolean;
   releasePartner: string | null; customerNote: string | null;
   draftRefNo: string | null; draftStatus: string | null; draftRejectReason: string | null;
   createdAt: string; updatedAt: string;
@@ -87,7 +87,7 @@ export async function loadJobDetail(jobId: string): Promise<JobDetail | null> {
                j.gross_weight as "grossWeight", j.goods_value as "goodsValue",
                j.goods_currency as "goodsCurrency", j.shipline,
                j.origin_port as "originPort",
-               j.dem_days as "demDays", j.det_days as "detDays", j.storage_free_days as "storageFreeDays",
+               j.dem_days as "demDays", j.det_days as "detDays", j.storage_free_days as "storageFreeDays", j.dem_det_combined as "demDetCombined",
                j.release_partner as "releasePartner", j.customer_note as "customerNote",
                j.draft_ref_no as "draftRefNo", j.draft_status as "draftStatus",
                j.draft_reject_reason as "draftRejectReason",

@@ -52,11 +52,11 @@ assert.equal(kola['REF NO'], 'QNEX423503');
 assert.equal(kola['DECLARATION NO.'], 'A0030690102077');
 assert.equal(kola.CONSIGNEE, 'MSFZ');
 assert.equal(kola.NOTIFY, 'KOLA');
-// ตัวอย่างจากตารางจริง: ETA 3/1 + DEM 5 = 8/1 · TRANSPORT 8/1 + DET 14 = 22/1
+// นับ ETA เป็นวันที่ 1: ETA 3/1 + DEM 5 − 1 = 7/1 · DET นับจาก ETA ด้วย: 3/1 + 14 − 1 = 16/1
 assert.equal(kola.DEM, '5');
-assert.equal(kola['DEM DATE'], '08/01/2026');
+assert.equal(kola['DEM DATE'], '07/01/2026');
 assert.equal(kola.DET, '14');
-assert.equal(kola['DET DATE'], '22/01/2026');
+assert.equal(kola['DET DATE'], '16/01/2026');
 assert.notEqual(kola.STATUS, 'DO_SENT', 'สถานะเป็นคำอธิบาย ไม่ใช่รหัส');
 
 const partner = sheetCells({

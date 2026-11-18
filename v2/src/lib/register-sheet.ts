@@ -45,12 +45,14 @@ function freeDays(start: string | null, days: number | null): { days: string; la
   // null = ยังไม่ได้กรอก (N/A) · 0 = ไม่มีวันฟรีให้นับ
   if (days === null || days === undefined) return { days: 'N/A', last: 'N/A' };
   if (days <= 0) return { days: '-', last: '-' };
-  return { days: String(days), last: start ? formatDate(addDays(start, days)) : '-' };
+  // นับวันตั้งต้นเป็นวันที่ 1 — Last Date = วันตั้งต้น + จำนวนวัน − 1
+  return { days: String(days), last: start ? formatDate(addDays(start, days - 1)) : '-' };
 }
 
 export function sheetCells(r: SheetSource): Record<SheetColumn, string> {
   const dem = freeDays(r.eta, r.demDays);
-  const det = freeDays(r.transportDate, r.detDays);
+  // DET นับจาก ETA เหมือน DEM (ทั้งแบบปกติและ Combine)
+  const det = freeDays(r.eta, r.detDays);
   return {
     CUSTOMER: or(r.personName),
     ETA: formatDate(r.eta),

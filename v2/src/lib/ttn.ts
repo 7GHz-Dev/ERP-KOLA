@@ -1,7 +1,7 @@
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { haulPlans } from '@/db/schema';
-import { demUntil, doStage, DO_TEXT, returnDue } from '@/lib/haul-risk';
+import { demUntil, detUntil, doStage, DO_TEXT } from '@/lib/haul-risk';
 
 /**
  * ส่งแพลนลากตู้เข้า ERP TTN (ทีมจัดรถ) — เรียกตอน NAMKANG กด "สั่งลาก" ที่หน้า Transport Request
@@ -71,7 +71,8 @@ export async function ttnRows(containerIds: string[]): Promise<TtnRow[]> {
       do_status: DO_TEXT[doStage({ doExchangedAt: r.do_exchanged_at, doPayAmount: r.do_pay_amount, doClaimedAt: r.do_claimed_at })],
       dem_free_until: demUntil({ eta: r.eta, demDays: Number(r.dem_days) || 0 }),
       det_days: Number(r.det_days) || null,
-      return_due_date: returnDue(r.haul_date, Number(r.det_days) || 0),
+      // Last Date of DET = ETA + DET − 1 (นับ ETA เป็นวันที่ 1)
+      return_due_date: detUntil({ eta: r.eta, detDays: Number(r.det_days) || 0 }),
       bl_containers: Number(r.bl_containers) || null,
     };
   }).filter((r) => r.container_no);

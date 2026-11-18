@@ -2,6 +2,7 @@ import { saveDoHandoff } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
 import { hasBlBrackets } from '@/lib/bl-format';
+import { DemDetFields } from '@/components/DemDetFields';
 import { formatDate } from '@/lib/format';
 import { daysText, freeLastDate, freeUrgency, storageLastDate, STORAGE_DEFAULT_DAYS } from '@/lib/free-time';
 
@@ -18,7 +19,7 @@ export type Choice = { id: string; code: string | null; name: string };
 export function DoRowForm({
   jobId, eta, originPort, portId, terminalId, partnerName,
   ports, originPorts, terminals, partners, sentAt, defaultPartnerId, readOnly,
-  blNo, canEditBl, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, today,
+  blNo, canEditBl, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, combined = false, today,
 }: {
   jobId: string;
   eta: string | null;
@@ -43,6 +44,8 @@ export function DoRowForm({
   demDays?: number | null;
   detDays?: number | null;
   storageFreeDays?: number | null;
+  /** Combine — DEM กับ DET ใช้จำนวนวันเดียวกัน */
+  combined?: boolean;
   /** วันนี้ (YYYY-MM-DD เวลาไทย) ใช้บอก Urgent ของ Storage */
   today?: string;
 }) {
@@ -97,7 +100,7 @@ export function DoRowForm({
         <div className="do-cell"><span>Port of Discharge</span><b>{nameOf(ports, portId)}</b></div>
         <div className="do-cell"><span>Terminal</span><b>{nameOf(terminals, terminalId)}</b></div>
         <div className="do-cell"><span>Port Release Partner</span><b>{partnerName ?? '-'}</b></div>
-        <div className="do-cell"><span>DEM / DET / Storage (วัน)</span><b>{daysText(demDays)} / {daysText(detDays)} / {storageFreeDays ?? STORAGE_DEFAULT_DAYS}</b></div>
+        <div className="do-cell"><span>DEM / DET / Storage (วัน)</span><b>{daysText(demDays)} / {daysText(detDays)}{combined ? ' (Combine)' : ''} / {storageFreeDays ?? STORAGE_DEFAULT_DAYS}</b></div>
         {storageBadge ? <div className="do-cell"><span>Storage</span>{storageBadge}</div> : null}
         <div className="do-buttons">
           {/* ฝั่งรอส่งก็ใช้มุมมองอ่านอย่างเดียวนี้ ป้ายจึงต้องบอกตามจริงว่ายังไม่ได้ส่ง */}
@@ -160,15 +163,7 @@ export function DoRowForm({
       </label>
 
       {/* วันฟรี — DEM / DET บังคับกรอกก่อนส่ง Partner · Storage ตั้งต้น 3 วัน นับ ETA เป็นวันที่ 1 */}
-      <label className="do-cell">
-        <span>DEM FREE (วัน) *</span>
-        <input key={`dem-${demDays ?? ''}`} type="number" min={0} name="demDays" placeholder="N/A" defaultValue={demDays ?? ''} />
-        {demDays !== null && eta ? <small className="do-sub">Last Date of DEM {formatDate(freeLastDate(eta, demDays))}</small> : null}
-      </label>
-      <label className="do-cell">
-        <span>DET FREE (วัน) *</span>
-        <input key={`det-${detDays ?? ''}`} type="number" min={0} name="detDays" placeholder="N/A" defaultValue={detDays ?? ''} />
-      </label>
+      <DemDetFields key={`dd-${demDays ?? ''}-${detDays ?? ''}-${combined}`} eta={eta} demDays={demDays} detDays={detDays} combined={combined} />
       <label className="do-cell">
         <span>STORAGE FREE (วัน)</span>
         <input key={`sto-${storageFreeDays ?? ''}`} type="number" min={0} name="storageFreeDays" defaultValue={storageFreeDays ?? STORAGE_DEFAULT_DAYS} />
