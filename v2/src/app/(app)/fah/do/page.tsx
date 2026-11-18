@@ -244,6 +244,7 @@ export default async function FahDoPage({
             detDays: r.detDays,
             storageFreeDays: r.storageFreeDays,
             demDetCombined: r.demDetCombined,
+            transportDate: r.transportDate,
           }))}
           ports={ports}
           originPorts={originPorts}

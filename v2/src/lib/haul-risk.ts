@@ -25,6 +25,8 @@ export type HaulRisk = {
   demDays: number;
   detDays: number;
   doStage: DoStage;
+  /** Combine — DET นับจาก ETA (ปกตินับจากวันลาก) */
+  combined?: boolean;
   /** Last Date Free Time ของ Storage (ETA + วันฟรี · ETA = วันที่ 1) — ลากตั้งแต่วันนี้มีค่าฝากตู้ */
   storageLast?: string | null;
 };
@@ -50,9 +52,12 @@ export function demUntil(r: Pick<HaulRisk, 'eta' | 'demDays'>): string | null {
   return freeLastDate(r.eta, r.demDays);
 }
 
-/** Last Date of DET = ETA + DET − 1 (ทั้งแบบปกติและ Combine) = วันสุดท้ายที่คืนตู้ได้ฟรี */
-export function detUntil(r: Pick<HaulRisk, 'eta' | 'detDays'>): string | null {
-  return freeLastDate(r.eta, r.detDays);
+/**
+ * Last DET date = วันสุดท้ายที่คืนตู้ได้ฟรี — ปกติ: Transport Date (วันลาก) + DET − 1 · Combine: ETA + DET − 1
+ * หน้า Transport Request ใช้วันลากที่กำลังเลือกเป็น Transport Date
+ */
+export function detUntil(r: Pick<HaulRisk, 'eta' | 'detDays' | 'combined'>, transportDate: string | null): string | null {
+  return freeLastDate(r.combined ? r.eta : transportDate, r.detDays);
 }
 
 const weekday = (ymd: string) => new Date(`${ymd}T00:00:00Z`).getUTCDay();
@@ -90,7 +95,7 @@ export function haulWarnings(rows: HaulRisk[], haulDate: string): string[] {
     if (left !== null && left < 0) add(`เกิน free time DEM (Last DEM date ${formatDate(demUntil(r))})`, r.bl);
     if (r.storageLast && haulDate > r.storageLast) add(`เกิน Storage free time (Last STORAGE date ${formatDate(r.storageLast)})`, r.bl);
     // DET นับจาก ETA: ลากวันนี้แล้วเหลือวันคืนตู้ฟรีกี่วัน (รวมวันลาก)
-    const det = detUntil(r);
+    const det = detUntil(r, haulDate);
     if (det) {
       const days = diff(det, haulDate) + 1;
       if (days <= 0) add(`เกิน free time DET (Last DET date ${formatDate(det)})`, r.bl);
@@ -107,7 +112,7 @@ export function haulWarnings(rows: HaulRisk[], haulDate: string): string[] {
 /** ข้อมูลประกอบของงานหนึ่งแถวในตาราง (JobRow) */
 export function haulRiskOf(r: {
   blNo: string | null; jobNo: string; shipline: string | null; terminalName: string | null; eta: string | null;
-  etaIsOfficial: boolean | null; demDays: number | null; detDays: number | null; storageFreeDays?: number | null;
+  etaIsOfficial: boolean | null; demDays: number | null; detDays: number | null; storageFreeDays?: number | null; demDetCombined?: boolean | null;
   doExchangedAt: Date | string | null; doPayAmount: string | null; doClaimedAt: Date | string | null;
 }): HaulRisk {
   return {
@@ -120,6 +125,7 @@ export function haulRiskOf(r: {
     detDays: Number(r.detDays) || 0,
     doStage: doStage(r),
     storageLast: storageLastDate(r.eta, r.storageFreeDays),
+    combined: Boolean(r.demDetCombined),
   };
 }
 

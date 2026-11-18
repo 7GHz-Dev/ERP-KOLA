@@ -17,24 +17,25 @@ assert.equal(doStage({ doClaimedAt: '2026-11-17' }), 'DONE');
 
 // นับ ETA เป็นวันที่ 1: Last Date = ETA + วัน − 1 · DET นับจาก ETA เหมือน DEM
 assert.equal(demUntil(base), '2026-11-18');
-assert.equal(detUntil(base), '2026-11-24');
+assert.equal(detUntil(base, '2026-11-18'), '2026-11-27', 'ปกติ: วันลาก 18 + 10 − 1');
+assert.equal(detUntil({ ...base, combined: true }, '2026-11-18'), '2026-11-24', 'Combine: ETA 15 + 10 − 1');
 assert.equal(demUntil({ eta: '2026-11-15', demDays: 0 }), null);
 assert.equal(demLeft(base, '2026-11-18'), 0);
 assert.equal(weekdayName('2026-11-20'), 'ศุกร์');
 
-// วันปกติ ข้อมูลครบ = ไม่มีคำเตือน (พุธ 18 พ.ย. = วันสุดท้าย DEM · DET ถึงอังคาร 24)
+// วันปกติ ข้อมูลครบ = ไม่มีคำเตือน (พุธ 18 พ.ย. = วันสุดท้าย DEM · DET ถึงศุกร์ 27)
 assert.deepEqual(haulWarnings([base], '2026-11-18'), []);
 assert.deepEqual(haulWarnings([base], ''), []);
 
-// ศุกร์ 20 + DET 7 วัน (Last Date เสาร์ 21) → เหลือ 2 วัน · วันสุดท้ายตรงเสาร์ · เกิน DEM · ยังไม่ได้ D/O
-const w = haulWarnings([{ ...base, detDays: 7, doStage: 'NONE' }], '2026-11-20');
+// ลากศุกร์ 20 + DET 2 วัน (Last DET date เสาร์ 21) → เหลือ 2 วัน · วันสุดท้ายตรงเสาร์ · เกิน DEM · ยังไม่ได้ D/O
+const w = haulWarnings([{ ...base, detDays: 2, doStage: 'NONE' }], '2026-11-20');
 assert.ok(w.includes('ลากวันศุกร์ — เสี่ยงคืนตู้ช้า'), w.join('|'));
 assert.ok(w.some((t) => t.startsWith('ลากแล้วเหลือ DET 2 วัน ต้องรีบคืนตู้ (Last DET date 21/11/2026): BL1')), w.join('|'));
 assert.ok(w.some((t) => t.startsWith('วันสุดท้ายคืนตู้ (21/11/2026) ตรงวันเสาร์')));
 assert.ok(w.some((t) => t.startsWith('เกิน free time DEM (Last DEM date 18/11/2026)')));
 assert.ok(w.some((t) => t.startsWith('ยังไม่ได้ส่งแลก D/O: BL1')));
-// ลากหลัง Last Date of DET
-assert.ok(haulWarnings([{ ...base, detDays: 3 }], '2026-11-18').some((t) => t.startsWith('เกิน free time DET (Last DET date 17/11/2026)')));
+// Combine นับจาก ETA: ETA 15 + 3 − 1 = 17 · ลากวันที่ 18 = เกิน DET
+assert.ok(haulWarnings([{ ...base, detDays: 3, combined: true }], '2026-11-18').some((t) => t.startsWith('เกิน free time DET (Last DET date 17/11/2026)')));
 
 // ETA ยังไม่ยืนยัน · ลากก่อน ETA · รวม BL ที่โดนข้อความเดียวกัน
 const e = haulWarnings([

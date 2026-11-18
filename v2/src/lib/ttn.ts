@@ -22,7 +22,7 @@ export function ttnConfigured() {
 type Row = {
   container_id: string; container_no: string | null; weight: string | null; job_no: string; bl_no: string | null;
   shipper: string | null; shipline: string | null; vessel: string | null; voyage: string | null; eta: string | null;
-  eta_official: boolean; dem_days: number; det_days: number; terminal: string | null;
+  eta_official: boolean; dem_days: number; det_days: number; combined: boolean; terminal: string | null;
   job_type: string | null; job_type_short: string | null; do_exchanged_at: string | null; do_pay_amount: string | null;
   do_claimed_at: string | null; bl_containers: number; haul_date: string;
 };
@@ -35,7 +35,7 @@ export async function ttnRows(containerIds: string[]): Promise<TtnRow[]> {
   const rows = await db.execute<Row>(sql`
     select c.id as container_id, c.container_no, c.weight::text as weight, j.job_no, j.bl_no,
            shipper.name as shipper, j.shipline, j.vessel, j.voyage, j.eta::text as eta, j.eta_is_official as eta_official,
-           j.dem_days, j.det_days, terminal.name as terminal, jt.name as job_type, jt.short_name as job_type_short,
+           j.dem_days, j.det_days, j.dem_det_combined as combined, terminal.name as terminal, jt.name as job_type, jt.short_name as job_type_short,
            j.do_exchanged_at::text as do_exchanged_at, j.do_pay_amount::text as do_pay_amount,
            j.do_claimed_at::text as do_claimed_at,
            (select count(*)::int from containers x where x.job_id = j.id) as bl_containers,
@@ -71,8 +71,8 @@ export async function ttnRows(containerIds: string[]): Promise<TtnRow[]> {
       do_status: DO_TEXT[doStage({ doExchangedAt: r.do_exchanged_at, doPayAmount: r.do_pay_amount, doClaimedAt: r.do_claimed_at })],
       dem_free_until: demUntil({ eta: r.eta, demDays: Number(r.dem_days) || 0 }),
       det_days: Number(r.det_days) || null,
-      // Last Date of DET = ETA + DET − 1 (นับ ETA เป็นวันที่ 1)
-      return_due_date: detUntil({ eta: r.eta, detDays: Number(r.det_days) || 0 }),
+      // Last DET date: ปกติ = วันลาก + DET − 1 · Combine = ETA + DET − 1
+      return_due_date: detUntil({ eta: r.eta, detDays: Number(r.det_days) || 0, combined: Boolean(r.combined) }, r.haul_date),
       bl_containers: Number(r.bl_containers) || null,
     };
   }).filter((r) => r.container_no);

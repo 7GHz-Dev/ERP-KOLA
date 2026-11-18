@@ -76,7 +76,7 @@ export async function templateRows(filter: TemplateFilter = {}) {
            j.bl_no, j.vessel, j.voyage, j.shipline,
            j.unit_amount::float8      as unit_amount,
            j.gross_weight::float8     as gross_weight,
-           j.dem_days, j.det_days,
+           j.dem_days, j.det_days, j.dem_det_combined,
            j.surrender_status, j.draft_ref_no, j.customer_note,
            person.name                as person_name,
            shipper.name               as shipper_name,
@@ -149,7 +149,8 @@ export async function templateRows(filter: TemplateFilter = {}) {
       // นับ ETA เป็นวันที่ 1: Last Date = ETA + วัน − 1 · DET นับจาก ETA เหมือน DEM
       'DEM DATE': Number(r.dem_days) > 0 ? tplDate(addDays(eta, (r.dem_days as number) - 1)) : '',
       DET: String(r.det_days ?? ''),
-      'DET DATE': Number(r.det_days) > 0 ? tplDate(addDays(eta, (r.det_days as number) - 1)) : '',
+      // DET ปกตินับจาก Transport Date · Combine นับจาก ETA
+      'DET DATE': Number(r.det_days) > 0 ? tplDate(addDays(r.dem_det_combined ? eta : transport, (r.det_days as number) - 1)) : '',
     };
     return cell;
   });

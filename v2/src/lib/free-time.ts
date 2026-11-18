@@ -5,8 +5,8 @@ import { addDays } from '@/lib/format';
  *
  * นับ ETA เป็นวันที่ 1 ทุกตัว — Last Date = (ETA + จำนวนวัน) − 1 วัน = วันสุดท้ายที่ยังฟรี
  *   DEM        Last Date of DEM = ETA + DEM FREE − 1
- *   DET        Last Date of DET = ETA + DET FREE − 1 (ทั้งแบบปกติและ Combine)
- *              Combine = DEM กับ DET ใช้จำนวนวันเดียวกัน (ปุ่มที่หัวข้อ DET)
+ *   DET        ปกติ:    Last DET date = Transport Date + DET FREE − 1 (ยังไม่มี Transport Date = ยังคำนวณไม่ได้)
+ *              Combine: Last DET date = ETA + DET FREE − 1 · DEM กับ DET ใช้จำนวนวันเดียวกัน (ปุ่มที่หัวข้อ DET)
  *   Storage    ตั้งต้น 3 วัน → Last Date = ETA + 3 − 1 เช่น ETA 20/11/2026 → 22/11/2026 (23/11 เริ่มมีค่าใช้จ่าย)
  *   null = N/A (ยังไม่ได้กรอก) · 0 วัน = ไม่มีวันฟรี
  */
@@ -19,6 +19,11 @@ export const daysText = (n: number | null | undefined) => (n === null || n === u
 export function freeLastDate(start: string | null | undefined, days: number | null | undefined): string | null {
   if (!start || days === null || days === undefined || days <= 0) return null;
   return addDays(start, days - 1);
+}
+
+/** Last DET date — ปกตินับจาก Transport Date · Combine นับจาก ETA */
+export function detLastDate(r: { eta: string | null; transportDate: string | null; detDays: number | null; demDetCombined?: boolean | null }): string | null {
+  return freeLastDate(r.demDetCombined ? r.eta : r.transportDate, r.detDays);
 }
 
 export const storageLastDate = (eta: string | null | undefined, days: number | null | undefined) =>

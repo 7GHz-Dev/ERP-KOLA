@@ -1,4 +1,4 @@
-import { daysText, freeLastDate } from '@/lib/free-time';
+import { daysText, detLastDate, freeLastDate } from '@/lib/free-time';
 import Link from 'next/link';
 import { ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
@@ -68,7 +68,7 @@ export const col = {
   }),
   lastDet: (): Column => ({
     label: 'Last DET date', sortKey: 'detDays',
-    render: (r) => (r.detDays === null ? 'N/A' : formatDate(freeLastDate(r.eta, r.detDays))),
+    render: (r) => (r.detDays === null ? 'N/A' : formatDate(detLastDate(r))),
   }),
   refNo: (): Column => ({
     label: 'Ref No.', searchKey: 'refNo', sortKey: 'draftRefNo',

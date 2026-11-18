@@ -37,6 +37,7 @@ export type DoPaneJob = {
   detDays: number | null;
   storageFreeDays: number;
   demDetCombined: boolean;
+  transportDate: string | null;
 };
 
 export function DoFillPane({
@@ -113,6 +114,7 @@ export function DoFillPane({
               detDays={job.detDays}
               storageFreeDays={job.storageFreeDays}
               combined={job.demDetCombined}
+              transportDate={job.transportDate}
               today={todayBangkok()}
             />
           </div>

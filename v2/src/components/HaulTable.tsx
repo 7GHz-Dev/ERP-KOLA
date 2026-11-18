@@ -111,7 +111,10 @@ export function haulColumns(
     render: (r) => {
       const d = r.detDays;
       if (d === null) return 'N/A';
-      const last = freeLastDate(r.eta, d);
+      // ปกตินับจาก Transport Date (แท็บสั่งลากแล้ว = วันลากที่ตั้งไว้ · รอสั่งลาก = ยังไม่รู้) · Combine นับจาก ETA
+      const transport = r.transportDate ?? (view === 'wait' ? null : summaries.get(r.id)?.firstDate ?? null);
+      const last = freeLastDate(r.demDetCombined ? r.eta : transport, d);
+      if (!last && !r.demDetCombined) return <span className="haul-port"><span>{d} วัน</span><small>นับจากวันลาก</small></span>;
       if (!last) return '-';
       const u = freeUrgency(last, refDay(r));
       const short = d <= SHORT_DET_DAYS;

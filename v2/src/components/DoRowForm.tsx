@@ -19,7 +19,7 @@ export type Choice = { id: string; code: string | null; name: string };
 export function DoRowForm({
   jobId, eta, originPort, portId, terminalId, partnerName,
   ports, originPorts, terminals, partners, sentAt, defaultPartnerId, readOnly,
-  blNo, canEditBl, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, combined = false, today,
+  blNo, canEditBl, transportDate = null, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, combined = false, today,
 }: {
   jobId: string;
   eta: string | null;
@@ -44,6 +44,8 @@ export function DoRowForm({
   demDays?: number | null;
   detDays?: number | null;
   storageFreeDays?: number | null;
+  /** วันที่ขนย้าย — Last DET date แบบปกตินับจากวันนี้ */
+  transportDate?: string | null;
   /** Combine — DEM กับ DET ใช้จำนวนวันเดียวกัน */
   combined?: boolean;
   /** วันนี้ (YYYY-MM-DD เวลาไทย) ใช้บอก Urgent ของ Storage */
@@ -163,7 +165,7 @@ export function DoRowForm({
       </label>
 
       {/* วันฟรี — DEM / DET บังคับกรอกก่อนส่ง Partner · Storage ตั้งต้น 3 วัน นับ ETA เป็นวันที่ 1 */}
-      <DemDetFields key={`dd-${demDays ?? ''}-${detDays ?? ''}-${combined}`} eta={eta} demDays={demDays} detDays={detDays} combined={combined} />
+      <DemDetFields key={`dd-${demDays ?? ''}-${detDays ?? ''}-${combined}`} eta={eta} transportDate={transportDate} demDays={demDays} detDays={detDays} combined={combined} />
       <label className="do-cell">
         <span>STORAGE FREE (วัน)</span>
         <input key={`sto-${storageFreeDays ?? ''}`} type="number" min={0} name="storageFreeDays" defaultValue={storageFreeDays ?? STORAGE_DEFAULT_DAYS} />

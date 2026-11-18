@@ -30,7 +30,7 @@ export type SheetSource = Pick<JobRow,
   | 'transportDate' | 'shipperName' | 'containerCount' | 'blNo' | 'containerNos' | 'unitAmount'
   | 'grossWeight' | 'shipline' | 'vessel' | 'voyage' | 'terminalName' | 'draftRefNo' | 'declarationNo'
   | 'consigneeName' | 'consigneeShort' | 'notifyName' | 'notifyShort'
-  | 'demDays' | 'detDays' | 'status'>;
+  | 'demDays' | 'detDays' | 'demDetCombined' | 'status'>;
 
 /** สถานะ Surrender แบบสั้น — คำเดียวกับป้ายในหน้า NAMKANG (surrenderBadge) */
 export const SURRENDER_SHORT: Record<string, string> = {
@@ -51,8 +51,8 @@ function freeDays(start: string | null, days: number | null): { days: string; la
 
 export function sheetCells(r: SheetSource): Record<SheetColumn, string> {
   const dem = freeDays(r.eta, r.demDays);
-  // DET นับจาก ETA เหมือน DEM (ทั้งแบบปกติและ Combine)
-  const det = freeDays(r.eta, r.detDays);
+  // DET ปกตินับจาก Transport Date · Combine นับจาก ETA
+  const det = freeDays(r.demDetCombined ? r.eta : r.transportDate, r.detDays);
   return {
     CUSTOMER: or(r.personName),
     ETA: formatDate(r.eta),

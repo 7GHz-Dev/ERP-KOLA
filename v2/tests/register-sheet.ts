@@ -28,7 +28,7 @@ const base: SheetSource = {
   vessel: 'GSL MAREN', voyage: '023S', terminalName: 'C1C2', draftRefNo: 'QNEX423503',
   declarationNo: 'A0030690102077', consigneeName: 'MAESOT FREEZONE CO.,LTD.',
   consigneeShort: 'MSFZ', notifyName: 'KOLA SHIPPING CO.,LTD.', notifyShort: 'KOLA',
-  demDays: 5, detDays: 14, status: 'DO_SENT',
+  demDays: 5, detDays: 14, demDetCombined: false, status: 'DO_SENT',
 };
 
 const kola = sheetCells(base);
@@ -52,11 +52,12 @@ assert.equal(kola['REF NO'], 'QNEX423503');
 assert.equal(kola['DECLARATION NO.'], 'A0030690102077');
 assert.equal(kola.CONSIGNEE, 'MSFZ');
 assert.equal(kola.NOTIFY, 'KOLA');
-// นับ ETA เป็นวันที่ 1: ETA 3/1 + DEM 5 − 1 = 7/1 · DET นับจาก ETA ด้วย: 3/1 + 14 − 1 = 16/1
+// DEM: ETA 3/1 + 5 − 1 = 7/1 · DET (ปกติ) นับจาก Transport Date: 8/1 + 14 − 1 = 21/1 · Combine นับจาก ETA: 16/1
 assert.equal(kola.DEM, '5');
 assert.equal(kola['DEM DATE'], '07/01/2026');
 assert.equal(kola.DET, '14');
-assert.equal(kola['DET DATE'], '16/01/2026');
+assert.equal(kola['DET DATE'], '21/01/2026');
+assert.equal(sheetCells({ ...base, demDetCombined: true })['DET DATE'], '16/01/2026');
 assert.notEqual(kola.STATUS, 'DO_SENT', 'สถานะเป็นคำอธิบาย ไม่ใช่รหัส');
 
 const partner = sheetCells({
