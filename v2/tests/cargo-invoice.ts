@@ -18,6 +18,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { sanitizeInvoice } from '../src/lib/cargo-invoice/ai-read';
 import { engineDesc, invoiceDate, normalizeFuel, parseCargoInvoice, splitEngineType } from '../src/lib/cargo-invoice/parse';
 import { baseRules, lookup } from '../src/lib/cargo-invoice/tariff';
 import { writeSummary } from '../src/lib/cargo-invoice/write';
@@ -415,4 +416,30 @@ async function normalFinal() {
   console.log('✓ NORMAL Final Invoice: หัวใบ · ข้อมูลเรือ · ตาราง · TOTAL · ตู้ · USD · worker อ่านได้ · PDF · CSV Draft ใบขน (NORMAL + JAN)');
 }
 
-main().then(janFinal).then(editedFinal).then(aichiFinal).then(normalFinal).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });
+/** ค่าที่ AI อ่าน Invoice NORMAL ต้องผ่านการกรองก่อนถึงฟอร์ม */
+async function aiSanitize() {
+  const out = sanitizeInvoice({
+    supplier: ' sun motors fzco ', invoiceNo: 'SM 2026-118', invoiceDate: '2026-11-03', currency: 'usd', blNo: 'aaa 1234567',
+    cars: [
+      { brand: 'toyota', model: 'prius', chassis: 'ZVW30 1234567', engine: '2ZR-FXE', year: '2012', cc: '1,800 cc',
+        fuel: 'Hybrid Gasoline', weight: '1,350 KG', amount: '$2,450.00', container: 'tcnu 123456-7' },
+      { brand: 'HONDA', model: 'FIT', chassis: 'GP1-100', year: '1800', cc: '-5', weight: '5', amount: '', container: 'ABC' },
+      { brand: '', model: '', chassis: '' },
+    ],
+  });
+  assert.equal(out.supplier, 'SUN MOTORS FZCO');
+  assert.equal(out.invoiceNo, 'SM2026-118');
+  assert.equal(out.invoiceDate, '03/11/2026');
+  assert.equal(out.currency, 'USD');
+  assert.equal(out.cars.length, 2, 'แถวว่างทิ้ง');
+  assert.deepEqual(out.cars[0], {
+    brand: 'TOYOTA', model: 'PRIUS', chassis: 'ZVW301234567', engine: '2ZR-FXE', fuel: 'GASOLINE',
+    year: 2012, cc: 1800, weight: 1350, price: 2450, container: 'TCNU1234567',
+  });
+  // ค่าผิดรูปทิ้ง: ปี 1800 · CC ติดลบ · น้ำหนัก 5 กก. · เลขตู้ไม่เข้ารูป
+  assert.deepEqual([out.cars[1].year, out.cars[1].cc, out.cars[1].weight, out.cars[1].price, out.cars[1].container], [null, null, null, null, '']);
+  assert.equal(sanitizeInvoice({ invoiceDate: '3 Nov 2026', currency: 'US$' }).invoiceDate, '');
+  console.log('✓ AI อ่าน Invoice NORMAL: กรองค่าผิดรูป');
+}
+
+main().then(janFinal).then(editedFinal).then(aichiFinal).then(normalFinal).then(aiSanitize).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });

@@ -45,14 +45,19 @@ export async function POST(request: Request) {
   const user = mode === 'save' ? await cargoUser() : await cargoReader();
   if (user instanceof Response) return user;
 
-  const job = await jobById(String(body.jobId ?? ''));
-  if (!job) return json({ error: 'เลือกงานก่อน — ข้อมูลเรือ BL และตู้มาจากงาน' }, 400);
+  // Preview / CSV กดได้ตลอด แม้ยังไม่เลือกงาน (หัวใบช่องเรือ/BL ว่าง) · บันทึกต้องมีงาน
+  const found = body.jobId ? await jobById(String(body.jobId)) : null;
+  if (!found && mode === 'save') return json({ error: 'เลือกงานก่อน — ข้อมูลเรือ BL และตู้มาจากงาน' }, 400);
+  const job = found ?? {
+    id: '', jobNo: '', blNo: '', containers: [] as string[],
+    ship: { vessel: '', voyage: '', portOfLoading: '', portOfDestination: '', etd: '', carrier: '', shipperId: null },
+  };
   const [shipper] = body.shipperId ? await db.select({ name: masterRecords.name, address: masterRecords.address })
     .from(masterRecords).where(and(eq(masterRecords.id, String(body.shipperId)), eq(masterRecords.type, 'shippers'))).limit(1) : [];
   if (!shipper && mode === 'save') return json({ error: 'เลือก Shipper ก่อน' }, 400);
 
-  const currency = String(body.currency ?? '').trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) return json({ error: 'เลือกสกุลเงิน (Currency) ก่อน' }, 400);
+  const currency = String(body.currency ?? '').trim().toUpperCase() || 'USD';
+  if (!/^[A-Z]{3}$/.test(currency)) return json({ error: 'สกุลเงิน (Currency) ต้องเป็นตัวอักษร 3 ตัว เช่น USD' }, 400);
   const invoiceDate = ymdToDmy(String(body.invoiceDate ?? ''));
   const invoiceNo = String(body.invoiceNo ?? '').trim().toUpperCase().slice(0, 60);
   if (mode === 'save' && (!invoiceDate || !invoiceNo)) return json({ error: 'ใส่ Invoice Date และ Invoice No. ก่อนบันทึก' }, 400);

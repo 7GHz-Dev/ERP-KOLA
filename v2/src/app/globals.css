@@ -2869,28 +2869,69 @@ table.data td.col-lib { min-width: 300px; }
 /* Master Data: ที่อยู่ Shipper หลายบรรทัด */
 .master-address { white-space: pre-line; font-size: 12px; }
 
-/* Create Cargo Invoice แบบ NORMAL — ฟอร์มซ้าย ไฟล์ผู้ขายขวา (แบบแผงแก้ข้อมูล BL) */
-.cgi-normal { display: grid; grid-template-columns: minmax(340px, 44fr) minmax(0, 56fr); gap: 14px; margin-bottom: 16px; }
-.cgi-normal-form { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.cgi-normal-view { position: sticky; top: 12px; height: calc(100vh - 120px); min-height: 460px; display: flex; }
-.cgi-normal-view .bl-edit-file { flex: 1; }
-.cgi-normal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cgi-normal-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cgi-normal-sec { padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-.cgi-normal-sec .extract-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.cgi-normal-job { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
-.cgi-normal-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; margin: 0; font-size: 13px; }
+/* Create Cargo Invoice แบบ NORMAL — เอกสารด้านบนกลางจอ (ไฟล์ผู้ขาย / FN Invoice / คู่กัน) · ข้อมูลด้านล่าง แถวละ 1 คัน */
+.cgi-normal { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; min-width: 0; }
+.cgi-doc { width: 100%; max-width: 1280px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cgi-doc-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.cgi-doc-name { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cgi-doc-tabs { display: inline-flex; padding: 2px; border-radius: 7px; background: var(--canvas); border: 1px solid var(--line); }
+.cgi-doc-tabs button { font: inherit; font-size: 12.5px; padding: 4px 10px; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
+.cgi-doc-tabs button.on { background: var(--surface); color: var(--blue); font-weight: 700; box-shadow: 0 1px 2px rgba(15, 35, 49, .15); }
+.cgi-doc-stale { margin: 0; padding: 5px 10px; font-size: 12px; background: var(--amber-soft); color: var(--amber); }
+/* ความสูงยืดได้ (ลากมุมล่าง) — ค่าเริ่ม 62% ของจอ ยังเห็นตารางรถด้านล่าง */
+.cgi-doc-body { display: grid; height: 62vh; min-height: 320px; resize: vertical; overflow: hidden; background: #525659; }
+.cgi-doc-body.both { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; }
+.cgi-doc-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.cgi-doc-pane > small { padding: 3px 8px; font-size: 11.5px; color: #fff; background: rgba(0, 0, 0, .35); }
+.cgi-doc-file { flex: 1; width: 100%; height: 100%; min-height: 0; border: 0; object-fit: contain; background: #525659; }
+img.cgi-doc-file { overflow: auto; }
+.cgi-doc-empty { flex: 1; display: grid; place-content: center; justify-items: center; gap: 10px; color: #e8eef2; }
+.cgi-doc-body .batch-note { margin: auto; color: #e8eef2; }
+.cgi-normal-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cgi-normal-sec { padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.cgi-normal-headgrid { display: grid; grid-template-columns: minmax(220px, 1.3fr) minmax(240px, 1.6fr) 110px 150px minmax(160px, 1fr); gap: 8px; align-items: end; }
+.cgi-normal-job { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cgi-normal-job .cgi-jobsearch { margin-left: 0; }
+.cgi-normal-info { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 8px 0 0; font-size: 13px; }
 .cgi-normal-info dt { font-size: 11px; color: var(--muted); }
 .cgi-normal-info dd { margin: 0; font-weight: 600; }
-.cgi-normal-addr { margin: 6px 0 0; padding: 6px 8px; font: inherit; font-size: 12px; white-space: pre-line; background: var(--canvas); border-radius: 6px; }
-.cgi-normal-car { padding: 8px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; }
-.cgi-normal-car.bad { border-color: var(--red); }
-.cgi-normal-car-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.cgi-normal-car-head small { flex: 1; color: var(--muted); }
-.cgi-normal-actions { position: sticky; bottom: 0; display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px; background: var(--canvas); border-top: 1px solid var(--line); }
+.cgi-normal-addr { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.cgi-normal-addr b { color: var(--ink, inherit); }
+.cgi-auto-key { margin-left: 10px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.cgi-auto-key i { display: inline-block; width: 12px; height: 12px; margin-right: 3px; vertical-align: -1px; border-radius: 3px; background: var(--blue-soft, #e8f1fb); border: 1px solid #9cc1ea; }
+.cgi-normal-tablewrap { max-height: none; }
+.cgi-normal-table { min-width: 1180px; }
+.cgi-normal-table th { font-size: 11px; white-space: nowrap; }
+.cgi-normal-table td { padding: 3px 4px; vertical-align: top; }
+.cgi-normal-table input, .cgi-normal-table select {
+  width: 100%; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface);
+}
+.cgi-normal-table input.auto, .cgi-normal-table select.auto { background: var(--blue-soft, #e8f1fb); border-color: #9cc1ea; }
+.cgi-normal-table tr.bad > td { background: #fff4f4; }
+.cgi-normal-table .w-no { width: 34px; text-align: center; color: var(--muted); padding-top: 8px; }
+.cgi-normal-table .w-brand { width: 110px; }
+.cgi-normal-table .w-model { width: 150px; }
+.cgi-normal-table .w-chassis { width: 170px; }
+.cgi-normal-table .w-engine { width: 150px; }
+.cgi-normal-table .w-num { width: 100px; text-align: right; }
+.cgi-normal-table .w-num input { text-align: right; }
+.cgi-normal-table .w-year { width: 70px; }
+.cgi-normal-table .w-fuel { width: 110px; }
+.cgi-normal-table .w-box { width: 150px; }
+.cgi-normal-table .w-tariff { width: 130px; }
+.cgi-normal-table .w-act { width: 64px; white-space: nowrap; }
+.cgi-normal-table tfoot td { padding-top: 6px; border-top: 1px solid var(--line); }
+.cgi-engine-out { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.cgi-normal-problem td { padding: 0 6px 6px !important; font-size: 12px; color: var(--red); background: #fff4f4; }
+.cgi-row-act { display: inline-flex; gap: 2px; }
+.cgi-normal-actions { position: sticky; bottom: 0; z-index: 5; display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px; background: var(--canvas); border-top: 1px solid var(--line); }
 .cgi-csv { max-height: calc(100vh - 220px); }
 .cgi-csv td, .cgi-csv th { white-space: nowrap; font-size: 12px; }
-@media (max-width: 900px) {
-  .cgi-normal { grid-template-columns: minmax(0, 1fr); }
-  .cgi-normal-view { position: static; height: 70vh; }
+@media (max-width: 1100px) {
+  .cgi-normal-headgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cgi-normal-headgrid .cgi-normal-shipper { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  .cgi-normal-headgrid { grid-template-columns: minmax(0, 1fr); }
+  .cgi-doc-body.both { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; }
 }

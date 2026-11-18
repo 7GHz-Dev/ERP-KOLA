@@ -79,7 +79,7 @@ export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
   async function read(f: File) {
     reset();
     setFile(f);
-    // รูป / PDF — ระบบอ่านไม่ได้ ไปฟอร์ม NORMAL เลย
+    // รูป / PDF — ไปฟอร์ม NORMAL เลย (ฟอร์มให้ AI อ่านแล้วเติมให้)
     if (!/\.xlsx$/i.test(f.name)) {
       setNormal({ cars: [], invoiceNo: '', invoiceDate: '', supplier: '', jobs: [], note: '' });
       return;
@@ -96,7 +96,7 @@ export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
           cars: ok ? data.invoice.cars : [], invoiceNo: data.invoice.invoiceNo, invoiceDate: data.invoice.invoiceDate,
           supplier: data.invoice.supplier, jobs: data.jobs,
           note: ok ? `อ่านรายการรถจากไฟล์ (${data.invoice.pattern}) ได้ ${data.invoice.cars.length} คัน — ตรวจทุกช่องก่อนบันทึก`
-            : 'ไฟล์นี้ระบบอ่านรายการรถไม่ได้ — คีย์จากไฟล์ด้านขวา',
+            : 'ไฟล์นี้ระบบอ่านรายการรถเองไม่ได้',
         });
         return;
       }
@@ -312,7 +312,7 @@ export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); }}
             />
             <b>{file ? file.name : 'เลือกไฟล์ Invoice (Excel · PDF · รูป)'}</b>
-            <small>{file ? `${(file.size / 1024).toFixed(0)} KB · กดเพื่อเลือกไฟล์ใหม่` : 'JAN TRADING · AICHI (Excel) ระบบอ่านและจัดหน้าให้ · ผู้ขายรายอื่น (Excel · PDF · รูป) เปิดฟอร์ม NORMAL ให้คีย์ข้างไฟล์'}</small>
+            <small>{file ? `${(file.size / 1024).toFixed(0)} KB · กดเพื่อเลือกไฟล์ใหม่` : 'JAN TRADING · AICHI (Excel) ระบบอ่านและจัดหน้าให้ · ผู้ขายรายอื่น (Excel · PDF · รูป) เปิดฟอร์ม NORMAL ระบบอ่านแล้วเติมให้ตรวจ'}</small>
           </label>
           {inv ? <button type="button" className="button" onClick={reset} disabled={Boolean(busy)}>เริ่มใหม่</button> : null}
         </div>
