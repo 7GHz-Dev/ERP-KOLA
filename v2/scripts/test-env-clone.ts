@@ -119,6 +119,9 @@ async function main() {
     }
     console.log(`  ${t} ${rows.length} แถว`);
   }
+  // เวลาที่สร้างฐานทดสอบ — test-env-reset.ts ใช้แยกเลขเครื่องที่ออกระหว่างทดสอบ
+  await dst`insert into master_records (id, type, code, name, value, is_active)
+    values ('TEST-CLONED-AT', 'settings', 'TEST_CLONED_AT', 'เวลาที่สร้างฐานทดสอบ', ${new Date().toISOString()}, true)`;
   const seqs = await src<{ s: string; v: string }[]>`
     select sequencename as s, coalesce(last_value, 1)::text as v from pg_sequences where schemaname = 'public'`;
   for (const q of seqs) await dst.unsafe(`select setval('public."${q.s}"', ${Number(q.v)})`);
