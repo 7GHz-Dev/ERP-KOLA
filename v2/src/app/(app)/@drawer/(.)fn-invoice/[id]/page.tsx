@@ -18,7 +18,7 @@ export default async function FnInvoiceDrawer({ params }: { params: Promise<{ id
   return (
     <FileDrawerShell title="Create FN Invoice" fileName={data.job.blNo ?? data.job.jobNo} meta={`งาน ${data.job.jobNo}`} viewHref={`/fn-invoice/${id}`} wide>
       <div className="fn-popup">
-        <CargoInvoiceTool shippers={data.shippers} presetJob={data.job} />
+        <CargoInvoiceTool shippers={data.shippers} presetJob={data.job} presetFile={data.goods} />
       </div>
     </FileDrawerShell>
   );

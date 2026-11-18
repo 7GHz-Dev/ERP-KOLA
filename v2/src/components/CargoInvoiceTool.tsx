@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CargoCar, CargoInvoice } from '@/lib/cargo-invoice/parse';
 import type { JobMatch } from '@/lib/cargo-invoice/jobs';
 import { finalEngineText } from '@/lib/cargo-invoice/engine-format';
@@ -42,7 +42,11 @@ type NormalPrefill = React.ComponentProps<typeof CargoInvoiceNormal>['prefill'];
  * presetJob — เปิดจาก Pending jobs > 2. Final Invoice > Create FN Invoice (popup ของงานนั้น)
  * ใช้งานนี้เสมอ ไม่ต้องหางานจาก BL / เลขตู้ · บันทึกแล้วเป็น FINAL_INVOICE ของงานนี้
  */
-export function CargoInvoiceTool({ shippers, presetJob }: { shippers: ShipperChoice[]; presetJob?: JobMatch | null }) {
+export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
+  shippers: ShipperChoice[]; presetJob?: JobMatch | null;
+  /** Invoice สินค้า (INVOICE_GOODS) ของงาน — popup Create FN Invoice ใช้ไฟล์นี้เลย ข้ามขั้นอัปโหลด */
+  presetFile?: { id: string; fileName: string } | null;
+}) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -294,6 +298,21 @@ export function CargoInvoiceTool({ shippers, presetJob }: { shippers: ShipperCho
   const readyToSave = Boolean(inv && !inv.errors.length && job && tariffs && !tariffStale && chosen.length === cars.length
     && chosen.every(Boolean) && cars.every((c) => !c.problems.length));
   const step = saved ? 4 : tariffs ? 3 : inv ? 2 : 1;
+  // ใช้ Invoice สินค้าของงาน: ไม่มีขั้นอัปโหลด ขั้นเริ่มที่ "ตรวจข้อมูล"
+  const steps = presetFile ? STEPS.slice(1) : STEPS;
+  const stepNow = presetFile ? Math.max(1, step - 1) : step;
+  const loaded = useRef(false);
+  useEffect(() => {
+    if (!presetFile || loaded.current) return;
+    loaded.current = true;
+    setBusy('กำลังโหลด Invoice สินค้าของงาน…');
+    void fetch(`/files/${presetFile.id}`).then(async (res) => {
+      if (!res.ok) throw new Error('โหลด Invoice สินค้าไม่สำเร็จ');
+      const blob = await res.blob();
+      await read(new File([blob], presetFile.fileName, { type: blob.type }));
+    }).catch((e) => { setBusy(''); setError(e instanceof Error ? e.message : String(e)); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // จัดกลุ่มรถตามตู้ตามลำดับที่ปรากฏในใบ
   const groups = useMemo(() => {
@@ -305,14 +324,17 @@ export function CargoInvoiceTool({ shippers, presetJob }: { shippers: ShipperCho
   return (
     <div className="cgi">
       <ol className="cgi-steps">
-        {STEPS.map((s, i) => (
-          <li key={s} className={i + 1 < step ? 'done' : i + 1 === step ? 'now' : ''}><b>{i + 1}</b>{s}</li>
+        {steps.map((s, i) => (
+          <li key={s} className={i + 1 < stepNow ? 'done' : i + 1 === stepNow ? 'now' : ''}><b>{i + 1}</b>{s}</li>
         ))}
       </ol>
 
-      {/* ---------- 1. อัปโหลด ---------- */}
+      {/* ---------- 1. อัปโหลด (popup Create FN Invoice ใช้ Invoice สินค้าของงานแทน) ---------- */}
       <section className="cgi-card">
-        <div className="cgi-upload">
+        {presetFile ? (
+          <p className="batch-note">ใช้ Invoice สินค้าของงานนี้: <b>{presetFile.fileName}</b></p>
+        ) : null}
+        <div className="cgi-upload" hidden={Boolean(presetFile)}>
           <label className="cgi-drop">
             <input
               ref={input}
