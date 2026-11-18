@@ -2961,3 +2961,9 @@ img.cgi-doc-file { overflow: auto; }
 .do-sub { font-size: 11.5px; color: var(--muted); }
 .urgent-notice { border-color: var(--red); background: #fff4f4; color: var(--red); }
 .do-det-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+/* แผง Invoice DO — สรุป Last DEM / DET / STORAGE date บนสุดของฟอร์ม */
+.do-free-summary { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 8px; border-radius: 8px; background: var(--blue-soft); border: 1px solid var(--line); }
+.do-free-summary div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.do-free-summary span { font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.do-free-summary b { font-size: 13px; }
+.do-free-summary em { font-style: normal; white-space: normal; }

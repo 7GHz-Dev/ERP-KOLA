@@ -1,10 +1,12 @@
+'use client';
+
 import { saveDoHandoff } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
 import { hasBlBrackets } from '@/lib/bl-format';
 import { DemDetFields } from '@/components/DemDetFields';
 import { formatDate } from '@/lib/format';
-import { daysText, freeLastDate, freeUrgency, storageLastDate, STORAGE_DEFAULT_DAYS } from '@/lib/free-time';
+import { daysText, detLastDate, freeLastDate, freeUrgency, storageLastDate, STORAGE_DEFAULT_DAYS } from '@/lib/free-time';
 
 /**
  * แถวจัดการ Invoice DO — แก้ได้ในตารางเลย ไม่ต้องเปิดแผง
@@ -19,7 +21,7 @@ export type Choice = { id: string; code: string | null; name: string };
 export function DoRowForm({
   jobId, eta, originPort, portId, terminalId, partnerName,
   ports, originPorts, terminals, partners, sentAt, defaultPartnerId, readOnly,
-  blNo, canEditBl, transportDate = null, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, combined = false, today,
+  blNo, canEditBl, onSaved, transportDate = null, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, combined = false, today,
 }: {
   jobId: string;
   eta: string | null;
@@ -44,6 +46,8 @@ export function DoRowForm({
   demDays?: number | null;
   detDays?: number | null;
   storageFreeDays?: number | null;
+  /** บันทึกสำเร็จแล้ว — แผงกรอกใช้ปิดตัวเอง */
+  onSaved?: () => void;
   /** วันที่ขนย้าย — Last DET date แบบปกตินับจากวันนี้ */
   transportDate?: string | null;
   /** Combine — DEM กับ DET ใช้จำนวนวันเดียวกัน */
@@ -115,8 +119,21 @@ export function DoRowForm({
   }
 
   return (
-    <form action={saveDoHandoff} className="do-row">
+    <form
+      className="do-row"
+      action={(fd) => {
+        // บันทึก / ส่ง Partner สำเร็จแล้วปิดแผง (ถ้ามี) · ไม่สำเร็จ ระบบแจ้งที่แถบด้านบนและแผงยังเปิดอยู่
+        void saveDoHandoff(fd).then(() => onSaved?.());
+      }}
+    >
       <input type="hidden" name="jobId" value={jobId} />
+      {/* สรุปวันสุดท้ายของ free time — เห็นก่อนกรอก (ค่าที่บันทึกไว้) */}
+      <div className="do-free-summary">
+        <div><span>Last DEM date</span><b>{demDays === null ? 'N/A' : formatDate(freeLastDate(eta, demDays))}</b></div>
+        <div><span>Last DET date</span><b>{detDays === null ? 'N/A' : formatDate(detLastDate({ eta, transportDate, detDays, demDetCombined: combined })) || '-'}</b></div>
+        <div><span>Last STORAGE date</span><b>{storageLast ? formatDate(storageLast) : '-'}</b>
+          {storageUrgency && storageUrgency.level !== 'ok' ? <em className="badge rejected">{storageUrgency.text}</em> : null}</div>
+      </div>
 
       {/*
         เลข BL แก้ได้เฉพาะสายเรือที่ออกเลขตัวจริงหลังเรือเข้า
@@ -132,6 +149,12 @@ export function DoRowForm({
       <label className="do-cell">
         <span>ETA official</span>
         <input key={`eta-${eta ?? ''}`} type="date" name="eta" defaultValue={eta ?? ''} required />
+      </label>
+      {/* Storage นับจาก ETA (ETA = วันที่ 1) จึงอยู่ถัดจาก ETA */}
+      <label className="do-cell">
+        <span>STORAGE FREE (วัน)</span>
+        <input key={`sto-${storageFreeDays ?? ''}`} type="number" min={0} name="storageFreeDays" defaultValue={storageFreeDays ?? STORAGE_DEFAULT_DAYS} />
+        {storageBadge ? <small className="do-sub">{storageBadge}</small> : null}
       </label>
       {/*
         ท่าต้นทาง — เลือกจากรายการหรือพิมพ์เองก็ได้ เพราะท่าต่างประเทศ
@@ -166,11 +189,6 @@ export function DoRowForm({
 
       {/* วันฟรี — DEM / DET บังคับกรอกก่อนส่ง Partner · Storage ตั้งต้น 3 วัน นับ ETA เป็นวันที่ 1 */}
       <DemDetFields key={`dd-${demDays ?? ''}-${detDays ?? ''}-${combined}`} eta={eta} transportDate={transportDate} demDays={demDays} detDays={detDays} combined={combined} />
-      <label className="do-cell">
-        <span>STORAGE FREE (วัน)</span>
-        <input key={`sto-${storageFreeDays ?? ''}`} type="number" min={0} name="storageFreeDays" defaultValue={storageFreeDays ?? STORAGE_DEFAULT_DAYS} />
-        {storageBadge ? <small className="do-sub">{storageBadge}</small> : null}
-      </label>
 
       <div className="do-buttons">
         <button className="button tiny primary" type="submit" name="sendToPartner" value="0">

@@ -115,6 +115,7 @@ export function DoFillPane({
               storageFreeDays={job.storageFreeDays}
               combined={job.demDetCombined}
               transportDate={job.transportDate}
+              onSaved={onClose}
               today={todayBangkok()}
             />
           </div>
