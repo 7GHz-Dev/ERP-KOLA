@@ -437,6 +437,7 @@ export async function PendingView({
           action={requestApprovalMany}
           idName="jobIds"
           label={other ? 'ยืนยันเข้าตารางหลัก {n} รายการ' : 'ส่งอนุมัติ {n} รายการ'}
+          open={{ label: '✎ แก้ไข {n} รายการ', href: '/bl-edit/{first}?queue={ids}' }}
           confirmText={other
             ? 'ยืนยัน {n} รายการเข้าตารางหลักใช่ไหม · Other cargo อนุมัติให้ทันที'
             : 'ส่งอนุมัติ {n} รายการใช่ไหม · ส่งแล้วแก้ไขไม่ได้จนกว่าจะมีผลตัดสิน'}

@@ -8,6 +8,7 @@ import { PdfPageTrimmer } from '@/components/PdfPageTrimmer';
 import { SearchSelect, SearchText } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import type { Option } from '@/lib/queries/master';
+import type { EditQueue } from '@/lib/queries/bl-edit';
 
 /**
  * แผงแก้ข้อมูล BL — ฟอร์มอยู่ซ้าย ไฟล์ AN/BL อยู่ขวา
@@ -66,7 +67,7 @@ function Opts({ list, nameOnly = false }: { list: Option[]; nameOnly?: boolean }
 }
 
 export function BlEditPanel({
-  job, options, source, other, deletable,
+  job, options, source, other, deletable, queue,
 }: {
   job: BlEditJob;
   options: Opts;
@@ -74,8 +75,21 @@ export function BlEditPanel({
   other?: PreviewDoc;
   /** งานยังไม่เข้าตารางหลัก ลบได้ · waiting = ส่งไปรอ Head Officer อนุมัติอยู่ */
   deletable?: { waiting: boolean; returnTo: string } | null;
+  /** แก้หลายงานต่อกัน — ปุ่มก่อนหน้า/ถัดไป · บันทึกแล้วไปงานถัดไป */
+  queue?: EditQueue | null;
 }) {
   const router = useRouter();
+  // แก้ช่องไหนแล้วยังไม่บันทึก — เลื่อนไปงานอื่นต้องถามก่อน ไม่งั้นค่าที่พิมพ์ไว้หาย
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const hrefOf = (k: number) => `/bl-edit/${queue!.ids[k]}?queue=${queue!.ids.join(',')}`;
+  const go = (k: number) => {
+    if (!queue || k < 0 || k >= queue.ids.length || k === queue.index) return;
+    if (dirty && !window.confirm('ยังไม่ได้บันทึกงานนี้ — ไปงานอื่นโดยไม่บันทึกใช่ไหม')) return;
+    // replace ไม่ใช่ push: ปิดแผง (กลับ) แล้วกลับไปตารางเลย ไม่ต้องย้อนทีละงาน
+    router.replace(hrefOf(k));
+  };
+  const next = queue && queue.index < queue.ids.length - 1 ? queue.index + 1 : null;
   const [deleting, setDeleting] = useState(false);
   const [shown, setShown] = useState(source?.id ?? '');
   // SearchSelect เป็นช่องพิมพ์ค้นหา ค่าจึงต้องเก็บเองแล้วส่งผ่าน hidden
@@ -142,11 +156,25 @@ export function BlEditPanel({
     <div className="bl-edit">
       <form
         className="bl-edit-form"
+        onChange={() => setDirty(true)}
         action={(fd) => {
-          void updateBlInfo(fd).then(() => router.back());
+          setSaving(true);
+          // ชุดหลายงาน: บันทึกแล้วไปงานถัดไป · งานสุดท้าย (หรือใบเดียว) ปิดแผงกลับตาราง
+          void updateBlInfo(fd).then(() => (next !== null ? router.replace(hrefOf(next)) : router.back()))
+            .finally(() => setSaving(false));
         }}
       >
         <input type="hidden" name="jobId" value={job.id} />
+        {queue ? (
+          <nav className="bl-queue" aria-label="งานที่เลือกแก้">
+            <button type="button" className="button tiny" disabled={queue.index === 0 || saving} onClick={() => go(queue.index - 1)}>◀ ก่อนหน้า</button>
+            <select value={queue.index} disabled={saving} onChange={(e) => go(Number(e.target.value))} aria-label="เลือกงาน">
+              {queue.labels.map((l, k) => <option key={queue.ids[k]} value={k}>{k + 1}/{queue.ids.length} · {l}</option>)}
+            </select>
+            <button type="button" className="button tiny" disabled={next === null || saving} onClick={() => next !== null && go(next)}>ถัดไป ▶</button>
+            {dirty ? <small className="bl-queue-dirty">● ยังไม่บันทึก</small> : null}
+          </nav>
+        ) : null}
 
         {/*
           หัวข้อ ลำดับ และหน้าตาของช่อง ยกมาจากหน้ารับงาน AN/BL ทั้งชุด
@@ -322,8 +350,10 @@ export function BlEditPanel({
               {deleting ? 'กำลังลบ…' : 'ลบงานนี้'}
             </button>
           ) : null}
-          <button type="button" className="button" onClick={() => router.back()}>ยกเลิก</button>
-          <button type="submit" className="button primary">บันทึก</button>
+          <button type="button" className="button" onClick={() => router.back()}>{queue ? 'ปิด' : 'ยกเลิก'}</button>
+          <button type="submit" className="button primary" disabled={saving}>
+            {saving ? 'กำลังบันทึก…' : next !== null ? `บันทึก → งานถัดไป (${next + 1}/${queue!.ids.length})` : 'บันทึก'}
+          </button>
         </div>
       </form>
 

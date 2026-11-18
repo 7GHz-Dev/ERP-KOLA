@@ -54,3 +54,19 @@ export function backTo(data: { job: { sourceType: string | null }; returnTo: str
   if (data.job.sourceType === 'BL' && !roleAllows(role, ['PAINT']) && !data.returnTo.startsWith('/other/')) return '/waiting-list';
   return data.returnTo;
 }
+
+export type EditQueue = { ids: string[]; labels: string[]; index: number };
+
+/**
+ * ชุดงานที่เลือกแก้ต่อกัน (Pending jobs > 1. ใส่ข้อมูล BL > ติ๊กหลายรายการ > แก้ไข)
+ * มาจาก ?queue=id1,id2,… — เรียงตามลำดับที่เลือกในตาราง · ป้ายเป็นเลข BL (ไม่มีใช้เลขงาน)
+ * งานที่ไม่อยู่แล้ว (ถูกลบ) ตัดออก · งานปัจจุบันไม่อยู่ในชุดคืน null (เปิดแบบใบเดียวตามเดิม)
+ */
+export async function editQueue(current: string, raw: string | string[] | undefined): Promise<EditQueue | null> {
+  const ids = [...new Set(String(Array.isArray(raw) ? raw[0] : raw ?? '').split(',').map((v) => v.trim()).filter(Boolean))].slice(0, 100);
+  if (ids.length < 2 || !ids.includes(current)) return null;
+  const rows = await db.select({ id: jobs.id, jobNo: jobs.jobNo, blNo: jobs.blNo }).from(jobs).where(inArray(jobs.id, ids));
+  const byId = new Map(rows.map((r) => [r.id, r.blNo?.trim() || r.jobNo]));
+  const kept = ids.filter((id) => byId.has(id));
+  return kept.length < 2 ? null : { ids: kept, labels: kept.map((id) => byId.get(id)!), index: kept.indexOf(current) };
+}

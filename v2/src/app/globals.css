@@ -2941,3 +2941,8 @@ img.cgi-doc-file { overflow: auto; }
   position: sticky; top: 0; z-index: 1000; padding: 4px 12px; text-align: center;
   font-size: 12.5px; font-weight: 700; color: #3d2a00; background: repeating-linear-gradient(45deg, #ffd34d, #ffd34d 14px, #ffc61a 14px, #ffc61a 28px);
 }
+
+/* แผงแก้ข้อมูล BL — เลื่อนไปงานอื่นในชุดที่เลือก */
+.bl-queue { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; padding: 6px 8px; border-radius: 8px; background: var(--blue-soft); border: 1px solid var(--line); }
+.bl-queue select { flex: 1; min-width: 160px; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.bl-queue-dirty { color: var(--amber); font-weight: 700; }

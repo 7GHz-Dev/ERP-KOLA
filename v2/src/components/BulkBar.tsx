@@ -31,7 +31,7 @@ export type BulkAction = {
 };
 
 export function BulkBar({
-  action, label, confirmText, idName, fields, extra, dateField, dateRisks, children,
+  action, label, confirmText, idName, fields, extra, dateField, dateRisks, open, children,
 }: {
   action: (formData: FormData) => Promise<unknown>;
   /** ข้อความบนปุ่ม — {n} จะถูกแทนด้วยจำนวนที่เลือก */
@@ -53,6 +53,11 @@ export function BulkBar({
    * (ลากวันศุกร์ · DET สั้น · คืนตู้ตรงวันหยุด · เกิน DEM · ยังไม่ได้ D/O · ETA ยังไม่ยืนยัน) และใส่ในข้อความยืนยัน
    */
   dateRisks?: Record<string, HaulRisk>;
+  /**
+   * ปุ่มเปิดหน้าแก้ไขรายการที่เลือกต่อกัน — href ใส่ {first} (id แรก) และ {ids} (ทุก id คั่นลูกน้ำ)
+   * เช่น /bl-edit/{first}?queue={ids} · ไม่ล้างรายการที่เลือก กลับมาตารางแล้วยังติ๊กอยู่
+   */
+  open?: { label: string; href: string };
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -149,6 +154,16 @@ export function BulkBar({
           <button type="button" className="button tiny" onClick={() => setPicked([])}>
             ล้างที่เลือก
           </button>
+          {open ? (
+            <button
+              type="button"
+              className="button"
+              disabled={busy}
+              onClick={() => router.push(open.href.replace('{first}', encodeURIComponent(picked[0])).replace('{ids}', picked.map(encodeURIComponent).join(',')))}
+            >
+              {open.label.replace('{n}', String(picked.length))}
+            </button>
+          ) : null}
           {extra ? (
             <button
               type="button"
