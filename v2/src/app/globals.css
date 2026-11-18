@@ -2844,3 +2844,32 @@ table.data td.col-lib { min-width: 300px; }
 .cgr-issues { display: flex; flex-wrap: wrap; gap: 4px; white-space: normal; max-width: 340px; }
 .cgr-issues button.badge { border: 0; cursor: pointer; font: inherit; font-size: 11px; }
 .cgr-file { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Master Data: ที่อยู่ Shipper หลายบรรทัด */
+.master-address { white-space: pre-line; font-size: 12px; }
+
+/* Create Cargo Invoice แบบ NORMAL — ฟอร์มซ้าย ไฟล์ผู้ขายขวา (แบบแผงแก้ข้อมูล BL) */
+.cgi-normal { display: grid; grid-template-columns: minmax(340px, 44fr) minmax(0, 56fr); gap: 14px; margin-bottom: 16px; }
+.cgi-normal-form { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cgi-normal-view { position: sticky; top: 12px; height: calc(100vh - 120px); min-height: 460px; display: flex; }
+.cgi-normal-view .bl-edit-file { flex: 1; }
+.cgi-normal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cgi-normal-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cgi-normal-sec { padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.cgi-normal-sec .extract-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.cgi-normal-job { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cgi-normal-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; margin: 0; font-size: 13px; }
+.cgi-normal-info dt { font-size: 11px; color: var(--muted); }
+.cgi-normal-info dd { margin: 0; font-weight: 600; }
+.cgi-normal-addr { margin: 6px 0 0; padding: 6px 8px; font: inherit; font-size: 12px; white-space: pre-line; background: var(--canvas); border-radius: 6px; }
+.cgi-normal-car { padding: 8px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.cgi-normal-car.bad { border-color: var(--red); }
+.cgi-normal-car-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cgi-normal-car-head small { flex: 1; color: var(--muted); }
+.cgi-normal-actions { position: sticky; bottom: 0; display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px; background: var(--canvas); border-top: 1px solid var(--line); }
+.cgi-csv { max-height: calc(100vh - 220px); }
+.cgi-csv td, .cgi-csv th { white-space: nowrap; font-size: 12px; }
+@media (max-width: 900px) {
+  .cgi-normal { grid-template-columns: minmax(0, 1fr); }
+  .cgi-normal-view { position: static; height: 70vh; }
+}

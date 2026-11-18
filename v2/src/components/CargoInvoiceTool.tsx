@@ -5,10 +5,13 @@ import { useRouter } from 'next/navigation';
 import { Fragment, useMemo, useRef, useState } from 'react';
 import type { CargoCar, CargoInvoice } from '@/lib/cargo-invoice/parse';
 import type { JobMatch } from '@/lib/cargo-invoice/jobs';
-import type { TariffResult, TariffRule } from '@/lib/cargo-invoice/tariff';
 import { finalEngineText } from '@/lib/cargo-invoice/engine-format';
 import { applyCarEdit, changedFields, EDIT_FIELDS, withProblems, type EditField } from '@/lib/cargo-invoice/edit';
 import { CargoReference } from './CargoReference';
+import { AddRule, call, type Tariff } from './CargoShared';
+import { CargoInvoiceNormal, type ShipperChoice } from './CargoInvoiceNormal';
+import { CsvDrawer, PdfDrawer } from './CargoDocDrawers';
+import type { DraftCsv } from '@/lib/cargo-invoice/draft-csv';
 
 /**
  * Create Cargo Invoice — อัปโหลด Invoice Excel → ระบบจัดเรียงให้ตรวจ → ดึงพิกัด (เพิ่มรุ่นใหม่ได้) → บันทึก Final Invoice
@@ -17,7 +20,6 @@ import { CargoReference } from './CargoReference';
  * ทุกช่องในตารางรถแก้ได้ — ส่งค่าที่แก้ไปพร้อมไฟล์ เซิร์ฟเวอร์อ่านไฟล์ใหม่แล้วใส่ค่าที่แก้ทับ (lib/cargo-invoice/edit.ts)
  */
 
-type Tariff = TariffResult & { similar: TariffRule[]; suggest: { ccMin: number; ccMax: number } | null };
 type Suggest = { prefix: string; next: number | null; last: number | null };
 type Saved = {
   jobId: string; jobNo: string; fileId: string; version: number; pdf: boolean; invoiceNo: string;
@@ -31,14 +33,12 @@ const tariffKey = (cars: CargoCar[]) => JSON.stringify(cars.map(({ brand, model,
 const editsOf = (cars: CargoCar[]) => cars.map((c) => Object.fromEntries(EDIT_FIELDS.map((f) => [f, c[f]])));
 const STEPS = ['อัปโหลด Invoice', 'ตรวจข้อมูล', 'ดึงพิกัด (Tariff)', 'บันทึก Final Invoice'];
 
-async function call<T>(url: string, init: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-  if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
-  return body as T;
-}
 
-export function CargoInvoiceTool() {
+/** รูปแบบที่ระบบอ่านไฟล์แล้วจัดหน้า Final Invoice ให้เอง — ที่เหลือเป็น NORMAL (คีย์เองข้างไฟล์) */
+const LAID_OUT = ['JAN TRADING', 'AICHI'];
+type NormalPrefill = React.ComponentProps<typeof CargoInvoiceNormal>['prefill'];
+
+export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -61,6 +61,9 @@ export function CargoInvoiceTool() {
   const [adding, setAdding] = useState<number | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
   const [rulesVersion, setRulesVersion] = useState(0);
+  /** NORMAL — ผู้ขายรายอื่น: ฟอร์มคีย์เองข้างไฟล์ (รูป · PDF · Excel) */
+  const [normal, setNormal] = useState<NormalPrefill | null>(null);
+  const [csv, setCsv] = useState<DraftCsv | null>(null);
 
   const job = jobs.find((j) => j.id === jobId) ?? null;
   /** JAN TRADING · AICHI — ระบบจัดหน้า Final Invoice ให้ (BL ของงาน · เลขเครื่อง · ตัด/ต่อแถว · ยอดรวมทั้ง BL) */
@@ -69,18 +72,34 @@ export function CargoInvoiceTool() {
 
   const reset = () => {
     setFile(null); setInv(null); setCars([]); setTariffFor(''); setSuggest(null); setInvoiceNum(''); setJobs([]); setJobId(''); setMatchedBy('bl'); setJobQuery(''); setTariffs(null); setChosen([]);
-    setAdding(null); setSaved(null); setError('');
+    setAdding(null); setSaved(null); setError(''); setNormal(null); setCsv(null);
     if (input.current) input.current.value = '';
   };
 
   async function read(f: File) {
     reset();
     setFile(f);
+    // รูป / PDF — ระบบอ่านไม่ได้ ไปฟอร์ม NORMAL เลย
+    if (!/\.xlsx$/i.test(f.name)) {
+      setNormal({ cars: [], invoiceNo: '', invoiceDate: '', supplier: '', jobs: [], note: '' });
+      return;
+    }
     setBusy('กำลังอ่านไฟล์…');
     try {
       const fd = new FormData();
       fd.set('file', f);
       const data = await call<{ invoice: CargoInvoice; jobs: JobMatch[]; matchedBy: 'bl' | 'containers'; invoiceSuggest: Suggest | null }>('/api/cargo-invoice/parse', { method: 'POST', body: fd });
+      // ผู้ขายที่ไม่ใช่ JAN TRADING / AICHI → NORMAL เติมเท่าที่อ่านได้
+      if (!LAID_OUT.includes(data.invoice.pattern)) {
+        const ok = !data.invoice.errors.length && data.invoice.cars.length > 0;
+        setNormal({
+          cars: ok ? data.invoice.cars : [], invoiceNo: data.invoice.invoiceNo, invoiceDate: data.invoice.invoiceDate,
+          supplier: data.invoice.supplier, jobs: data.jobs,
+          note: ok ? `อ่านรายการรถจากไฟล์ (${data.invoice.pattern}) ได้ ${data.invoice.cars.length} คัน — ตรวจทุกช่องก่อนบันทึก`
+            : 'ไฟล์นี้ระบบอ่านรายการรถไม่ได้ — คีย์จากไฟล์ด้านขวา',
+        });
+        return;
+      }
       setInv(data.invoice);
       setSuggest(data.invoiceSuggest);
       setInvoiceNum(data.invoiceSuggest?.next ? String(data.invoiceSuggest.next) : '');
@@ -193,6 +212,31 @@ export function CargoInvoiceTool() {
   }
   const closePreview = () => setPreview((old) => { if (old) URL.revokeObjectURL(old); return null; });
 
+  /** CSV สำหรับ Draft ใบขน — ก่อนบันทึก: ประกอบไฟล์แบบ Preview (เลขเครื่อง 0000000) · หลังบันทึก: จากไฟล์ที่บันทึก (เลขจริง) */
+  async function showCsv() {
+    if (!file) return;
+    setBusy('กำลังสร้าง CSV…');
+    setError('');
+    try {
+      if (saved) {
+        setCsv(await call<DraftCsv>(`/api/cargo-invoice/csv?jobId=${encodeURIComponent(saved.jobId)}`, { method: 'GET' }));
+        return;
+      }
+      const fd = new FormData();
+      fd.set('file', file);
+      if (job) fd.set('jobId', job.id);
+      fd.set('tariffs', JSON.stringify(chosen));
+      fd.set('edits', JSON.stringify(editsOf(cars)));
+      if (suggest && numberOk) fd.set('invoiceNo', invoiceNum.trim());
+      fd.set('output', 'csv');
+      setCsv(await call<DraftCsv>('/api/cargo-invoice/preview', { method: 'POST', body: fd }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  }
+
   /* ---------- ตรวจความถูกต้อง ---------- */
   const checks = useMemo(() => {
     if (!inv) return [];
@@ -264,17 +308,19 @@ export function CargoInvoiceTool() {
             <input
               ref={input}
               type="file"
-              accept=".xlsx"
+              accept=".xlsx,.pdf,image/*"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); }}
             />
-            <b>{file ? file.name : 'เลือกไฟล์ Invoice (.xlsx)'}</b>
-            <small>{file ? `${(file.size / 1024).toFixed(0)} KB · กดเพื่อเลือกไฟล์ใหม่` : 'รองรับ MSFZ · AICHI (ตู้ละชีตก็ได้) · JAN TRADING (และ JTC · HUAYO) — ไฟล์ดิบจากผู้ขายหรือไฟล์ imp3_ ที่ผูกสูตรแล้วก็ได้'}</small>
+            <b>{file ? file.name : 'เลือกไฟล์ Invoice (Excel · PDF · รูป)'}</b>
+            <small>{file ? `${(file.size / 1024).toFixed(0)} KB · กดเพื่อเลือกไฟล์ใหม่` : 'JAN TRADING · AICHI (Excel) ระบบอ่านและจัดหน้าให้ · ผู้ขายรายอื่น (Excel · PDF · รูป) เปิดฟอร์ม NORMAL ให้คีย์ข้างไฟล์'}</small>
           </label>
           {inv ? <button type="button" className="button" onClick={reset} disabled={Boolean(busy)}>เริ่มใหม่</button> : null}
         </div>
         {busy ? <p className="cgi-busy"><span className="ai-dot" />{busy}</p> : null}
         {error ? <p className="cgi-error">⚠️ {error}</p> : null}
       </section>
+
+      {normal && file ? <CargoInvoiceNormal key={`${file.name}-${file.lastModified}`} file={file} shippers={shippers} prefill={normal} onReset={reset} /> : null}
 
       {inv ? (
         <>
@@ -448,6 +494,7 @@ export function CargoInvoiceTool() {
                   <span>เลขเครื่อง: ออกใหม่ {saved.engines.issued} คัน{saved.engines.reused ? ` · ใช้เลขเดิม ${saved.engines.reused} คัน` : ''} — ดูได้ที่ตารางเลขเครื่องด้านล่าง</span>
                 ) : null}
                 <div>
+                  <button type="button" className="button" disabled={Boolean(busy)} onClick={() => void showCsv()}>📄 CSV Draft ใบขน</button>
                   <Link className="button primary" href="/pending?tab=fn">ไปส่งอนุมัติ Final Invoice →</Link>
                   <button type="button" className="button" onClick={reset}>ทำใบถัดไป</button>
                 </div>
@@ -468,6 +515,9 @@ export function CargoInvoiceTool() {
                   <button type="button" className="button" disabled={Boolean(busy) || inv.errors.length > 0} onClick={() => void showPreview()}>
                     👁 Preview FN Invoice
                   </button>
+                  <button type="button" className="button" disabled={Boolean(busy) || inv.errors.length > 0} onClick={() => void showCsv()}>
+                    📄 CSV Draft ใบขน
+                  </button>
                   <button type="button" className="button primary" disabled={!readyToSave || !numberOk || Boolean(busy)} onClick={() => void save()}>
                     ④ บันทึก Final Invoice
                   </button>
@@ -480,28 +530,12 @@ export function CargoInvoiceTool() {
 
       {/* ---------- Preview FN Invoice — PDF ที่ประกอบแบบเดียวกับตอนบันทึก ---------- */}
       {preview ? (
-        <div className="drawer-root">
-          <button type="button" className="drawer-backdrop" aria-label="ปิด Preview" onClick={closePreview} />
-          <aside className="job-drawer open wide" role="dialog" aria-label="Preview FN Invoice">
-            <header className="drawer-header">
-              <div>
-                <small>ยังไม่ได้บันทึก{jan ? ' · เลขเครื่องออกจริงตอนบันทึก (แสดงเป็น xxxxxxx)' : ''}</small>
-                <h2 className="drawer-file">Preview FN Invoice{inv?.invoiceNo ? ` · ${inv.invoiceNo}` : ''}</h2>
-              </div>
-              <div className="drawer-nav">
-                <a className="button tiny" href={preview} target="_blank" rel="noreferrer">เปิดแท็บใหม่</a>
-                <button type="button" className="icon-button" onClick={closePreview} aria-label="ปิด">×</button>
-              </div>
-            </header>
-            <div className="drawer-content">
-              <object className="file-preview-view" data={preview} type="application/pdf">
-                <p className="drawer-note warn">
-                  เบราว์เซอร์นี้แสดง PDF ในหน้าไม่ได้ · <a href={preview} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
-                </p>
-              </object>
-            </div>
-          </aside>
-        </div>
+        <PdfDrawer url={preview} title={`Preview FN Invoice${inv?.invoiceNo ? ` · ${inv.invoiceNo}` : ''}`}
+          note={`ยังไม่ได้บันทึก${jan ? ' · เลขเครื่องออกจริงตอนบันทึก (แสดงเป็น xxxxxxx)' : ''}`} onClose={closePreview} />
+      ) : null}
+      {csv ? (
+        <CsvDrawer csv={csv} note={saved ? 'จาก Final Invoice ที่บันทึกแล้ว — เลขเครื่องจริง' : 'ยังไม่ได้บันทึก — เลขเครื่อง 0000000'}
+          onClose={() => setCsv(null)} />
       ) : null}
 
       {/* ---------- ข้อมูลอ้างอิง: Datatariff + เลขเครื่องที่ระบบออก ---------- */}
@@ -587,58 +621,5 @@ function CarRow({
       ) : null}
       {adding && tariff ? <tr><td /><td colSpan={11}><AddRule car={car} tariff={tariff} onAdded={onAdded} /></td></tr> : null}
     </>
-  );
-}
-
-/** ฟอร์มเพิ่มกฎพิกัดของรถรุ่นใหม่ — ค่าตั้งต้นจากรถคันนี้ ช่วง CC ตามช่วงที่ตารางใช้บ่อย */
-function AddRule({ car, tariff, onAdded }: { car: CargoCar; tariff: Tariff; onAdded: () => Promise<void> }) {
-  const [v, setV] = useState({
-    code: '', brand: car.brand, model: car.model, fuel: car.fuel,
-    ccMin: String(tariff.suggest?.ccMin ?? car.cc ?? 0), ccMax: String(tariff.suggest?.ccMax ?? car.cc ?? 99999),
-    wMin: '0', wMax: '99999',
-  });
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const set = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement>) => setV({ ...v, [k]: e.target.value });
-
-  async function submit() {
-    setBusy(true);
-    setErr('');
-    try {
-      await call('/api/cargo-invoice/rules', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(v) });
-      await onAdded();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="cgi-add">
-      <p>เพิ่มพิกัดให้รถรุ่นนี้ — บันทึกแล้วใช้ได้ทันทีทั้งระบบ คันอื่นรุ่นเดียวกันในช่วง CC / น้ำหนักนี้จะหาเจอเอง</p>
-      <div className="cgi-add-grid">
-        <label>พิกัด (8 หลัก)<input value={v.code} onChange={set('code')} placeholder="เช่น 87032290" inputMode="numeric" autoFocus /></label>
-        <label>ยี่ห้อ<input value={v.brand} onChange={set('brand')} /></label>
-        <label>รุ่น<input value={v.model} onChange={set('model')} /></label>
-        <label>เชื้อเพลิง<input value={v.fuel} onChange={set('fuel')} /></label>
-        <label>CC ตั้งแต่<input value={v.ccMin} onChange={set('ccMin')} inputMode="numeric" /></label>
-        <label>CC ถึง<input value={v.ccMax} onChange={set('ccMax')} inputMode="numeric" /></label>
-        <label>น้ำหนัก (KG) ตั้งแต่<input value={v.wMin} onChange={set('wMin')} inputMode="numeric" /></label>
-        <label>น้ำหนัก (KG) ถึง<input value={v.wMax} onChange={set('wMax')} inputMode="numeric" /></label>
-      </div>
-      {tariff.similar.length ? (
-        <div className="cgi-similar">
-          <span>รุ่นเดียวกันในตาราง (คนละเชื้อเพลิงหรือช่วง CC) — กดเพื่อใช้พิกัดเดียวกัน:</span>
-          {tariff.similar.map((r) => (
-            <button key={r.id} type="button" className="chip-toggle small" onClick={() => setV({ ...v, code: r.code })}>
-              {r.code} · {r.fuel} · CC {r.ccMin}-{r.ccMax}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {err ? <p className="cgi-error">⚠️ {err}</p> : null}
-      <button type="button" className="button primary" disabled={busy} onClick={() => void submit()}>{busy ? 'กำลังบันทึก…' : 'บันทึกพิกัด'}</button>
-    </div>
   );
 }

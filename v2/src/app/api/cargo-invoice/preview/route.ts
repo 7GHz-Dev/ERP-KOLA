@@ -5,6 +5,7 @@ import { buildFinalInvoice, invoiceBl, readWithEdits } from '@/lib/cargo-invoice
 import { runningInvoiceNo } from '@/lib/cargo-invoice/invoice-number';
 import { cargoReader, invoiceFile, json } from '@/lib/cargo-invoice/http';
 import { xlsxToPdf } from '@/lib/xlsx-pdf';
+import { draftCsv } from '@/lib/cargo-invoice/draft-csv';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -14,6 +15,7 @@ export const maxDuration = 60;
  *
  * ไม่บันทึกอะไร ไม่ออกเลขเครื่อง (JAN TRADING แสดงเป็น xxxxxxx) — กดกี่ครั้งก็ได้
  * ยังไม่เลือกงานก็ดูได้ ช่อง B/L NO จะใช้เลขในใบ (ถ้ามี)
+ * output=csv คืน CSV สำหรับ Draft ใบขนแทน PDF (เลขเครื่อง 0000000 จนกว่าจะบันทึก)
  */
 export async function POST(request: Request) {
   const user = await cargoReader();
@@ -37,8 +39,12 @@ export async function POST(request: Request) {
   try { tariffs = JSON.parse(String(form.get('tariffs') ?? '[]')); } catch { /* ไม่มีก็ได้ */ }
   tariffs = inv.cars.map((_, i) => String(tariffs[i] ?? ''));
 
+  const asCsv = form.get('output') === 'csv';
   try {
-    const bytes = await buildFinalInvoice(file.bytes, inv, original, { tariffs, engineNumbers: null });
+    const bytes = await buildFinalInvoice(file.bytes, inv, original, {
+      tariffs, engineNumbers: asCsv ? inv.cars.map(() => '0000000') : null,
+    });
+    if (asCsv) return json(await draftCsv(bytes));
     const pdf = await xlsxToPdf(bytes);
     if (!pdf) return json({ error: 'แปลง PDF ไม่ได้ — ไฟล์ไม่มีขอบเขตการพิมพ์ของหน้า invoice' }, 400);
     return new Response(new Uint8Array(pdf), {

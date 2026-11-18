@@ -12,7 +12,8 @@ export default {
    */
   outputFileTracingIncludes: {
     // ตารางพิกัดหลักของหน้า Create Cargo Invoice (assets/netbay/DATA TARIFF.xlsx) อ่านตอนรันเหมือนกัน
-    '/**': ['./assets/fonts/**', './assets/forms/**', './assets/netbay/**'],
+    // แม่แบบ Final Invoice แบบ NORMAL (assets/cargo-invoice) ก็เช่นกัน
+    '/**': ['./assets/fonts/**', './assets/forms/**', './assets/netbay/**', './assets/cargo-invoice/**'],
   },
 
   experimental: {

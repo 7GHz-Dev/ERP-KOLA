@@ -70,6 +70,8 @@ export type CargoInvoice = {
   /** BOOKING NO. ในหัวใบ (ถ้ามี) — แสดงช่วยคนหางาน */
   bookingNo: string;
   vessel: string;
+  /** สกุลเงินของราคา — ใบผู้ขาย JAN TRADING / AICHI เป็นเยนเสมอ · NORMAL เลือกเอง */
+  currency: string;
   /** ชีตที่อ่านรายการรถ (ส่วนใหญ่ชีตเดียว) */
   sheets: string[];
   /** เลขตู้ตามลำดับที่ปรากฏในใบ */
@@ -87,8 +89,8 @@ export type CargoInvoice = {
   warnings: string[];
 };
 
-export const PATTERNS = ['MSFZ', 'JTC', 'AICHI', 'JAN TRADING', 'HUAYO'] as const;
-const TABLE_PATTERNS = new Set(['MSFZ', 'JTC']);
+export const PATTERNS = ['MSFZ', 'JTC', 'AICHI', 'JAN TRADING', 'HUAYO', 'NORMAL'] as const;
+const TABLE_PATTERNS = new Set(['MSFZ', 'JTC', 'NORMAL']);
 
 const CONTAINER = /^[A-Z]{4}\d{7}$/;
 const upper = (v: CellValue) => clean(v).toUpperCase();
@@ -188,7 +190,8 @@ function tableHeader(ws: Sheet): TableCols | null {
     for (let c = 1; c <= 20; c++) {
       const l = label(ws.value(r, c));
       if (!l) continue;
-      if (l === 'MAKE') cols.make = c;
+      // NORMAL (Final Invoice ที่คีย์เอง) ใช้หัว BRAND แทน MAKE
+      if (l === 'MAKE' || l === 'BRAND') cols.make = c;
       else if (l === 'MODEL') cols.model = c;
       else if (l.startsWith('CHASSIS')) cols.chassis = c;
       else if (l.startsWith('WEIGHT')) cols.weight = c;
@@ -255,7 +258,8 @@ function readTable(ws: Sheet, inv: CargoInvoice) {
   }
   inv.containers = [...boxes.values()];
   inv.cars.forEach((car, i) => {
-    car.container = boxes.get(boxIndex[i]) ?? '';
+    // ไม่มีคอลัมน์ลำดับตู้ (NORMAL) แต่มีตู้เดียว — รถทุกคันอยู่ตู้นั้น
+    car.container = boxes.get(boxIndex[i]) ?? (boxes.size === 1 ? [...boxes.values()][0] : '');
     if (!car.container) car.layoutProblems.push(`ไม่พบเลขตู้ลำดับ ${boxIndex[i] || '-'} ในรายการตู้ใต้ TOTAL`);
   });
 }
@@ -398,7 +402,7 @@ function check(inv: CargoInvoice) {
 
 export async function parseCargoInvoice(data: Buffer | Uint8Array): Promise<CargoInvoice> {
   const inv: CargoInvoice = {
-    pattern: '', supplier: '', invoiceNo: '', invoiceDate: '', blNo: '', bookingNo: '', vessel: '', sheets: [],
+    pattern: '', supplier: '', invoiceNo: '', invoiceDate: '', blNo: '', bookingNo: '', vessel: '', currency: 'JPY', sheets: [],
     containers: [], cars: [], charges: [], stated: { units: null, weight: null, amount: null }, errors: [], warnings: [],
   };
   let wb: ExcelJS.Workbook;
@@ -414,6 +418,9 @@ export async function parseCargoInvoice(data: Buffer | Uint8Array): Promise<Carg
 
   inv.pattern = detectPattern(ws);
   inv.supplier = firstText(ws, 1);
+  // ไฟล์ที่ระบบเขียนตารางสรุปแล้ว — สกุลเงินอยู่ P7
+  const currency = upper(ws.at('P7'));
+  if (/^[A-Z]{3}$/.test(currency)) inv.currency = currency;
   if (!inv.pattern) {
     inv.errors.push(`ไม่รู้จักรูปแบบ Invoice นี้ (รองรับ: ${PATTERNS.join(', ')}) — ส่งไฟล์ตัวอย่างให้ผู้ดูแลเพิ่มรูปแบบ`);
     return inv;

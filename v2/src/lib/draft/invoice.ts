@@ -14,6 +14,8 @@ const TYPE_CELL = 'P4';
 const DATE_CELL = 'P5';
 const INVOICE_CELL = 'P6';
 const BL_CELL = 'P14';
+/** สกุลเงินของราคา (Create Cargo Invoice เขียนให้) — ว่าง = JPY ตามไฟล์เดิมทุกใบ */
+const CURRENCY_CELL = 'P7';
 export const FIRST_CAR_ROW = 20;
 
 /** ตารางสรุป: ชื่อช่อง -> คอลัมน์ */
@@ -45,6 +47,8 @@ export const LAYOUTS: Record<string, ColumnLayout | BlockLayout> = {
   'AICHI': { kind: 'block', firstRow: 17, engineLabel: 'ENGINETYPE' },
   'HUAYO': { kind: 'block', firstRow: 17, engineLabel: 'ENGINETYPE' },
   'JAN TRADING': { kind: 'block', firstRow: 16, engineLabel: 'ENGINENO' },
+  // Final Invoice ที่คีย์เองใน Create Cargo Invoice (ผู้ขายรายอื่น) — ตารางแบบ MSFZ: CHASSIS NO. คอลัมน์ E · ENGINE NO คอลัมน์ J
+  'NORMAL': { kind: 'column', headerRow: 19, chassisCol: 'E', engineCol: 'J' },
 };
 const BLOCK = { chassisLabel: 'CHASSISNO', labelCol: 'C', valueCol: 'D' };
 const ALIASES: Record<string, string> = { JANTRADING: 'JAN TRADING' };
@@ -71,6 +75,8 @@ export type TariffRow = [string, string, string, number, number, number, number]
 
 export type Invoice = {
   file_type: string; invoice_no: string; invoice_date: string; bl_no: string;
+  /** สกุลเงินของราคา (ช่อง P7) — ไม่มี = JPY */
+  currency: string;
   cars: Car[]; engines: EngineCell[];
   /** ชีต datatariff ในไฟล์ (null = ไม่มี ใช้ตารางสำรอง) */
   tariff_rows: TariffRow[] | null;
@@ -108,7 +114,7 @@ export function firstSheet(wb: ExcelJS.Workbook) {
 }
 
 export async function readInvoice(data: Buffer | Uint8Array): Promise<Invoice> {
-  const inv: Invoice = { file_type: '', invoice_no: '', invoice_date: '', bl_no: '', cars: [], engines: [],
+  const inv: Invoice = { file_type: '', invoice_no: '', invoice_date: '', bl_no: '', currency: 'JPY', cars: [], engines: [],
     tariff_rows: null, errors: [], warnings: [] };
   let wb: ExcelJS.Workbook;
   try {
@@ -128,6 +134,7 @@ export async function readInvoice(data: Buffer | Uint8Array): Promise<Invoice> {
   inv.invoice_date = fmtDate(ws.at(DATE_CELL));
   inv.invoice_no = clean(ws.at(INVOICE_CELL));
   inv.bl_no = clean(ws.at(BL_CELL));
+  inv.currency = clean(ws.at(CURRENCY_CELL)).toUpperCase() || 'JPY';
   const tariffSheet = wb.worksheets.find((s) => s.name === 'datatariff');
   if (tariffSheet) inv.tariff_rows = loadTariffRows(sheetReader(wb, tariffSheet));
 

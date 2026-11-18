@@ -632,7 +632,7 @@ export function MasterRecordForm({
   /** ไม่ส่งมา = เพิ่มรายการใหม่ */
   record?: { id: string; code: string | null; name: string; description: string | null;
     value: string | null; isActive: boolean; shortName?: string | null;
-    email?: string | null; lineGroupId?: string | null };
+    email?: string | null; lineGroupId?: string | null; address?: string | null };
   isSettings: boolean;
   /** Port Release Partner — กลุ่ม LINE ที่ bot เห็นล่าสุด ให้เลือกแทนการพิมพ์ Group ID เอง */
   lineGroups?: Array<{ id: string; name: string | null }>;
@@ -673,6 +673,13 @@ export function MasterRecordForm({
               <span>ชื่อย่อ (แสดงในทะเบียนงาน · ว่าง = ใช้ชื่อเต็ม)</span>
               <input name="shortName" defaultValue={record?.shortName ?? ''} maxLength={60} />
             </label>
+            {type === 'shippers' ? (
+              // พิมพ์ใต้ชื่อ Shipper บนหัว Final Invoice แบบ NORMAL (Create Cargo Invoice)
+              <label className="mini">
+                <span>ที่อยู่ (บรรทัดละช่วง สูงสุด 4 บรรทัด · พิมพ์บนหัว Final Invoice)</span>
+                <textarea name="address" defaultValue={record?.address ?? ''} rows={4} />
+              </label>
+            ) : null}
           </>
         )}
         {partner && isShipmePartner(record?.name) ? (

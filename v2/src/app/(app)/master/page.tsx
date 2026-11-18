@@ -108,7 +108,7 @@ export default async function MasterPage({
                   <th className="col-no">No.</th>
                   <FilterTh label="รหัส" />
                   <FilterTh label="ชื่อ" />
-                  <FilterTh label={isSettings ? 'ค่า' : 'รายละเอียด'} />
+                  <FilterTh label={isSettings ? 'ค่า' : type === 'shippers' ? 'ที่อยู่ / รายละเอียด' : 'รายละเอียด'} />
                   {isSettings ? null : <FilterTh label="ชื่อย่อ" />}
                   {isPartners ? <FilterTh label="Email" /> : null}
                   {isPartners ? <FilterTh label="กลุ่ม LINE" /> : null}
@@ -124,7 +124,11 @@ export default async function MasterPage({
                     <td><span className="rowno" /></td>
                     <td>{r.code ?? '-'}</td>
                     <td>{r.name}</td>
-                    <td>{isSettings ? <b>{r.value ?? '-'}</b> : (r.description ?? r.country ?? r.roleName ?? '-')}</td>
+                    <td className={type === 'shippers' ? 'col-wrap' : undefined}>
+                      {isSettings ? <b>{r.value ?? '-'}</b>
+                        : type === 'shippers' && r.address ? <span className="master-address">{r.address}</span>
+                          : (r.description ?? r.country ?? r.roleName ?? '-')}
+                    </td>
                     {isSettings ? null : <td>{r.shortName || '-'}</td>}
                     {isPartners && isShipmePartner(r.name) ? (
                       <td colSpan={2}><span className="badge neutral">ERP SHIPME (เชื่อมภายหลัง) · Partner พื้นฐานของงาน MU</span></td>
@@ -149,7 +153,7 @@ export default async function MasterPage({
                         record={{
                           id: r.id, code: r.code, name: r.name,
                           description: r.description, value: r.value, isActive: r.isActive,
-                          shortName: r.shortName, email: r.email, lineGroupId: r.lineGroupId,
+                          shortName: r.shortName, email: r.email, lineGroupId: r.lineGroupId, address: r.address,
                         }}
                         lineGroups={lineGroups}
                       />

@@ -5,7 +5,7 @@
  "invoice_date": "",
  "bl_no": "",
  "errors": [
-  "ไม่รู้จักชนิดไฟล์ '' ในช่อง P4 (รองรับ: MSFZ, JTC, AICHI, HUAYO, JAN TRADING)"
+  "ไม่รู้จักชนิดไฟล์ '' ในช่อง P4 (รองรับ: MSFZ, JTC, AICHI, HUAYO, JAN TRADING, NORMAL)"
  ],
  "warnings": [],
  "cars": [],

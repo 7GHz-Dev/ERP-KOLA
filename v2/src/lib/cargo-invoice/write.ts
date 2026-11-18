@@ -1,7 +1,7 @@
 /**
  * เขียนผลที่จัดเรียงแล้วลง "ตารางสรุป" ของไฟล์ Invoice — รูปแบบเดียวกับที่สูตร VLOOKUP ในไฟล์ imp3_ เดิมสร้าง
  *
- *   P4 ชนิดไฟล์  P5 วันที่  P6 เลข invoice  P14 เลข BL
+ *   P4 ชนิดไฟล์  P5 วันที่  P6 เลข invoice  P7 สกุลเงิน  P14 เลข BL
  *   แถว 19 หัวตาราง · แถว 20 ลงไปรถคันละแถว P:U (use_*) และ W:AG (ข้อมูลรถ + พิกัด + ตู้)
  *
  * worker สร้าง Draft ใบขน (lib/draft/invoice.ts) อ่านตารางนี้อยู่แล้ว ไม่ต้องแก้ฝั่งนั้น
@@ -169,7 +169,7 @@ export async function writeSummary(data: Buffer | Uint8Array, inv: CargoInvoice,
   const original = await zip.file(sheetPath)!.async('string');
 
   const updates = new Map<string, Value>([
-    ['P4', inv.pattern], ['P5', inv.invoiceDate], ['P6', inv.invoiceNo], ['P14', inv.blNo],
+    ['P4', inv.pattern], ['P5', inv.invoiceDate], ['P6', inv.invoiceNo], ['P7', inv.currency || 'JPY'], ['P14', inv.blNo],
     ...SUMMARY_COLS.map((c) => [`${c}19`, SUMMARY_HEADER[c]] as [string, Value]),
   ]);
   inv.cars.forEach((car, i) => {

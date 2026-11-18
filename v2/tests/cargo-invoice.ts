@@ -26,6 +26,8 @@ import { enginePrefix, existingEngineNumber, finalEngineText } from '../src/lib/
 import { finalizeLayout } from '../src/lib/cargo-invoice/final-layout';
 import { applyEdits, changedFields, EDIT_FIELDS } from '../src/lib/cargo-invoice/edit';
 import { buildFinalInvoice } from '../src/lib/cargo-invoice/final';
+import { buildNormalWorkbook, normalInvoice, type NormalDoc } from '../src/lib/cargo-invoice/normal';
+import { draftCsv } from '../src/lib/cargo-invoice/draft-csv';
 import { analyze, excelUpdates, NEW, REUSE } from '../src/lib/draft/analyze';
 import { xlsxToPdf } from '../src/lib/xlsx-pdf';
 import { loadDraftData, lookupTariff } from '../src/lib/draft/csv';
@@ -364,4 +366,53 @@ async function aichiFinal() {
   console.log('✓ AICHI Final Invoice: 6 ชีตต่อเป็นชีตเดียว · AICHI 351 · BL ของงาน · เลขเครื่อง · ค่าบรรทัดแรก · เส้นแบ่งตู้ · ยอดรวมทั้ง BL · PDF');
 }
 
-main().then(janFinal).then(editedFinal).then(aichiFinal).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });
+/** 8. NORMAL (คีย์เอง) + CSV Draft ใบขน */
+async function normalFinal() {
+  const doc: NormalDoc = {
+    shipper: { name: 'LEGEND MOTORS FZCP', address: 'PO BOX 41391 DUCAMZ DUBAI, UAE\nTEL: 04-1234567' },
+    invoiceNo: 'YKMA1289', invoiceDate: '13/08/2026', currency: 'USD',
+    vessel: 'IRENES RAINBOW', voyage: '037S', portOfLoading: 'KHOR FAKKEN, UNITED ARAB EMIRATES', portOfDestination: 'LAEM CHABANG',
+    dateOfShip: '14/08/2026', blNo: 'EMIVAEESAD270818', carrier: 'CNC', containers: ['ESDU6077465'],
+    cars: [
+      { brand: 'TOYOTA', model: 'LAND CRUISER', chassis: 'JTMAA7BJ4S4118676', weight: 2610, year: 2025, engine: 'F33A-1555956', cc: 3300, fuel: 'DIESEL', amount: 75000, container: 'ESDU6077465' },
+      { brand: 'TOYOTA', model: 'LAND CRUISER', chassis: 'JTMAA7BJ9S4118124', weight: 2530, year: 2025, engine: 'F33A-6157844', cc: 3300, fuel: 'DIESEL', amount: 78000, container: 'ESDU6077465' },
+    ],
+  };
+  const out = await writeSummary(await buildNormalWorkbook(doc), normalInvoice(doc), ['87033371', '87033371']);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(out as unknown as ArrayBuffer);
+  const ws = wb.worksheets[0];
+  const v = (ref: string) => String((ws.getCell(ref).value as { result?: unknown } | null)?.result ?? ws.getCell(ref).value ?? '');
+  assert.deepEqual([v('A1'), v('A2'), v('A3'), v('M5'), v('M6')], ['LEGEND MOTORS FZCP', 'PO BOX 41391 DUCAMZ DUBAI, UAE', 'TEL: 04-1234567', '13/08/2026', 'YKMA1289']);
+  assert.deepEqual(['J8', 'J9', 'J10', 'J11', 'J12', 'J14', 'J15'].map(v), ['IRENES RAINBOW', '037S', 'KHOR FAKKEN, UNITED ARAB EMIRATES', 'LAEM CHABANG', '14/08/2026', 'EMIVAEESAD270818', 'CNC']);
+  assert.deepEqual([v('B20'), v('E20'), v('J20'), v('M19'), v('A23'), v('B23'), v('H23'), v('M23'), v('B25')],
+    ['TOYOTA', 'JTMAA7BJ4S4118676', 'F33A-1555956', 'AMOUNT (USD)', 'TOTAL', '2 UNITS', '5140', '153000', 'ESDU6077465']);
+  const back = await parseCargoInvoice(out);
+  assert.deepEqual([back.pattern, back.currency, back.errors, back.cars.length, back.cars[1].container, back.cars[1].problems], ['NORMAL', 'USD', [], 2, 'ESDU6077465', []]);
+  const draft = await readInvoice(out);
+  assert.deepEqual([draft.errors, draft.file_type, draft.currency, draft.engines.filter((e) => e.existing).length], [[], 'NORMAL', 'USD', 2]);
+  assert.ok((await xlsxToPdf(out))!.length > 1000);
+
+  const csv = await draftCsv(out);
+  const col = (name: string) => csv.columns.indexOf(name);
+  assert.equal(csv.rows.length, 2);
+  assert.equal(csv.rows[0][col('currency')], 'USD', 'สกุลเงินจาก P7');
+  assert.equal(csv.rows[0][col('productAttribute2')], 'F33A-1555956');
+  assert.equal(csv.rows[1][col('invoiceAmountForeign')], '78000');
+  assert.equal(csv.fileName, 'EMIVAEESAD270818.csv');
+  assert.ok(csv.base64, 'ดาวน์โหลดได้ (TIS-620)');
+
+  // CSV ของ JAN TRADING ก่อนบันทึก: เลขเครื่อง 0000000 · สกุลเงิน JPY
+  const src = readFileSync(`${DIR}example JAN TRADING cargo invoice Original.xlsx`);
+  const inv = await parseCargoInvoice(src);
+  inv.blNo = 'EGLV022600156399';
+  const jan = await buildFinalInvoice(src, inv, inv.cars, { tariffs: inv.cars.map(() => '87032290'), engineNumbers: inv.cars.map(() => '0000000') });
+  const jcsv = await draftCsv(jan);
+  assert.equal(jcsv.rows.length, 17);
+  assert.equal(jcsv.rows[0][jcsv.columns.indexOf('currency')], 'JPY');
+  assert.equal(jcsv.rows[0][jcsv.columns.indexOf('productAttribute2')], '4GR-0000000');
+  assert.ok(jcsv.warnings.some((w) => /0000000/.test(w)), 'บอกว่ายังไม่ได้บันทึก');
+  console.log('✓ NORMAL Final Invoice: หัวใบ · ข้อมูลเรือ · ตาราง · TOTAL · ตู้ · USD · worker อ่านได้ · PDF · CSV Draft ใบขน (NORMAL + JAN)');
+}
+
+main().then(janFinal).then(editedFinal).then(aichiFinal).then(normalFinal).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });

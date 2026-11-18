@@ -117,6 +117,8 @@ export function mapCar(car: Car, inv: Invoice, tariffCode: string, desc2Full: st
     netWeight: fmtNumber(car.use_weight),
     itemGrossWeight: fmtNumber(car.use_weight),
     invoiceAmountForeign: fmtNumber(car.use_price),
+    // สกุลเงินจากตารางสรุป (P7) — ไฟล์เดิมไม่มี = JPY ตามค่าคงที่ใน csv_template
+    currency: inv.currency || 'JPY',
   };
   const heading = tariffCode.slice(4, 8);
   if (heading === '8703') {

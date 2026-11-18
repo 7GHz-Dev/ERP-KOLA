@@ -60,8 +60,14 @@ async function saveMasterRecordImpl(formData: FormData) {
    * ช่องที่มีเฉพาะบางฟอร์ม — ฟอร์มไหนไม่ได้ส่งมาต้องคงค่าเดิมไว้ ไม่ใช่ล้างทิ้ง
    * ชื่อย่อ: ทะเบียนงานแสดงแทนชื่อเต็ม · อีเมล/กลุ่ม LINE: ช่องทางแจ้งของ Port Release Partner
    */
-  const extra: { shortName?: string | null; email?: string | null; lineGroupId?: string | null } = {};
+  const extra: { shortName?: string | null; email?: string | null; lineGroupId?: string | null; address?: string | null } = {};
   if (formData.has('shortName')) extra.shortName = text(formData.get('shortName'), 60) || null;
+  // ที่อยู่ Shipper — พิมพ์ใต้ชื่อบนหัว Final Invoice แบบ NORMAL (สูงสุด 4 บรรทัด)
+  if (type === 'shippers' && formData.has('address')) {
+    const lines = String(formData.get('address') ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length > 4) throw new Error('ที่อยู่ใส่ได้ไม่เกิน 4 บรรทัด (หัว Final Invoice มีที่ให้ 4 บรรทัด)');
+    extra.address = lines.map((l) => l.slice(0, 160)).join('\n') || null;
+  }
   // SHIPME ส่งผ่าน ERP SHIPME (เชื่อมภายหลัง) ไม่มีช่อง Email/LINE ให้กรอก
   const channels = type === 'partners' && !isShipmePartner(name);
   if (channels && formData.has('email')) {

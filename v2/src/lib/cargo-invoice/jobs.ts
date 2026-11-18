@@ -13,11 +13,18 @@ export type JobMatch = {
   fnStatus: string | null; finalInvoice: { fileName: string; version: number } | null;
   /** ตู้ในใบที่ตรงกับตู้ของงานนี้ (ตอนหาด้วยเลขตู้) */
   sharedBoxes?: number;
+  /** ข้อมูลเรือจาก AN/BL ในตารางหลัก — หัวใบ Final Invoice แบบ NORMAL */
+  ship: {
+    vessel: string; voyage: string; portOfLoading: string; portOfDestination: string;
+    /** ETD (YYYY-MM-DD) */ etd: string; carrier: string; shipperId: string | null;
+  };
 };
 
 type Row = {
   id: string; job_no: string; bl_no: string | null; containers: string[] | null; fn_status: string | null;
   fi_name: string | null; fi_version: number | null;
+  vessel: string | null; voyage: string | null; etd: string | null; origin_port: string | null;
+  port_name: string | null; shipline: string | null; shipper_id: string | null;
 };
 
 const norm = (col: string) => sql.raw(`upper(regexp_replace(coalesce(${col}, ''), '[[:space:]-]', '', 'g'))`);
@@ -28,9 +35,11 @@ async function find(where: SQL) {
            (select array_agg(c.container_no order by c.container_no) from containers c where c.job_id = j.id) as containers,
            (select a.status from approvals a where a.job_id = j.id and a.approval_type = 'FN'
              order by a.requested_at desc limit 1) as fn_status,
-           f.file_name as fi_name, f.version as fi_version
+           f.file_name as fi_name, f.version as fi_version,
+           j.vessel, j.voyage, j.etd::text as etd, j.origin_port, p.name as port_name, j.shipline, j.shipper_id
       from jobs j
       left join files f on f.job_id = j.id and f.category = 'FINAL_INVOICE' and f.is_current = true
+      left join master_records p on p.id = j.port_id
      where j.is_archived = false and (${where})
      order by j.created_at desc
      limit 10`);
@@ -39,6 +48,10 @@ async function find(where: SQL) {
     containers: (r.containers ?? []).filter(Boolean).map((c) => c.replace(/[\s-]/g, '').toUpperCase()),
     fnStatus: r.fn_status,
     finalInvoice: r.fi_name ? { fileName: r.fi_name, version: Number(r.fi_version) } : null,
+    ship: {
+      vessel: r.vessel ?? '', voyage: r.voyage ?? '', portOfLoading: r.origin_port ?? '', portOfDestination: r.port_name ?? '',
+      etd: r.etd ?? '', carrier: r.shipline ?? '', shipperId: r.shipper_id,
+    },
   }));
 }
 
@@ -71,4 +84,11 @@ export async function jobsForInvoice(inv: { blNo: string; containers: string[] }
     if (byBl.length) return { jobs: byBl, by: 'bl' as const };
   }
   return { jobs: await jobsForContainers(inv.containers), by: 'containers' as const };
+}
+
+/** งานเดียวจาก id — ฝั่งเซิร์ฟเวอร์ใช้ดึงข้อมูลเรือ/ตู้ใหม่ทุกครั้ง ไม่เชื่อค่าที่หน้าเว็บส่งมา */
+export async function jobById(id: string): Promise<JobMatch | null> {
+  if (!id) return null;
+  const [job] = await find(sql`j.id = ${id}`);
+  return job ?? null;
 }
