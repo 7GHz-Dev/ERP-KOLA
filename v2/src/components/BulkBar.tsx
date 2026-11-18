@@ -33,7 +33,8 @@ export type BulkAction = {
 export function BulkBar({
   action, label, confirmText, idName, fields, extra, dateField, dateRisks, open, children,
 }: {
-  action: (formData: FormData) => Promise<unknown>;
+  /** ไม่ใส่ = ไม่มีปุ่มหลัก (เช่นหน้าที่ใช้แค่ปุ่ม open) */
+  action?: (formData: FormData) => Promise<unknown>;
   /** ข้อความบนปุ่ม — {n} จะถูกแทนด้วยจำนวนที่เลือก */
   label: string;
   confirmText: string;
@@ -185,7 +186,7 @@ export function BulkBar({
               {date ? <small className="bulk-weekday"> วัน{weekdayName(date)}</small> : null}
             </label>
           ) : null}
-          <button
+{action ? (          <button
             type="button"
             className="button primary"
             disabled={busy}
@@ -193,11 +194,11 @@ export function BulkBar({
               if (dateField && !date) { setError(`กรุณาเลือก${dateField.label}`); return; }
               const base = confirmText.replace('{n}', String(picked.length)).replace('{date}', date.split('-').reverse().join('/'));
               const text = warnings.length ? `${base}\n\n⚠ ข้อควรระวัง\n${warnings.map((w) => `• ${w}`).join('\n')}` : base;
-              if (window.confirm(text)) void run(action, dateField ? { ...fields, [dateField.name]: date } : fields);
+              if (window.confirm(text)) void run(action!, dateField ? { ...fields, [dateField.name]: date } : fields);
             }}
           >
             {busy ? 'กำลังทำ…' : label.replace('{n}', String(picked.length))}
-          </button>
+          </button>) : null}
           {warnings.length ? (
             <ul className="bulk-warnings">{warnings.map((w) => <li key={w}>⚠ {w}</li>)}</ul>
           ) : null}

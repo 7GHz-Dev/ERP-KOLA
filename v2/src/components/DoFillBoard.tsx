@@ -11,7 +11,7 @@ import type { Choice } from '@/components/DoRowForm';
  * เก็บไว้ตรงนี้ที่เดียว ตารางกับแผงจึงอ้างค่าเดียวกันเสมอ
  */
 export function DoFillBoard({
-  jobs, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, openFor, children,
+  jobs, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, openFor, queue: queueIds, children,
 }: {
   jobs: DoPaneJob[];
   ports: Choice[];
@@ -27,11 +27,18 @@ export function DoFillBoard({
    * ใช้ตอนเพิ่งอัปหรือเปลี่ยนไฟล์ Invoice DO เสร็จ จะได้กรอกต่อทันทีโดยไม่ต้องกดอีกที
    */
   openFor?: string | null;
+  /** ชุดงานที่ติ๊กกรอกต่อกัน (?fq=) — แผงมีปุ่มก่อนหน้า/ถัดไป · บันทึกแล้วไปงานถัดไป */
+  queue?: string[];
   /** ตารางฝั่งขวา เรนเดอร์มาจากเซิร์ฟเวอร์ */
   children: React.ReactNode;
 }) {
   const [openId, setOpenId] = useState<string | null>(openFor ?? null);
   const job = jobs.find((j) => j.id === openId) ?? null;
+  // ชุดที่ติ๊ก — เหลือเฉพาะงานที่ยังอยู่ในแท็บนี้ (ส่ง Partner แล้วหลุดออกไป)
+  const queue = (queueIds ?? []).filter((id) => jobs.some((j) => j.id === id));
+  const qIndex = openId ? queue.indexOf(openId) : -1;
+  const inQueue = queue.length > 1 && qIndex >= 0;
+  const nextId = inQueue ? queue[qIndex + 1] ?? null : null;
 
   /*
    * อัปไฟล์เสร็จแล้วเปิดแผงของงานนั้นให้เลย
@@ -92,6 +99,12 @@ export function DoFillBoard({
           defaultPortId={defaultPortId}
           defaultPartnerId={defaultPartnerId}
           sentAt={sentAt[job.id] ?? null}
+          nav={inQueue ? {
+            index: qIndex,
+            labels: queue.map((id) => { const j = jobs.find((x) => x.id === id)!; return j.blNo ?? j.jobNo; }),
+            go: (k: number) => setOpenId(queue[k] ?? openId),
+          } : null}
+          onSaved={nextId ? () => setOpenId(nextId) : undefined}
           onClose={() => {
             setOpenId(null);
             /*

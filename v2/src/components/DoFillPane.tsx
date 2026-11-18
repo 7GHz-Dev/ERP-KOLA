@@ -41,7 +41,7 @@ export type DoPaneJob = {
 };
 
 export function DoFillPane({
-  job, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, onClose,
+  job, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, onClose, onSaved, nav,
 }: {
   job: DoPaneJob;
   ports: Choice[];
@@ -52,6 +52,10 @@ export function DoFillPane({
   defaultPartnerId: string | null;
   sentAt: string | null;
   onClose: () => void;
+  /** บันทึกสำเร็จ — ไม่ใส่ = ปิดแผง · ชุดหลายงาน = ไปงานถัดไป */
+  onSaved?: () => void;
+  /** ชุดงานที่ติ๊กกรอกต่อกัน */
+  nav?: { index: number; labels: string[]; go: (k: number) => void } | null;
 }) {
   // เปิดแผงแล้วบีบตารางให้หลบไปทางซ้าย ไม่ให้แผงทับจนกดสลับแถวไม่ได้
   useEffect(() => {
@@ -95,6 +99,15 @@ export function DoFillPane({
           {/* แบบแผงแก้ข้อมูล BL: ฟอร์มซ้าย ไฟล์ขวา อ่านยอดไปกรอกไปได้โดยไม่ต้องเลื่อน */}
           <div className="bl-edit do-pane-grid">
           <div className="bl-edit-form do-pane-form">
+            {nav ? (
+              <nav className="bl-queue" aria-label="งานที่เลือกกรอก">
+                <button type="button" className="button tiny" disabled={nav.index === 0} onClick={() => nav.go(nav.index - 1)}>◀ ก่อนหน้า</button>
+                <select value={nav.index} onChange={(e) => nav.go(Number(e.target.value))} aria-label="เลือกงาน">
+                  {nav.labels.map((l, k) => <option key={k} value={k}>{k + 1}/{nav.labels.length} · {l}</option>)}
+                </select>
+                <button type="button" className="button tiny" disabled={nav.index >= nav.labels.length - 1} onClick={() => nav.go(nav.index + 1)}>ถัดไป ▶</button>
+              </nav>
+            ) : null}
             <DoRowForm
               jobId={job.id}
               eta={job.eta}
@@ -115,7 +128,7 @@ export function DoFillPane({
               storageFreeDays={job.storageFreeDays}
               combined={job.demDetCombined}
               transportDate={job.transportDate}
-              onSaved={onClose}
+              onSaved={onSaved ?? onClose}
               today={todayBangkok()}
             />
           </div>

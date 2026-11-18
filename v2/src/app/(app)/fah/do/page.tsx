@@ -4,6 +4,7 @@ import { JobTable, Tabs, FileChip, type Column } from '@/components/JobTable';
 import { RequestEditButton, UploadForm } from '@/components/ActionForms';
 import { DoRowForm } from '@/components/DoRowForm';
 import { DoFillBoard } from '@/components/DoFillBoard';
+import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
 import { VesselFilter } from '@/components/VesselFilter';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { isPartnerRelease } from '@/lib/job-types';
@@ -77,6 +78,11 @@ export default async function FahDoPage({
   const sent = tab === 'sent';
 
   const columns: Column[] = [
+    ...(tab === 'sent' ? [] : [{
+      label: '', kind: 'actions' as const, className: 'col-pick',
+      header: <PickAllBox />,
+      render: (r: JobRow) => <PickBox id={r.id} />,
+    }]),
     col.shipper(), col.blNo(), col.consignee(),
     /*
      * เรือ/เที่ยว — มีไว้ดูว่าแถวไหนเป็นของเที่ยวไหน
@@ -254,8 +260,13 @@ export default async function FahDoPage({
           defaultPartnerId={defaultPartnerId}
           sentAt={Object.fromEntries(sentMap)}
           openFor={one('fill') || null}
+          queue={one('fq') ? one('fq').split(',') : undefined}
         >
-          {table}
+          {/* ติ๊กหลายงานแล้วกรอกต่อกันในแผงเดียว (ก่อนหน้า/ถัดไป · บันทึกแล้วไปงานถัดไป) */}
+          <BulkBar idName="jobIds" label="" confirmText=""
+            open={{ label: '✎ กรอกข้อมูล {n} รายการ', href: `/fah/do?${new URLSearchParams({ ...carry, tab })}&fill={first}&fq={ids}` }}>
+            {table}
+          </BulkBar>
         </DoFillBoard>
       )}
     </>
