@@ -21,3 +21,18 @@ export function isByTruck(shipline: string | null | undefined, vessel?: string |
   const truck = (v: string | null | undefined) => /^BY\s*TRUCK$/i.test((v ?? '').trim());
   return truck(shipline) || truck(vessel);
 }
+
+/**
+ * ลำดับ JOB TYPE ในช่องเลือกและหน้า Master Data (ตามที่ทีมกำหนด ไม่ใช่ตามตัวอักษร)
+ *   MSFZ - Used car (Kola sp) → (Other sp) → Other goods (Kola sp) → (Other sp) → Transit - Used car → Other goods → Shipment export
+ * รหัสที่ไม่อยู่ในรายการ (เพิ่มใหม่ภายหลัง) ต่อท้ายตามรหัส
+ */
+export const JOB_TYPE_ORDER = ['MU', 'MUO', 'MO', 'MOO', 'TU', 'TO', 'SHEX'];
+
+export function sortJobTypes<T extends { code: string | null; name: string }>(list: T[]): T[] {
+  const rank = (c: string | null) => {
+    const i = JOB_TYPE_ORDER.indexOf((c ?? '').trim().toUpperCase());
+    return i < 0 ? JOB_TYPE_ORDER.length : i;
+  };
+  return [...list].sort((a, b) => rank(a.code) - rank(b.code) || (a.code ?? '').localeCompare(b.code ?? '') || a.name.localeCompare(b.name));
+}

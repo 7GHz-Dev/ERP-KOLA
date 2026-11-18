@@ -3,6 +3,7 @@ import { and, asc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { masterRecords } from '@/db/schema';
 import { MAX_ROWS } from '@/lib/table-filter';
+import { sortJobTypes } from '@/lib/job-types';
 
 export const MASTER_TYPES = [
   { key: 'shippers', label: 'Shipper' },
@@ -30,12 +31,13 @@ export async function listMaster(type: string, search?: string) {
       or(ilike(masterRecords.code, like), ilike(masterRecords.name, like))!,
     );
   }
-  return db
+  const rows = await db
     .select()
     .from(masterRecords)
     .where(and(...conditions))
     .orderBy(asc(masterRecords.code), asc(masterRecords.name))
     .limit(MAX_ROWS);
+  return type === 'jobTypes' ? sortJobTypes(rows) : rows;
 }
 
 /** cache ไว้ต่อ request เพราะทุกหน้าในหมวด Master Data เรียกเหมือนกันหมด */
@@ -68,7 +70,7 @@ export async function intakeOptions() {
     ports: group('ports'),
     originPorts: group('originPorts'),
     terminals: group('terminals'),
-    jobTypes: group('jobTypes'),
+    jobTypes: sortJobTypes(group('jobTypes')),
     containerTypes: group('containerTypes'),
     packageTypes: group('packageTypes'),
     settings: group('settings'),
