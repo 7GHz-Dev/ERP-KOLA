@@ -25,7 +25,7 @@ export function DemDetFields({ eta, demDays, detDays, combined }: {
       <label className="do-cell">
         <span>DEM FREE (วัน) *{combine ? ' · Combine' : ''}</span>
         <input type="number" min={0} name="demDays" placeholder="N/A" value={dem} onChange={(e) => setDem(e.target.value)} />
-        {last(dem) ? <small className="do-sub">Last Date of DEM {last(dem)}</small> : null}
+        {last(dem) ? <small className="do-sub">Last DEM date {last(dem)}</small> : null}
       </label>
       <div className="do-cell">
         <span className="do-det-head">
@@ -48,7 +48,7 @@ export function DemDetFields({ eta, demDays, detDays, combined }: {
         ) : (
           <input type="number" min={0} name="detDays" placeholder="N/A" value={det} onChange={(e) => setDet(e.target.value)} />
         )}
-        {last(detValue) ? <small className="do-sub">Last Date of DET {last(detValue)}</small> : null}
+        {last(detValue) ? <small className="do-sub">Last DET date {last(detValue)}</small> : null}
       </div>
     </>
   );

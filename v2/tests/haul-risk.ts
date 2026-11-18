@@ -29,12 +29,12 @@ assert.deepEqual(haulWarnings([base], ''), []);
 // ศุกร์ 20 + DET 7 วัน (Last Date เสาร์ 21) → เหลือ 2 วัน · วันสุดท้ายตรงเสาร์ · เกิน DEM · ยังไม่ได้ D/O
 const w = haulWarnings([{ ...base, detDays: 7, doStage: 'NONE' }], '2026-11-20');
 assert.ok(w.includes('ลากวันศุกร์ — เสี่ยงคืนตู้ช้า'), w.join('|'));
-assert.ok(w.some((t) => t.startsWith('ลากแล้วเหลือ DET 2 วัน ต้องรีบคืนตู้ (Last Date 21/11/2026): BL1')), w.join('|'));
+assert.ok(w.some((t) => t.startsWith('ลากแล้วเหลือ DET 2 วัน ต้องรีบคืนตู้ (Last DET date 21/11/2026): BL1')), w.join('|'));
 assert.ok(w.some((t) => t.startsWith('วันสุดท้ายคืนตู้ (21/11/2026) ตรงวันเสาร์')));
-assert.ok(w.some((t) => t.startsWith('เกิน free time DEM (Last Date 18/11/2026)')));
+assert.ok(w.some((t) => t.startsWith('เกิน free time DEM (Last DEM date 18/11/2026)')));
 assert.ok(w.some((t) => t.startsWith('ยังไม่ได้ส่งแลก D/O: BL1')));
 // ลากหลัง Last Date of DET
-assert.ok(haulWarnings([{ ...base, detDays: 3 }], '2026-11-18').some((t) => t.startsWith('เกิน free time DET (Last Date 17/11/2026)')));
+assert.ok(haulWarnings([{ ...base, detDays: 3 }], '2026-11-18').some((t) => t.startsWith('เกิน free time DET (Last DET date 17/11/2026)')));
 
 // ETA ยังไม่ยืนยัน · ลากก่อน ETA · รวม BL ที่โดนข้อความเดียวกัน
 const e = haulWarnings([
@@ -44,7 +44,7 @@ assert.ok(e.includes('ETA ยังไม่ยืนยันจากระบ
 assert.ok(e.includes('วันลากก่อน ETA: C'));
 
 // Storage: ETA 15 + 3 − 1 = Last Date 17 · ลากวันที่ 18 = เกิน (มีค่าฝากตู้)
-assert.ok(haulWarnings([{ ...base, storageLast: '2026-11-17' }], '2026-11-18').some((t) => t.startsWith('เกิน Storage free time (Last Date 17/11/2026)')));
+assert.ok(haulWarnings([{ ...base, storageLast: '2026-11-17' }], '2026-11-18').some((t) => t.startsWith('เกิน Storage free time (Last STORAGE date 17/11/2026)')));
 assert.deepEqual(haulWarnings([{ ...base, storageLast: '2026-11-18' }], '2026-11-18'), []);
 
 assert.equal(todayBangkok(new Date('2026-11-17T18:30:00Z')), '2026-11-18');

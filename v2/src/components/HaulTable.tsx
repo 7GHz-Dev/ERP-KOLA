@@ -89,7 +89,7 @@ export function haulColumns(
     ),
   };
   const demCol: Column = {
-    label: 'DEM ฟรีถึง',
+    label: 'Last DEM date',
     kind: 'wrap',
     render: (r) => {
       const risk = haulRiskOf(r);
@@ -106,7 +106,7 @@ export function haulColumns(
     },
   };
   const detCol: Column = {
-    label: 'DET ฟรีถึง',
+    label: 'Last DET date',
     kind: 'wrap',
     render: (r) => {
       const d = r.detDays;
@@ -125,7 +125,7 @@ export function haulColumns(
     },
   };
   const storageCol: Column = {
-    label: 'Storage ฟรีถึง',
+    label: 'Last STORAGE date',
     kind: 'wrap',
     render: (r) => {
       const last = storageLastDate(r.eta, r.storageFreeDays);

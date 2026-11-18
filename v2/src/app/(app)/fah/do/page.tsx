@@ -90,7 +90,7 @@ export default async function FahDoPage({
        * Storage free time — นับ ETA เป็นวันที่ 1 (ตั้งต้น 3 วัน) · Last Date = วันที่เริ่มมีค่าใช้จ่าย
        * เหลือ ≤ 1 วันขึ้น Urgent สีแดง ให้รีบส่ง Partner / ลากตู้ก่อนเกิดค่าฝาก
        */
-      label: 'Last Date Free Time (Storage)', kind: 'wrap', sortKey: 'eta',
+      label: 'Last STORAGE date', kind: 'wrap', sortKey: 'eta',
       render: (r) => {
         const last = storageLastDate(r.eta, r.storageFreeDays);
         const u = freeUrgency(last, today);
@@ -208,7 +208,7 @@ export default async function FahDoPage({
         <div className="notice urgent-notice">
           <b>Urgent · Storage free time ใกล้หมด/เกินแล้ว {urgent.length} งาน:</b>{' '}
           {urgent.map((r, i) => (
-            <span key={r.id}>{i ? ' · ' : ''}{r.blNo ?? r.jobNo} (Last Date {formatDate(storageLastDate(r.eta, r.storageFreeDays))})</span>
+            <span key={r.id}>{i ? ' · ' : ''}{r.blNo ?? r.jobNo} (Last STORAGE date {formatDate(storageLastDate(r.eta, r.storageFreeDays))})</span>
           ))}
         </div>
       ) : null}

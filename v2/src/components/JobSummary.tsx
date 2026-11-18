@@ -95,9 +95,9 @@ export function JobSummary({
           <Kv label="Job type">{job.jobTypeName ?? '-'}</Kv>
           <Kv label="Description of Goods">{job.product ?? '-'}</Kv>
           <Kv label="ETA Date">{formatDate(job.eta)}{job.etaIsOfficial ? ' (OFC)' : ''}</Kv>
-          <Kv label="Last Date of DEM">{job.demDays === null ? 'N/A' : formatDate(freeLastDate(job.eta, job.demDays))}</Kv>
-          <Kv label="Last Date of DET">{job.detDays === null ? 'N/A' : formatDate(freeLastDate(job.eta, job.detDays))}</Kv>
-          <Kv label="Last Date Free Time (Storage)">{formatDate(storageLastDate(job.eta, job.storageFreeDays))}</Kv>
+          <Kv label="Last DEM date">{job.demDays === null ? 'N/A' : formatDate(freeLastDate(job.eta, job.demDays))}</Kv>
+          <Kv label="Last DET date">{job.detDays === null ? 'N/A' : formatDate(freeLastDate(job.eta, job.detDays))}</Kv>
+          <Kv label="Last STORAGE date">{formatDate(storageLastDate(job.eta, job.storageFreeDays))}</Kv>
           <Kv label="Invoice">{invoice ? invoice.fileName : 'รอดำเนินการ'}</Kv>
           <Kv label="Surrender">{surrenderLabel(job.surrenderStatus)}</Kv>
           <Kv label="Bill of Lading No." wide>

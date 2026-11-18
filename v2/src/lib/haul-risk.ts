@@ -87,14 +87,14 @@ export function haulWarnings(rows: HaulRisk[], haulDate: string): string[] {
     if (r.eta && haulDate < r.eta) add('วันลากก่อน ETA', r.bl);
     else if (!r.etaOfficial) add('ETA ยังไม่ยืนยันจากระบบกรม (เรืออาจเลื่อน ตู้อาจยังไม่ลง)', r.bl);
     const left = demLeft(r, haulDate);
-    if (left !== null && left < 0) add(`เกิน free time DEM (Last Date ${formatDate(demUntil(r))})`, r.bl);
-    if (r.storageLast && haulDate > r.storageLast) add(`เกิน Storage free time (Last Date ${formatDate(r.storageLast)})`, r.bl);
+    if (left !== null && left < 0) add(`เกิน free time DEM (Last DEM date ${formatDate(demUntil(r))})`, r.bl);
+    if (r.storageLast && haulDate > r.storageLast) add(`เกิน Storage free time (Last STORAGE date ${formatDate(r.storageLast)})`, r.bl);
     // DET นับจาก ETA: ลากวันนี้แล้วเหลือวันคืนตู้ฟรีกี่วัน (รวมวันลาก)
     const det = detUntil(r);
     if (det) {
       const days = diff(det, haulDate) + 1;
-      if (days <= 0) add(`เกิน free time DET (Last Date ${formatDate(det)})`, r.bl);
-      else if (days <= SHORT_DET_DAYS) add(`ลากแล้วเหลือ DET ${days} วัน ต้องรีบคืนตู้ (Last Date ${formatDate(det)})`, r.bl);
+      if (days <= 0) add(`เกิน free time DET (Last DET date ${formatDate(det)})`, r.bl);
+      else if (days <= SHORT_DET_DAYS) add(`ลากแล้วเหลือ DET ${days} วัน ต้องรีบคืนตู้ (Last DET date ${formatDate(det)})`, r.bl);
       if (days > 0 && [0, 6].includes(weekday(det))) add(`วันสุดท้ายคืนตู้ (${formatDate(det)}) ตรงวัน${WEEKDAY[weekday(det)]}`, r.bl);
     }
   }

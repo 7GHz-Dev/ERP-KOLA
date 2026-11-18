@@ -64,7 +64,7 @@ export function DoRowForm({
   const storageUrgency = today ? freeUrgency(storageLast, today) : null;
   const storageBadge = storageLast ? (
     <span className={`badge ${storageUrgency?.level === 'over' ? 'rejected' : storageUrgency?.level === 'urgent' ? 'rejected' : 'neutral'}`}>
-      Last Date Free Time {formatDate(storageLast)}{storageUrgency && storageUrgency.level !== 'ok' ? ` · ${storageUrgency.text}` : ''}
+      Last STORAGE date {formatDate(storageLast)}{storageUrgency && storageUrgency.level !== 'ok' ? ` · ${storageUrgency.text}` : ''}
     </span>
   ) : null;
 

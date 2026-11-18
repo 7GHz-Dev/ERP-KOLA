@@ -63,11 +63,11 @@ export const col = {
     render: (r) => `${daysText(r.demDays)} / ${daysText(r.detDays)}${r.demDetCombined ? ' (Combine)' : ''}`,
   }),
   lastDem: (): Column => ({
-    label: 'Last Date of DEM', sortKey: 'demDays',
+    label: 'Last DEM date', sortKey: 'demDays',
     render: (r) => (r.demDays === null ? 'N/A' : formatDate(freeLastDate(r.eta, r.demDays))),
   }),
   lastDet: (): Column => ({
-    label: 'Last Date of DET', sortKey: 'detDays',
+    label: 'Last DET date', sortKey: 'detDays',
     render: (r) => (r.detDays === null ? 'N/A' : formatDate(freeLastDate(r.eta, r.detDays))),
   }),
   refNo: (): Column => ({
