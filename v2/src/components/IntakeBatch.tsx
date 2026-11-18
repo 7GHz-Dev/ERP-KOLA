@@ -6,7 +6,7 @@ import type { IntakeDefaults, IntakeOptions } from '@/components/IntakeForm';
 import { extractPdfPieces, parseArrivalText } from '@/lib/parse-arrival';
 import { combineRead, matchTemplate, type ParseTemplate } from '@/lib/parse-template';
 import { matchShipper } from '@/lib/match-shipper';
-import { SearchSelect, SearchText } from '@/components/SearchSelect';
+import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { findDuplicateBls } from '@/lib/actions/intake';
 import {
@@ -66,8 +66,6 @@ type Fields = {
   originPort: string; portId: string; terminalId: string;
   demDays: string; detDays: string;
 };
-
-const BL_TYPES = ['SWB', 'OBL', 'S', 'TWB', 'HBL', 'MBL', 'Original'];
 
 function startFields(d: IntakeDefaults, p?: ReturnType<typeof parseArrivalText>): Fields {
   return {
@@ -303,25 +301,10 @@ export function IntakeBatch({
                   <th>ไฟล์</th>
                   <th>สถานะ</th>
                   <th>JOB TYPE</th>
-                  <th>PRODUCT</th>
-                  <th>BL TYPE</th>
-                  <th>SHIPLINE</th>
                   <th className="batch-col-shipper">SHIPPER</th>
                   <th className="batch-col-bl">B/L NO.</th>
-                  <th className="batch-col-wide">CONTAINER NO.</th>
-                  <th>QUANTITY</th>
-                  <th>WEIGHT (KG)</th>
-                  <th>VESSEL</th>
-                  <th>VOYAGE</th>
-                  <th>ETA</th>
                   <th>CONSIGNEE</th>
                   <th>NOTIFY PARTY</th>
-                  <th>CLIENT IN CHARGE</th>
-                  <th>PORT OF LOADING</th>
-                  <th>PORT OF DISCHARGE</th>
-                  <th>PORT TERMINAL</th>
-                  <th>DEM FREE (วัน)</th>
-                  <th>DET FREE (วัน)</th>
                 </tr>
               </thead>
               <tbody>
@@ -350,14 +333,6 @@ export function IntakeBatch({
                       </select>
                     )
                   );
-                  const byName = (key: 'containerType' | 'packageType', list: Option[]) => (
-                    locked ? f[key] : (
-                      <select className="batch-input narrow" value={f[key]} onChange={(e) => setField(i, key, e.target.value)}>
-                        {list.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
-                      </select>
-                    )
-                  );
-                  const count = containerList(f.containers).length;
                   return (
                     <tr key={`${r.file.name}-${i}`} className={r.savedAs ? 'batch-saved' : undefined}>
                       <td className="col-no">{i + 1}</td>
@@ -388,15 +363,6 @@ export function IntakeBatch({
                           : <span className="badge neutral">{r.message}</span>}
                       </td>
                       <td>{select('jobTypeId', options.jobTypes)}</td>
-                      <td>{input('product')}</td>
-                      <td>
-                        {locked ? f.blType : (
-                          <select className="batch-input narrow" value={f.blType} onChange={(e) => setField(i, 'blType', e.target.value)}>
-                            {BL_TYPES.map((v) => <option key={v}>{v}</option>)}
-                          </select>
-                        )}
-                      </td>
-                      <td>{input('shipline')}</td>
                       <td>
                         {locked ? (r.shipperName ?? '-') : (
                           <div className="batch-shipper">
@@ -433,58 +399,8 @@ export function IntakeBatch({
                         )}
                         {!r.savedAs && dupOf(r) ? <small className="dup-note">⚠️ BL ซ้ำกับ {dupOf(r)}</small> : null}
                       </td>
-                      <td>
-                        <div className="batch-pair">
-                          {locked ? (f.containers || '-') : (
-                            <textarea
-                              className="batch-input"
-                              rows={Math.min(4, Math.max(1, count))}
-                              value={f.containers}
-                              placeholder="เลขตู้ คั่นด้วยลูกน้ำ"
-                              onChange={(e) => setField(i, 'containers', e.target.value)}
-                            />
-                          )}
-                          {byName('containerType', options.containerTypes)}
-                        </div>
-                        <small className="batch-sub">{count} ตู้</small>
-                      </td>
-                      <td>
-                        <div className="batch-pair">
-                          {input('unitAmount', { type: 'number', narrow: true })}
-                          {byName('packageType', options.packageTypes)}
-                        </div>
-                      </td>
-                      <td>{input('grossWeight', { narrow: true })}</td>
-                      <td>{input('vessel')}</td>
-                      <td>{input('voyage', { narrow: true })}</td>
-                      <td>{input('eta', { type: 'date', narrow: true })}</td>
                       <td>{select('consigneeId', options.consignees, '—')}</td>
                       <td>{select('notifyPartyId', options.notify, '—')}</td>
-                      <td>
-                        {locked ? nameOf(options.people, f.personId) : (
-                          <SearchSelect
-                            choices={options.people}
-                            value={f.personId}
-                            placeholder="พิมพ์ค้นหาผู้รับผิดชอบ"
-                            onChange={(id) => setField(i, 'personId', id)}
-                          />
-                        )}
-                      </td>
-                      <td>
-                        {locked ? (f.originPort || '-') : (
-                          <SearchText
-                            name={`originPort-${i}`}
-                            choices={options.originPorts}
-                            value={f.originPort}
-                            onChange={(v) => setField(i, 'originPort', v)}
-                            placeholder="เช่น NAGOYA"
-                          />
-                        )}
-                      </td>
-                      <td>{select('portId', options.ports, '—')}</td>
-                      <td>{select('terminalId', options.terminals, '— เลือก —')}</td>
-                      <td>{input('demDays', { type: 'number', narrow: true })}</td>
-                      <td>{input('detDays', { type: 'number', narrow: true })}</td>
                     </tr>
                   );
                 })}
@@ -508,8 +424,9 @@ export function IntakeBatch({
             </button>
           </div>
           <p className="batch-note">
-            กดชื่อไฟล์เพื่อเปิดดูเอกสาร · ทุกช่องตรงกับฟอร์มทีละใบและแก้ในตารางได้ (เลื่อนตารางไปทางขวา) ·
-            ต้องมีเลข BL และ Shipper จึงบันทึกได้ · ค่าที่อ่านไม่ได้ระบบเติมค่าตั้งต้นให้เหมือนฟอร์มทีละใบ ·
+            กดชื่อไฟล์เพื่อเปิดดูเอกสาร · แก้ JOB TYPE · SHIPPER · B/L NO. · CONSIGNEE · NOTIFY PARTY ในตารางได้ ·
+            ช่องอื่น (ตู้ · เรือ · ETA · น้ำหนัก · ท่า ฯลฯ) ใช้ค่าที่อ่านได้จากไฟล์ / ค่าตั้งต้น แก้ต่อที่หน้างานหลังบันทึก ·
+            ต้องมีเลข BL และ Shipper จึงบันทึกได้ ·
             รถยนต์เก่าที่ Notify ไม่ใช่ KOLA ระบบเปลี่ยน JOB TYPE เป็น MUO ให้ตอนบันทึก ·
             ใบที่ต้องตัดหน้าหรือมีหลาย BL ให้ใช้ฟอร์มทีละใบ
           </p>
