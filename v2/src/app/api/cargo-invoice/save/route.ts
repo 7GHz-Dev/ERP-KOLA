@@ -5,7 +5,10 @@ import { jobs } from '@/db/schema';
 import { logActivity } from '@/lib/actions/common';
 import { storeInvoicePdf } from '@/lib/eoffice-bundle';
 import { storeJobFileVersion } from '@/lib/job-files';
-import { parseCargoInvoice } from '@/lib/cargo-invoice/parse';
+import { engineDesc, parseCargoInvoice } from '@/lib/cargo-invoice/parse';
+import { enginePrefix, existingEngineNumber, finalEngineText } from '@/lib/cargo-invoice/engine-format';
+import { finalizeJanTrading } from '@/lib/cargo-invoice/jan-trading';
+import { assignEngineNumbers } from '@/lib/engine-numbers';
 import { allRules, lookup, TARIFF_CODE } from '@/lib/cargo-invoice/tariff';
 import { writeSummary } from '@/lib/cargo-invoice/write';
 import { cargoUser, invoiceFile, json } from '@/lib/cargo-invoice/http';
@@ -19,6 +22,9 @@ export const maxDuration = 60;
  * ไม่เชื่อรายการรถที่หน้าเว็บส่งมา — อ่านไฟล์ใหม่ที่เซิร์ฟเวอร์ แล้วตรวจพิกัดที่เลือกกับกฎอีกรอบ
  * พิกัดต้องมาจากกฎเสมอ (ตรงตัวเดียว หรือเลือกจากหลายตัวที่ตรง) ไม่มีการพิมพ์พิกัดลอย ๆ
  * จากนั้นเขียนตารางสรุปลงไฟล์ เก็บเป็นเวอร์ชันใหม่ของ FINAL_INVOICE และแปลง PDF สำหรับชุด E-Office
+ *
+ * JAN TRADING จัดหน้า invoice ให้พร้อมพิมพ์ด้วย (jan-trading.ts): BL ของงาน · ออกเลขเครื่อง · ตัดแถว COLOR และค่าใช้จ่ายอื่น
+ * เลข BL ใช้ของงานเสมอ — ต่อไปปุ่มนี้จะอยู่ในแถวงานที่ Pending job > 3. Final Invoice ซึ่งรู้งานอยู่แล้ว
  */
 export async function POST(request: Request) {
   const user = await cargoUser();
@@ -34,11 +40,15 @@ export async function POST(request: Request) {
 
   const inv = await parseCargoInvoice(file.bytes);
   if (inv.errors.length) return json({ error: `ไฟล์มีปัญหา: ${inv.errors[0]}` }, 400);
+  const jan = inv.pattern === 'JAN TRADING';
+  const jobBl = (job.blNo ?? '').replace(/\s/g, '').toUpperCase();
   // ใบที่ช่อง B/L ว่าง ใช้ BL ของงานที่เลือก — worker สร้าง Draft ต้องมี BL ในตารางสรุป (P14)
-  if (!inv.blNo) {
-    if (!job.blNo) return json({ error: `ใบนี้ไม่มีเลข BL และงาน ${job.jobNo} ก็ยังไม่มีเลข BL — ใส่ BL ให้งานก่อน` }, 400);
-    inv.blNo = job.blNo.replace(/\s/g, '').toUpperCase();
+  // JAN TRADING ใช้ BL ของงานเสมอ (เขียนลงช่อง B/L NO ของใบด้วย)
+  if (jan ? jobBl : !inv.blNo) {
+    if (!jobBl) return json({ error: `ใบนี้ไม่มีเลข BL และงาน ${job.jobNo} ก็ยังไม่มีเลข BL — ใส่ BL ให้งานก่อน` }, 400);
+    inv.blNo = jobBl;
   }
+  if (!inv.blNo) return json({ error: `งาน ${job.jobNo} ยังไม่มีเลข BL — ใส่ BL ให้งานก่อน` }, 400);
   const bad = inv.cars.find((c) => c.problems.length);
   if (bad) return json({ error: `รถคันที่ ${bad.no} (${bad.chassis || '-'}) ข้อมูลไม่ครบ: ${bad.problems[0]}` }, 400);
 
@@ -63,11 +73,34 @@ export async function POST(request: Request) {
     tariffs.push(code);
   }
 
-  const bytes = await writeSummary(file.bytes, inv, tariffs);
+  let source = file.bytes;
+  let engines: { issued: number; reused: number } | null = null;
+  if (jan) {
+    const total = inv.cars.reduce((s, c) => s + (c.price ?? 0), 0);
+    const layout = (texts: string[]) => finalizeJanTrading(file.bytes, { blNo: inv.blNo, engines: texts, total });
+    // จัดหน้าด้วยเลขสมมติก่อน — ไฟล์ผิดรูปแบบจะได้รู้ก่อนออกเลขเครื่องจริง
+    try {
+      await layout(inv.cars.map((c) => finalEngineText(c, '0000000')));
+    } catch (e) {
+      return json({ error: `จัดหน้า Final Invoice ไม่ได้: ${e instanceof Error ? e.message : String(e)}` }, 400);
+    }
+    const assigned = await assignEngineNumbers({
+      jobId: job.id, blNo: inv.blNo, invoiceNo: inv.invoiceNo, sourceFile: file.name,
+      cars: inv.cars.map((c) => ({ chassis: c.chassis, prefix: enginePrefix(c.engine), existing: existingEngineNumber(c.engine) })),
+    });
+    inv.cars.forEach((c, i) => {
+      // use_desc_good2 มีเลขเครื่องเต็มแล้ว — worker Draft ใช้ตามนี้ ไม่เติมเลขซ้ำ
+      c.engine = `${enginePrefix(c.engine)}-${assigned.numbers[i]}`;
+      c.desc2 = engineDesc(c.engine, c.fuel, c.cc, c.year);
+    });
+    source = await layout(inv.cars.map((c, i) => finalEngineText(c, assigned.numbers[i])));
+    engines = { issued: assigned.issued, reused: assigned.reused };
+  }
+  const bytes = await writeSummary(source, inv, tariffs);
   const stored = await storeJobFileVersion({
     jobId: job.id, category: 'FINAL_INVOICE', bytes, fileName: file.name,
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    userId: user.id, note: `สร้างจาก Create Cargo Invoice · ${inv.pattern} · ${inv.cars.length} คัน`,
+    userId: user.id, note: `สร้างจาก Create Cargo Invoice · ${inv.pattern} · ${inv.cars.length} คัน${engines ? ` · เลขเครื่องใหม่ ${engines.issued}` : ''}`,
     changeReason: 'บันทึกใหม่จาก Create Cargo Invoice',
   });
 
@@ -76,9 +109,9 @@ export async function POST(request: Request) {
   try { pdf = Boolean(await storeInvoicePdf(job.id, user.id, bytes)); } catch { pdf = false; }
 
   await logActivity(user.id, stored.current ? 'REPLACE_FILE' : 'UPLOAD_FILE', 'FILE', stored.id,
-    { jobId: job.id, category: 'FINAL_INVOICE', version: stored.version, source: 'CARGO_INVOICE', cars: inv.cars.length });
+    { jobId: job.id, category: 'FINAL_INVOICE', version: stored.version, source: 'CARGO_INVOICE', cars: inv.cars.length, engines });
   revalidatePath('/pending');
   revalidatePath('/fah/fn');
 
-  return json({ ok: true, jobId: job.id, jobNo: job.jobNo, fileId: stored.id, version: stored.version, pdf });
+  return json({ ok: true, jobId: job.id, jobNo: job.jobNo, fileId: stored.id, version: stored.version, pdf, engines });
 }

@@ -520,32 +520,38 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
          * และต้องเล็กกว่าหัวตารางไว้ ไม่งั้นหัวกับข้อมูลจะกลืนกัน
          */
         const natural = (cell.font?.size ?? 11) * scale;
+        /*
+         * ช่องที่ขึ้นบรรทัดในตัว (ที่อยู่ผู้รับหลายบรรทัด) วาดทีละบรรทัด
+         * เดิมวัดความกว้างทั้งก้อนเป็นบรรทัดเดียว ตัวอักษรถูกย่อจนเล็กมาก แล้วบรรทัดที่เหลือล้นลงไปทับแถวถัดไป
+         */
+        const lines = text.split(/\r?\n/);
+        const widthOf = (sz: number) => Math.max(...lines.map((l) => font.widthOfTextAtSize(l, sz)));
+        const LINE = 1.2;
+        const blockOf = (sz: number) => sz * 0.72 + (lines.length - 1) * sz * LINE;
         const ownWidth = colW.slice(ci, ci + spanCols).reduce((a, b) => a + b, 0) * scale;
-        const spills = font.widthOfTextAtSize(text, natural) > ownWidth - 4;
+        const spills = widthOf(natural) > ownWidth - 4;
 
         const room = roomFor(ri, ci, spanCols, align) - 4;
         let size = natural;
 
         // ยกขึ้นเฉพาะเมื่อที่ว่างข้าง ๆ รับขนาดใหม่ไหว ไม่งั้นจะไปโดนย่อกลับจนเล็กกว่าเดิม
-        if (spills) {
+        if (spills && lines.length === 1) {
           const raised = Math.max(natural, MIN_SPILL_SIZE * scale);
-          if (font.widthOfTextAtSize(text, raised) <= room) size = raised;
+          if (widthOf(raised) <= room) size = raised;
         }
 
-        // ย่อขนาดต่อเมื่อยาวเกินที่ล้นไปช่องว่างข้าง ๆ ได้แล้วจริง ๆ
-        while (size > 4 && font.widthOfTextAtSize(text, size) > room) size -= 0.25;
+        // ย่อขนาดต่อเมื่อยาวเกินที่ล้นไปช่องว่างข้าง ๆ ได้แล้วจริง ๆ (หลายบรรทัด: สูงเกินช่องด้วย)
+        while (size > 4 && (widthOf(size) > room || (lines.length > 1 && blockOf(size) > h - 2))) size -= 0.25;
 
-        const textW = font.widthOfTextAtSize(text, size);
-        const tx = align === 'center' ? x + (w - textW) / 2
-          : align === 'right' ? x + w - textW - 2
-            : x + 2;
-
-        page.drawText(text, {
-          x: tx,
-          y: yTop - h + (h - size * 0.72) / 2,
-          size,
-          font,
-          color: black,
+        // บรรทัดแรกเริ่มให้ทั้งก้อนอยู่กลางช่องแนวตั้ง — บรรทัดเดียวได้ตำแหน่งเดิมทุกประการ
+        const firstBase = yTop - (h - blockOf(size)) / 2 - size * 0.72;
+        lines.forEach((line, i) => {
+          if (!line) return;
+          const lineW = font.widthOfTextAtSize(line, size);
+          const tx = align === 'center' ? x + (w - lineW) / 2
+            : align === 'right' ? x + w - lineW - 2
+              : x + 2;
+          page.drawText(line, { x: tx, y: firstBase - i * size * LINE, size, font, color: black });
         });
       }
     }

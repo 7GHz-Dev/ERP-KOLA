@@ -34,7 +34,8 @@ export async function engineLookup(numbers: string[], chassis: string[]): Promis
 }
 
 export type IssueInput = {
-  taskId: string; jobId: string | null; blNo: string; invoiceNo: string; sourceFile: string;
+  /** งาน Draft ใบขนที่ขอเลข — null เมื่อออกจาก Create Cargo Invoice */
+  taskId: string | null; jobId: string | null; blNo: string; invoiceNo: string; sourceFile: string;
   /** คันที่ต้องสุ่มเลขใหม่ ตามลำดับรถใน invoice */
   issue: { head: string; chassis: string }[];
   /** คันที่ในไฟล์มีเลขครบแล้วแต่ยังไม่อยู่ในตาราง — บันทึกเพิ่ม */
@@ -140,4 +141,42 @@ export async function searchEngineNumbers(filter: EngineFilter, issue: 'number' 
       numberUsedBy: dupNumber.get(r.number) ?? 1, chassisNumbers: multiChassis.get(r.chassis) ?? 1,
     })),
   };
+}
+
+const blKey = (s: string) => s.replace(/[^0-9A-Z]/gi, '').toUpperCase();
+
+/**
+ * เลขเครื่องของรถทุกคันใน Final Invoice ที่ Create Cargo Invoice จัดหน้าให้ (JAN TRADING) — คืนเลข 7 หลักตามลำดับรถ
+ *
+ *   ในไฟล์มีเลข 7 หลักแล้ว (อัปโหลดไฟล์ Final เดิมซ้ำ)  ใช้เลขนั้น และบันทึกเพิ่มถ้ายังไม่อยู่ในตาราง
+ *   ตัวถังนี้เคยได้เลขใน BL เดียวกันแล้ว               ใช้เลขเดิม — บันทึก Final Invoice ซ้ำไม่ทำให้ได้เลขใหม่
+ *   นอกนั้น                                           สุ่มเลขใหม่ไม่ซ้ำทั้งตาราง (กติกาเดียวกับ worker Draft ใบขน)
+ *
+ * worker สร้าง Draft ใบขนอ่านเลขจากไฟล์นี้ต่อ เจอว่าเป็นเลขของตัวถังเดิมในตาราง จึงใช้เลขเดิม ไม่สุ่มซ้ำ
+ */
+export async function assignEngineNumbers(input: {
+  jobId: string; blNo: string; invoiceNo: string; sourceFile: string;
+  cars: Array<{ chassis: string; prefix: string; existing: string | null }>;
+}): Promise<{ numbers: string[]; issued: number; reused: number }> {
+  const history = await engineLookup([], input.cars.map((c) => c.chassis));
+  const sameBl = (chassis: string) => history
+    .filter((r) => r.chassis === chassis && blKey(r.bl) === blKey(input.blNo))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0]?.number ?? null;
+
+  const numbers: Array<string | null> = input.cars.map((c) => c.existing ?? sameBl(c.chassis));
+  const add = input.cars.flatMap((c) => (c.existing ? [{ number: c.existing, full: `${c.prefix}-${c.existing}`, chassis: c.chassis }] : []))
+    .filter((a) => !history.some((r) => r.number === a.number && r.chassis === a.chassis));
+  const fresh = input.cars.map((c, i) => ({ ...c, i })).filter((c) => !numbers[c.i]);
+  // เลขเดียวกันกับสองคันในใบเดียวกันไม่ได้
+  const given = numbers.filter(Boolean) as string[];
+  if (new Set(given).size !== given.length) throw new Error('เลขเครื่องในไฟล์ซ้ำกันเอง — ตรวจช่อง ENGINE NO.');
+
+  if (fresh.length || add.length) {
+    const issued = await issueEngineNumbers({
+      taskId: null, jobId: input.jobId, blNo: input.blNo, invoiceNo: input.invoiceNo, sourceFile: input.sourceFile,
+      issue: fresh.map((c) => ({ head: c.prefix, chassis: c.chassis })), add,
+    });
+    fresh.forEach((c, k) => { numbers[c.i] = issued[k].number; });
+  }
+  return { numbers: numbers as string[], issued: fresh.length, reused: input.cars.length - fresh.length };
 }

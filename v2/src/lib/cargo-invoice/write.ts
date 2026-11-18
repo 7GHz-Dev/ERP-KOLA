@@ -149,6 +149,16 @@ function staleRows(xml: string, from: number): number[] {
   return out;
 }
 
+/** calcChain ที่ยังอ้างสูตรที่ถูกลบ ทำให้ Excel ฟ้องว่าไฟล์เสีย — ลบทิ้ง Excel สร้างใหม่เองตอนเปิด */
+export async function dropCalcChain(zip: JSZip) {
+  if (!zip.file('xl/calcChain.xml')) return;
+  zip.remove('xl/calcChain.xml');
+  const relsPath = 'xl/_rels/workbook.xml.rels';
+  zip.file(relsPath, (await zip.file(relsPath)!.async('string')).replace(/<Relationship\b[^>]*calcChain[^>]*\/>/g, ''));
+  const ct = '[Content_Types].xml';
+  zip.file(ct, (await zip.file(ct)!.async('string')).replace(/<Override\b[^>]*\/xl\/calcChain\.xml[^>]*\/>/g, ''));
+}
+
 /**
  * เขียนตารางสรุปลงไฟล์ — tariffs คือพิกัด 8 หลักของรถแต่ละคัน (ลำดับเดียวกับ inv.cars)
  */
@@ -172,13 +182,6 @@ export async function writeSummary(data: Buffer | Uint8Array, inv: CargoInvoice,
   const { xml, formulaRemoved } = writeCells(original, updates);
   zip.file(sheetPath, xml);
 
-  // calcChain ที่ยังอ้างสูตรที่ถูกลบ ทำให้ Excel ฟ้องว่าไฟล์เสีย — ลบทิ้ง Excel สร้างใหม่เองตอนเปิด
-  if (formulaRemoved && zip.file('xl/calcChain.xml')) {
-    zip.remove('xl/calcChain.xml');
-    const relsPath = 'xl/_rels/workbook.xml.rels';
-    zip.file(relsPath, (await zip.file(relsPath)!.async('string')).replace(/<Relationship\b[^>]*calcChain[^>]*\/>/g, ''));
-    const ct = '[Content_Types].xml';
-    zip.file(ct, (await zip.file(ct)!.async('string')).replace(/<Override\b[^>]*\/xl\/calcChain\.xml[^>]*\/>/g, ''));
-  }
+  if (formulaRemoved) await dropCalcChain(zip);
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 }

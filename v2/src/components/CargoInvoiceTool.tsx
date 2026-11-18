@@ -6,6 +6,7 @@ import { Fragment, useMemo, useRef, useState } from 'react';
 import type { CargoCar, CargoInvoice } from '@/lib/cargo-invoice/parse';
 import type { JobMatch } from '@/lib/cargo-invoice/jobs';
 import type { TariffResult, TariffRule } from '@/lib/cargo-invoice/tariff';
+import { finalEngineText } from '@/lib/cargo-invoice/engine-format';
 import { CargoReference } from './CargoReference';
 
 /**
@@ -15,7 +16,11 @@ import { CargoReference } from './CargoReference';
  */
 
 type Tariff = TariffResult & { similar: TariffRule[]; suggest: { ccMin: number; ccMax: number } | null };
-type Saved = { jobId: string; jobNo: string; fileId: string; version: number; pdf: boolean };
+type Saved = {
+  jobId: string; jobNo: string; fileId: string; version: number; pdf: boolean;
+  /** JAN TRADING: เลขเครื่องที่ออกใหม่ / ใช้เลขเดิม */
+  engines: { issued: number; reused: number } | null;
+};
 
 const fmt = (n: number | null) => (n === null ? '-' : n.toLocaleString('en-US'));
 const STEPS = ['อัปโหลด Invoice', 'ตรวจข้อมูล', 'ดึงพิกัด (Tariff)', 'บันทึก Final Invoice'];
@@ -45,6 +50,8 @@ export function CargoInvoiceTool() {
   const [rulesVersion, setRulesVersion] = useState(0);
 
   const job = jobs.find((j) => j.id === jobId) ?? null;
+  /** JAN TRADING — ระบบจัดหน้า Final Invoice ให้ (BL ของงาน · เลขเครื่อง · ตัดแถว COLOR และค่าใช้จ่ายอื่น) */
+  const jan = inv?.pattern === 'JAN TRADING';
 
   const reset = () => {
     setFile(null); setInv(null); setJobs([]); setJobId(''); setMatchedBy('bl'); setJobQuery(''); setTariffs(null); setChosen([]);
@@ -216,8 +223,12 @@ export function CargoInvoiceTool() {
               <div><span>วันที่ Invoice</span><b>{inv.invoiceDate || '-'}</b></div>
               <div>
                 <span>BL No.</span>
-                {inv.blNo ? <b>{inv.blNo}</b> : <b className="cgi-warn">ใบไม่ได้กรอก</b>}
-                {inv.blNo ? null : <small>{job?.blNo ? `ใช้ BL ของงาน: ${job.blNo}` : 'จะใช้ BL ของงานที่เลือก'}</small>}
+                {jan ? (
+                  // JAN TRADING ใช้ BL ของงานเสมอ — เขียนลงช่อง B/L NO ของใบให้
+                  job?.blNo ? <b>{job.blNo}</b> : <b className="cgi-warn">{job ? 'งานยังไม่มี BL' : 'ใช้ BL ของงานที่เลือก'}</b>
+                ) : inv.blNo ? <b>{inv.blNo}</b> : <b className="cgi-warn">ใบไม่ได้กรอก</b>}
+                {jan ? <small>{inv.blNo && job?.blNo && inv.blNo !== job.blNo.replace(/\s/g, '').toUpperCase() ? `ในใบเขียน ${inv.blNo} — ใช้ BL ของงานแทน` : 'จากแถวงาน · เขียนลงช่อง B/L NO ให้'}</small>
+                  : inv.blNo ? null : <small>{job?.blNo ? `ใช้ BL ของงาน: ${job.blNo}` : 'จะใช้ BL ของงานที่เลือก'}</small>}
                 {inv.bookingNo ? <small>Booking {inv.bookingNo}</small> : null}
               </div>
               <div><span>เรือ</span><b>{inv.vessel || '-'}</b></div>
@@ -259,7 +270,10 @@ export function CargoInvoiceTool() {
             </ul>
             {inv.charges.length ? (
               <div className="cgi-charges">
-                <span className="filter-label">ยอดอื่นในใบ (ไม่ใช่ราคารถ — ไม่เขียนลงตารางสรุป)</span>
+                <span className="filter-label">
+                  ยอดอื่นในใบ (ไม่ใช่ราคารถ — ไม่เขียนลงตารางสรุป)
+                  {jan ? ' · Final Invoice ตัดแถวเหล่านี้ออก ยอด TOTAL เหลือราคารถรวม' : ''}
+                </span>
                 <ul>
                   {inv.charges.map((c) => (
                     <li key={`${c.sheet}-${c.row}`}>
@@ -312,6 +326,7 @@ export function CargoInvoiceTool() {
                           key={`${c.no}-${c.chassis}`}
                           car={c}
                           multiSheet={inv.sheets.length > 1}
+                          jan={jan}
                           tariff={tariffs?.[i] ?? null}
                           code={chosen[i] ?? ''}
                           onPick={(code) => setChosen((prev) => prev.map((p, k) => (k === i ? code : p)))}
@@ -333,6 +348,9 @@ export function CargoInvoiceTool() {
               <div className="cgi-done">
                 <b>✓ บันทึก Final Invoice แล้ว — งาน <Link href={`/job/${saved.jobId}`}>{saved.jobNo}</Link> (v{saved.version})</b>
                 <span>{saved.pdf ? 'แปลงเป็น PDF สำหรับชุด E-Office ให้แล้ว' : 'แปลง PDF ไม่สำเร็จ — ตอนรวมชุด E-Office ระบบจะลองใหม่'}</span>
+                {saved.engines ? (
+                  <span>เลขเครื่อง: ออกใหม่ {saved.engines.issued} คัน{saved.engines.reused ? ` · ใช้เลขเดิม ${saved.engines.reused} คัน` : ''} — ดูได้ที่ตารางเลขเครื่องด้านล่าง</span>
+                ) : null}
                 <div>
                   <Link className="button primary" href="/pending?tab=fn">ไปส่งอนุมัติ Final Invoice →</Link>
                   <button type="button" className="button" onClick={reset}>ทำใบถัดไป</button>
@@ -344,7 +362,9 @@ export function CargoInvoiceTool() {
                   {!job ? 'เลือกงานที่จะบันทึกก่อน'
                     : !tariffs ? 'กด "ดึงพิกัด" ก่อนบันทึก'
                       : !readyToSave ? 'ยังบันทึกไม่ได้ — ต้องมีพิกัดครบทุกคันและข้อมูลรถครบ'
-                        : `พร้อมบันทึกเป็น Final Invoice ของงาน ${job.jobNo} · ระบบเขียนตารางสรุปและพิกัดลงไฟล์ให้ worker สร้าง Draft ใบขนใช้ต่อ`}
+                        : jan
+                          ? `พร้อมบันทึกเป็น Final Invoice ของงาน ${job.jobNo} · ระบบจัดหน้าแบบ JAN TRADING: ใส่ BL ของงาน · ออกเลขเครื่อง · ตัดแถว COLOR และค่าใช้จ่ายอื่น · TOTAL เป็นราคารถรวม แล้วแปลง PDF พร้อมพิมพ์`
+                          : `พร้อมบันทึกเป็น Final Invoice ของงาน ${job.jobNo} · ระบบเขียนตารางสรุปและพิกัดลงไฟล์ให้ worker สร้าง Draft ใบขนใช้ต่อ`}
                 </p>
                 <button type="button" className="button primary" disabled={!readyToSave || Boolean(busy)} onClick={() => void save()}>
                   ④ บันทึก Final Invoice
@@ -362,9 +382,9 @@ export function CargoInvoiceTool() {
 }
 
 function CarRow({
-  car, multiSheet, tariff, code, onPick, adding, onAdd, onAdded,
+  car, multiSheet, jan, tariff, code, onPick, adding, onAdd, onAdded,
 }: {
-  car: CargoCar; multiSheet: boolean; tariff: Tariff | null; code: string; onPick: (code: string) => void;
+  car: CargoCar; multiSheet: boolean; jan: boolean; tariff: Tariff | null; code: string; onPick: (code: string) => void;
   adding: boolean; onAdd: () => void; onAdded: () => Promise<void>;
 }) {
   const bad = car.problems.length > 0;
@@ -375,7 +395,12 @@ function CarRow({
         <td>{car.brand}</td>
         <td>{car.model}</td>
         <td><b>{car.chassis || '-'}</b></td>
-        <td>{car.engine || '-'}</td>
+        <td>
+          {jan && car.engine ? (
+            // เลข 7 หลักออกตอนบันทึก — แสดงรูปแบบที่จะเขียนลงใบ
+            <><b>{finalEngineText(car)}</b><br /><small className="muted">ในใบ: {car.engine}</small></>
+          ) : (car.engine || '-')}
+        </td>
         <td>{car.fuel || '-'}</td>
         <td className="num">{fmt(car.cc)}</td>
         <td className="num">{car.year ?? '-'}</td>
