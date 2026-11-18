@@ -42,6 +42,8 @@ export default async function NamApprovePage({
         confirmText="อนุมัติ {n} รายการเข้าตารางหลักใช่ไหม"
         // ต้องบอกให้ชัดว่าเป็นการอนุมัติ ไม่งั้นฝั่งเซิร์ฟเวอร์จะตีเป็นตีกลับตามค่าตั้งต้น
         fields={{ decision: 'APPROVED' }}
+        // ตรวจหลายใบต่อกันในแผงเดียว (ก่อนหน้า/ถัดไป) แล้วค่อยกลับมาอนุมัติทีเดียว หรืออนุมัติในแผงทีละใบ
+        open={{ label: '👁 ตรวจ {n} รายการ', href: '/bl-review/{first}?aq={ids}' }}
       >
         <JobTable
           basePath="/nam/approve"
@@ -67,7 +69,7 @@ export default async function NamApprovePage({
           ]}
           rows={rows} total={total} carry={carry} sortBy={sortBy} sortDir={sortDir}
           empty="ไม่มีรายการรออนุมัติ"
-          hint="ติ๊กเลือกหลายรายการแล้วกดอนุมัติทีเดียวได้ · กด ดูเอกสาร เพื่อตรวจไฟล์ AN/BL คู่กับข้อมูลที่กรอก"
+          hint="ติ๊กหลายรายการแล้วกด ตรวจ เพื่อดูเอกสารทีละใบต่อกัน (ก่อนหน้า/ถัดไป) หรือกดอนุมัติทีเดียว · กด ดูเอกสาร เพื่อตรวจใบเดียว"
         />
       </BulkBar>
     </>

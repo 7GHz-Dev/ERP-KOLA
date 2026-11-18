@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { ApproveReject } from '@/components/ActionForms';
 import type { PreviewDoc } from '@/components/BlEditPanel';
+import { QueueNav } from '@/components/QueueNav';
+import type { ReviewQueue } from '@/lib/queries/bl-review';
 
 /**
  * แผงตรวจเอกสารก่อนอนุมัติ — ข้อมูลที่กรอกไว้อยู่ซ้าย ไฟล์ AN/BL อยู่ขวา
@@ -15,13 +17,15 @@ import type { PreviewDoc } from '@/components/BlEditPanel';
 const LABEL: Record<string, string> = { ARRIVAL_NOTICE: 'Arrival Notice', BL: 'Bill of Lading' };
 
 export function BlReviewPanel({
-  rows, approvalId, source, other,
+  rows, approvalId, source, other, queue,
 }: {
   /** คู่ป้าย-ค่า ที่เรนเดอร์มาจากฝั่งเซิร์ฟเวอร์แล้ว */
   rows: Array<[string, string]>;
   approvalId: string | null;
   source?: PreviewDoc;
   other?: PreviewDoc;
+  /** ตรวจหลายใบต่อกัน (ติ๊กจากหน้า Approve B/L) */
+  queue?: ReviewQueue | null;
 }) {
   const [shown, setShown] = useState(source?.id ?? '');
   const docs = [source, other].filter(Boolean) as PreviewDoc[];
@@ -32,6 +36,10 @@ export function BlReviewPanel({
   return (
     <div className="bl-edit">
       <div className="bl-edit-form">
+        {queue ? (
+          <QueueNav labels={queue.labels} index={queue.index}
+            hrefs={queue.jobIds.map((j) => `/bl-review/${j}?aq=${queue.approvalIds.join(',')}`)} />
+        ) : null}
         <p className="edit-bl-group">ข้อมูลที่กรอกไว้</p>
         <dl className="review-kv">
           {rows.map(([k, v]) => (

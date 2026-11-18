@@ -68,3 +68,29 @@ export async function loadBlReview(jobId: string) {
     ] as Array<[string, string]>,
   };
 }
+
+export type ReviewQueue = { approvalIds: string[]; jobIds: string[]; labels: string[]; index: number };
+
+/**
+ * ชุดที่ติ๊กตรวจต่อกัน (Approve B/L > ติ๊กหลายรายการ > ตรวจ) — มาจาก ?aq=<approval id คั่นลูกน้ำ>
+ * หน้าอนุมัติติ๊กด้วย id ของรายการอนุมัติ จึงแปลงเป็นงานตรงนี้ · id ใน URL เป็นได้ทั้ง id งานหรือ id รายการอนุมัติ (ใบแรก)
+ * ป้ายบอกเลข BL + ผลตัดสินแล้ว (อนุมัติ / ตีกลับ) ให้รู้ว่าเหลือกี่ใบ
+ */
+export async function reviewQueue(id: string, raw: string | string[] | undefined): Promise<{ jobId: string; queue: ReviewQueue | null }> {
+  const ids = [...new Set(String(Array.isArray(raw) ? raw[0] : raw ?? '').split(',').map((v) => v.trim()).filter(Boolean))].slice(0, 100);
+  const asApproval = async () => (await db.select({ jobId: approvals.jobId }).from(approvals).where(eq(approvals.id, id)).limit(1))[0]?.jobId;
+  if (ids.length < 2) return { jobId: (await asApproval()) ?? id, queue: null };
+  const rows = await db.select({ id: approvals.id, jobId: approvals.jobId, status: approvals.status, blNo: jobs.blNo, jobNo: jobs.jobNo })
+    .from(approvals).innerJoin(jobs, eq(jobs.id, approvals.jobId)).where(inArray(approvals.id, ids));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const kept = ids.filter((a) => byId.has(a));
+  const jobId = byId.get(id)?.jobId ?? id;
+  const jobIds = kept.map((a) => byId.get(a)!.jobId);
+  const index = jobIds.indexOf(jobId);
+  if (kept.length < 2 || index < 0) return { jobId, queue: null };
+  const mark = (s: string) => (s === 'APPROVED' ? ' ✓ อนุมัติแล้ว' : s === 'REJECTED' ? ' ✗ ตีกลับแล้ว' : '');
+  return {
+    jobId,
+    queue: { approvalIds: kept, jobIds, index, labels: kept.map((a) => { const r = byId.get(a)!; return `${r.blNo?.trim() || r.jobNo}${mark(r.status)}`; }) },
+  };
+}
