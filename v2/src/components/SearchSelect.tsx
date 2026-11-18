@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 /**
  * ช่องเลือกที่พิมพ์ค้นหาได้
@@ -12,16 +12,41 @@ import { useMemo, useRef, useState } from 'react';
 export type Choice = { id: string; code: string | null; name: string };
 
 export function SearchSelect({
-  choices, value, onChange, placeholder,
+  choices, value, onChange, placeholder, floating,
 }: {
   choices: Choice[];
   value: string;
   onChange: (id: string) => void;
   placeholder: string;
+  /**
+   * รายการลอยเหนือทุกอย่าง (position: fixed ตามตำแหน่งช่อง) — ใช้ในตาราง
+   * กันรายการถูกกรอบตารางตัด หรือซ้อนใต้แถวอื่น · ที่ด้านล่างไม่พอจะเปิดขึ้นด้านบน
+   */
+  floating?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pos, setPos] = useState<CSSProperties | null>(null);
+
+  useEffect(() => {
+    if (!floating || !open) return;
+    const place = () => {
+      const r = inputRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const width = Math.max(r.width, 260);
+      const left = Math.min(r.left, window.innerWidth - width - 8);
+      const below = window.innerHeight - r.bottom;
+      setPos(below >= 250 || below >= r.top
+        ? { position: 'fixed', top: r.bottom + 2, left, width, right: 'auto', maxHeight: Math.min(240, below - 10), zIndex: 1200 }
+        : { position: 'fixed', bottom: window.innerHeight - r.top + 2, top: 'auto', left, width, right: 'auto', maxHeight: Math.min(240, r.top - 10), zIndex: 1200 });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+  }, [floating, open]);
 
   const selected = choices.find((c) => c.id === value) ?? null;
   const label = (c: Choice) => (c.code ? `${c.code} · ${c.name}` : c.name);
@@ -41,6 +66,7 @@ export function SearchSelect({
   return (
     <div className="search-select">
       <input
+        ref={inputRef}
         type="text"
         value={open ? query : selected ? label(selected) : ''}
         placeholder={placeholder}
@@ -65,7 +91,7 @@ export function SearchSelect({
         }}
       />
       {open ? (
-        <ul className="search-select-list">
+        <ul className="search-select-list" style={floating ? pos ?? { display: 'none' } : undefined}>
           {matches.list.length ? (
             matches.list.map((c) => (
               <li key={c.id}>
@@ -89,7 +115,7 @@ export function SearchSelect({
           )}
         </ul>
       ) : null}
-      {open && matches.list.length ? (
+      {open && matches.list.length && !floating ? (
         <div className="search-select-count">
           {query.trim() ? `พบ ${matches.list.length} รายการ` : `ทั้งหมด ${choices.length} รายการ`}
         </div>

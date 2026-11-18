@@ -63,6 +63,7 @@ export function ClientInChargeCell({
         choices={people}
         value={value}
         placeholder="พิมพ์ค้นหาผู้รับผิดชอบ"
+        floating
         onChange={(id) => { void save(id); }}
       />
       {state === 'saving' ? <small className="client-cell-note">กำลังบันทึก…</small> : null}
