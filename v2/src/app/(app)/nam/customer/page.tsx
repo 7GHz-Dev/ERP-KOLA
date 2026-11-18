@@ -60,7 +60,6 @@ export default async function NamCustomerPage({
         return (
           <div className="file-cell">
             <FileChip file={file} />
-            {r.hasInvoiceAlert ? <span className="badge rejected">เปลี่ยนใหม่</span> : null}
             {/* ยืนยันแล้วล็อกไฟล์ไว้ ต้องขออนุมัติก่อนจึงแก้ได้ */}
             {done ? null : (
               <UploadForm jobId={r.id} category="INVOICE_GOODS"

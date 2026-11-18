@@ -183,7 +183,7 @@ export function JobTable({
                 <tr
                   key={row.id}
                   data-open-job={row.id}
-                  className={[rowClass?.(row), row.hasInvoiceAlert ? 'alert' : null]
+                  className={[rowClass?.(row)]
                     .filter(Boolean).join(' ') || undefined}
                 >
                   <td className="col-no">

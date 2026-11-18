@@ -1,7 +1,7 @@
 import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
 import {
-  AcknowledgeInvoice, DraftActions, EofficeRequestForm, FileCustomsForm, MergeEofficeButton,
+  DraftActions, EofficeRequestForm, FileCustomsForm, MergeEofficeButton,
   RequestApproval, ShowReason, UploadForm, DeleteJob } from '@/components/ActionForms';
 import { DraftLocalLaunch, SubmitDraftLocal } from '@/components/DraftLocalRun';
 import { signedColumns } from '@/components/SignedColumns';
@@ -219,7 +219,7 @@ function columnsFor(
       render: (r) => (
         <div className="row-actions">
           <FileChip file={r.currentFiles?.INVOICE_GOODS} />
-          {r.hasInvoiceAlert ? <AcknowledgeInvoice jobId={r.id} /> : null}
+          {/* เปลี่ยน Invoice สินค้าไม่ต้องกดรับทราบแล้ว (ทีมขอ) */}
         </div>
       ),
     },
