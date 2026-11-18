@@ -1,3 +1,4 @@
+import { daysText, freeLastDate, storageLastDate } from '@/lib/free-time';
 import Link from 'next/link';
 import { AcknowledgeInvoice } from '@/components/ActionForms';
 import { addDays, fileSize, formatDate, formatDateTime, num } from '@/lib/format';
@@ -94,8 +95,9 @@ export function JobSummary({
           <Kv label="Job type">{job.jobTypeName ?? '-'}</Kv>
           <Kv label="Description of Goods">{job.product ?? '-'}</Kv>
           <Kv label="ETA Date">{formatDate(job.eta)}{job.etaIsOfficial ? ' (OFC)' : ''}</Kv>
-          <Kv label="Last Date of DEM">{formatDate(addDays(job.eta, job.demDays))}</Kv>
-          <Kv label="Last Date of DET">{formatDate(addDays(job.transportDate, job.detDays))}</Kv>
+          <Kv label="Last Date of DEM">{job.demDays === null ? 'N/A' : formatDate(freeLastDate(job.eta, job.demDays))}</Kv>
+          <Kv label="Last Date of DET">{job.detDays === null ? 'N/A' : formatDate(freeLastDate(job.transportDate, job.detDays))}</Kv>
+          <Kv label="Last Date Free Time (Storage)">{formatDate(storageLastDate(job.eta, job.storageFreeDays))}</Kv>
           <Kv label="Invoice">{invoice ? invoice.fileName : 'รอดำเนินการ'}</Kv>
           <Kv label="Surrender">{surrenderLabel(job.surrenderStatus)}</Kv>
           <Kv label="Bill of Lading No." wide>
@@ -111,7 +113,7 @@ export function JobSummary({
           <Kv label="Port of Loading">{job.originPort ?? '-'}</Kv>
           <Kv label="Port of Discharge">{job.portName ?? '-'}</Kv>
           <Kv label="Port Terminal">{job.terminalName ?? '-'}</Kv>
-          <Kv label="DEM / DET">{job.demDays} / {job.detDays} วัน</Kv>
+          <Kv label="DEM / DET / Storage">{daysText(job.demDays)} / {daysText(job.detDays)} / {job.storageFreeDays ?? 3} วัน</Kv>
           <Kv label="Draft Ref">{job.draftRefNo ?? '-'}</Kv>
           <Kv label="Im-Dcrl No.">{entries[0]?.declarationNo ?? '-'}</Kv>
           <Kv label="Port Release Partner">{job.releasePartner ?? handoff?.partnerName ?? '-'}</Kv>

@@ -53,7 +53,7 @@ export async function loadBlReview(jobId: string) {
       ['Job Type', nameOf(job.jobTypeId)],
       ['Vessel / Voyage', [job.vessel, job.voyage].filter(Boolean).join(' / ')],
       ['ETA', formatDate(job.eta)],
-      ['DEM / DET', `${job.demDays} / ${job.detDays}`],
+      ['DEM / DET', `${job.demDays ?? 'N/A'} / ${job.detDays ?? 'N/A'}`],
       ['เมืองต้นทาง', job.originPort ?? ''],
       ['Port of Discharge', nameOf(job.portId)],
       ['Port Terminal', nameOf(job.terminalId)],

@@ -2,11 +2,13 @@
 
 import { useEffect } from 'react';
 import { DoRowForm, type Choice } from '@/components/DoRowForm';
+import { todayBangkok } from '@/lib/haul-risk';
 
 /**
  * แผงกรอกข้อมูล DO คู่กับไฟล์ Invoice DO
  *
- * FAH ต้องอ่านยอดจาก Invoice DO แล้วคีย์ ETA · Port · Terminal · Partner
+ * หน้าตาแบบแผงแก้ข้อมูล BL (Pending jobs > 1. ใส่ข้อมูล BL > แก้ไข): ฟอร์มซ้าย ไฟล์ Invoice DO ขวา
+ * FAH ต้องอ่านยอดจาก Invoice DO แล้วคีย์ ETA · Port · Terminal · Partner · DEM / DET (บังคับก่อนส่ง) · Storage
  * ถ้าให้กรอกในตาราง ช่องทั้งสี่ต้องเบียดอยู่ในเซลล์เดียวจนซ้อนกันสามบรรทัด
  * และเปิดไฟล์ทีก็บังตารางอีก ย้ายมาไว้ในแผงเดียวกับไฟล์จึงอ่านไปกรอกไปได้
  * โดยช่องไม่ต้องแคบ ส่วนตารางทางขวาเหลือไว้อ่านและใช้คลิกสลับแถว
@@ -30,6 +32,10 @@ export type DoPaneJob = {
   noInvoiceDo?: boolean;
   /** Partner เริ่มต้นของงานนี้ (MUO = ชื่อเดียวกับ Notify Party) · undefined = ใช้ค่าเริ่มต้นของหน้า */
   defaultPartnerId?: string | null;
+  /** วันฟรี — null = N/A · Storage ตั้งต้น 3 วัน */
+  demDays: number | null;
+  detDays: number | null;
+  storageFreeDays: number;
 };
 
 export function DoFillPane({
@@ -83,22 +89,10 @@ export function DoFillPane({
           </div>
         </header>
 
-        <div className="drawer-content do-pane">
-          {/* ไฟล์อยู่บน ฟอร์มอยู่ล่าง อ่านยอดแล้วสายตาไหลลงมาที่ช่องกรอกพอดี */}
-          {src ? (
-            <object className="do-pane-view" data={src} type="application/pdf">
-              <p className="drawer-note warn">
-                เบราว์เซอร์นี้แสดงไฟล์นี้ในหน้าไม่ได้ ·{' '}
-                <a href={src} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
-              </p>
-            </object>
-          ) : job.noInvoiceDo ? (
-            <p className="drawer-note">งาน MUO ไม่ต้องใช้ Invoice DO — Partner แลก DO เอง กรอก ETA · Port · Terminal · Partner แล้วส่งได้เลย</p>
-          ) : (
-            <p className="drawer-note warn">ยังไม่ได้อัปโหลด Invoice DO ของงานนี้</p>
-          )}
-
-          <div className="do-pane-form">
+        <div className="drawer-content">
+          {/* แบบแผงแก้ข้อมูล BL: ฟอร์มซ้าย ไฟล์ขวา อ่านยอดไปกรอกไปได้โดยไม่ต้องเลื่อน */}
+          <div className="bl-edit do-pane-grid">
+          <div className="bl-edit-form do-pane-form">
             <DoRowForm
               jobId={job.id}
               eta={job.eta}
@@ -114,7 +108,26 @@ export function DoFillPane({
               sentAt={sentAt}
               blNo={job.blNo}
               canEditBl={job.canEditBl}
+              demDays={job.demDays}
+              detDays={job.detDays}
+              storageFreeDays={job.storageFreeDays}
+              today={todayBangkok()}
             />
+          </div>
+          <div className="bl-edit-view">
+            {src ? (
+              <object className="bl-edit-file" data={src} type="application/pdf">
+                <p className="drawer-note warn">
+                  เบราว์เซอร์นี้แสดงไฟล์นี้ในหน้าไม่ได้ ·{' '}
+                  <a href={src} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
+                </p>
+              </object>
+            ) : job.noInvoiceDo ? (
+              <p className="drawer-note">งาน MUO ไม่ต้องใช้ Invoice DO — Partner แลก DO เอง กรอกข้อมูลแล้วส่งได้เลย</p>
+            ) : (
+              <p className="drawer-note warn">ยังไม่ได้อัปโหลด Invoice DO ของงานนี้</p>
+            )}
+          </div>
           </div>
         </div>
       </aside>

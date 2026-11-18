@@ -12,6 +12,7 @@ import {
   CUSTOMS_STATUSES, DRAFT_STATUSES, RELEASE_STATUSES, SOURCE_TYPES, SURRENDER_STATUSES,
 } from '@/lib/admin-job-options';
 import { readBlRows, readContainerRows } from '@/lib/admin-job-rows';
+import { readDays } from '@/lib/free-time';
 import { day, logActivity, newId, number, required, runAction, text } from './common';
 
 /**
@@ -55,9 +56,9 @@ async function adminUpdateJobImpl(formData: FormData) {
     if (taken) throw new Error(`JOB No. ${jobNo} มีอยู่แล้ว`);
   }
 
-  const demDays = number(formData.get('demDays'), job.demDays);
-  const detDays = number(formData.get('detDays'), job.detDays);
-  if (demDays < 0 || detDays < 0) throw new Error('จำนวนวัน DEM/DET ติดลบไม่ได้');
+  const demDays = readDays(formData, 'demDays', job.demDays, 'DEM FREE');
+  const detDays = readDays(formData, 'detDays', job.detDays, 'DET FREE');
+  const storageFreeDays = readDays(formData, 'storageFreeDays', job.storageFreeDays, 'STORAGE FREE') ?? 3;
 
   /*
    * master ทุกช่องต้องชี้ไปของที่มีอยู่จริงและเป็นชนิดที่ถูก
@@ -125,8 +126,9 @@ async function adminUpdateJobImpl(formData: FormData) {
       etaIsOfficial: formData.get('etaIsOfficial') === '1',
       transportDate: day(formData.get('transportDate')),
       originPort: str('originPort', 200)?.toUpperCase() ?? null,
-      demDays: Math.round(demDays),
-      detDays: Math.round(detDays),
+      demDays,
+      detDays,
+      storageFreeDays,
       releasePartner: str('releasePartner', 180),
 
       status: oneOf('status', Object.keys(STATUS_LABELS), 'สถานะงาน'),

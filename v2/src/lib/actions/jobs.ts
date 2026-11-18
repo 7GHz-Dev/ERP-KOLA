@@ -15,6 +15,7 @@ import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 import { jobIsOtherCargo, requireJobActor, requireBlEditor } from '@/lib/job-actor';
 import { assertSalePrice } from '@/lib/sale/price-store';
+import { readDays } from '@/lib/free-time';
 import { readContainerRows } from '@/lib/admin-job-rows';
 import { duplicateContainers } from '@/lib/intake-checks';
 import { nextContainerNos } from '@/lib/container-no';
@@ -296,6 +297,13 @@ async function saveDoHandoffImpl(formData: FormData) {
    * สายที่แก้เลข BL ได้ (ออกเลขจริงหลังเรือเข้า) ต้องมีเลขในวงเล็บก่อนส่ง เช่น "KNT2600123 (MEDU1234567)"
    * ใช้ค่าที่ส่งมาในฟอร์มนี้ก่อน เพราะ FAH มักแก้เลขแล้วกดส่งในครั้งเดียว
    */
+  // DEM / DET ตั้งต้น N/A ตั้งแต่ใส่ข้อมูล BL — ต้องมีก่อนส่ง Partner (ใช้ค่าในฟอร์มนี้ก่อน)
+  const demDays = readDays(formData, 'demDays', job.demDays, 'DEM FREE');
+  const detDays = readDays(formData, 'detDays', job.detDays, 'DET FREE');
+  const storageFreeDays = readDays(formData, 'storageFreeDays', job.storageFreeDays, 'STORAGE FREE') ?? 3;
+  if (sendToPartner && (demDays === null || detDays === null)) {
+    throw new Error('กรุณากรอก DEM FREE และ DET FREE (วัน) ก่อนส่งให้ Partner');
+  }
   if (sendToPartner && allowBlEdit && !hasBlBrackets(blNo || job.blNo)) {
     throw new Error('สายเรือนี้ต้องใส่เลข BL ที่มีวงเล็บ ( ) ก่อนส่ง Partner เช่น KNT2600123 (MEDU1234567)');
   }
@@ -313,6 +321,7 @@ async function saveDoHandoffImpl(formData: FormData) {
 
   await db.update(jobs).set({
     eta, etaIsOfficial: true, transportDate, originPort, portId, terminalId,
+    demDays, detDays, storageFreeDays,
     ...(allowBlEdit && blNo ? { blNo } : {}),
     releasePartner: partnerName || job.releasePartner,
     status: sendToPartner ? 'DO_SENT' : job.status,
@@ -342,7 +351,7 @@ async function saveDoHandoffImpl(formData: FormData) {
     }
   }
   await logActivity(user.id, sendToPartner ? 'SEND_DO_PARTNER' : 'SAVE_DO_HANDOFF',
-    'JOB', jobId, { eta, transportDate, originPort, partnerName });
+    'JOB', jobId, { eta, transportDate, originPort, partnerName, demDays, detDays, storageFreeDays });
 
   revalidatePath('/fah/do');
   revalidatePath('/pending');
@@ -703,9 +712,9 @@ async function updateBlInfoImpl(formData: FormData) {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
 
-  const demDays = number(formData.get('demDays'), job.demDays);
-  const detDays = number(formData.get('detDays'), job.detDays);
-  if (demDays < 0 || detDays < 0) throw new Error('จำนวนวันติดลบไม่ได้');
+  // ว่าง = N/A — บังคับกรอกที่ Upload Invoice of D/O ก่อนส่ง Partner
+  const demDays = readDays(formData, 'demDays', job.demDays, 'DEM FREE');
+  const detDays = readDays(formData, 'detDays', job.detDays, 'DET FREE');
 
   /*
    * ช่องที่ฟอร์มไม่ได้ส่งมาต้องคงค่าเดิมไว้ ไม่ใช่ล้างทิ้ง
@@ -743,8 +752,8 @@ async function updateBlInfoImpl(formData: FormData) {
     eta: day(formData.get('eta')) ?? job.eta,
     // แผงแก้ข้อมูล BL ไม่มีช่องวันที่ขนย้ายแล้ว — ไม่ได้ส่งมา = คงค่าเดิม
     transportDate: formData.has('transportDate') ? day(formData.get('transportDate')) : job.transportDate,
-    demDays: Math.round(demDays),
-    detDays: Math.round(detDays),
+    demDays,
+    detDays,
     product: text(formData.get('product'), 1000),
 
     // ---------- ช่องที่เพิ่มให้แก้ได้ ----------

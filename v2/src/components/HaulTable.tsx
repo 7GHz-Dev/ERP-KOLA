@@ -4,6 +4,7 @@ import { sheetColumns } from '@/lib/columns';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { demLeft, demUntil, DO_TEXT, haulRiskOf, SHORT_DET_DAYS, todayBangkok } from '@/lib/haul-risk';
 import type { JobRow } from '@/lib/queries/jobs';
+import { freeUrgency, storageLastDate } from '@/lib/free-time';
 import type { HaulSummary, HaulView } from '@/lib/queries/haul';
 
 /**
@@ -116,6 +117,22 @@ export function haulColumns(
     },
   };
 
+  const storageCol: Column = {
+    label: 'Storage ฟรีถึง',
+    kind: 'wrap',
+    render: (r) => {
+      const last = storageLastDate(r.eta, r.storageFreeDays);
+      if (!last) return '-';
+      const u = freeUrgency(last, refDay(r));
+      return (
+        <span className="haul-port">
+          <span>{formatDate(last)} <small>({r.storageFreeDays} วัน)</small></span>
+          {u && u.level !== 'ok' ? <span className="badge rejected">{u.text}</span> : null}
+        </span>
+      );
+    },
+  };
+
   return [
     ...(pickable ? [{
       label: '', kind: 'actions' as const, className: 'col-pick',
@@ -128,7 +145,7 @@ export function haulColumns(
       : { label: 'วันลากตู้', render: (r: JobRow) => <b>{planDate(r)}</b> },
     { label: 'สถานะ', kind: 'wrap' as const, render: status },
     ...FRONT.map(take),
-    doCol, portCol, etaCol, demCol, detCol,
+    doCol, portCol, etaCol, storageCol, demCol, detCol,
     ...[...sheet.values()].filter((c) => !HIDDEN.has(c.label)),
   ];
 }

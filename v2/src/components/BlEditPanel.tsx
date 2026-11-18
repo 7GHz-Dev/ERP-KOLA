@@ -25,7 +25,7 @@ export type BlEditJob = {
   id: string; jobNo: string;
   blNo: string | null; vessel: string | null; voyage: string | null;
   eta: string | null; transportDate: string | null;
-  demDays: number; detDays: number; product: string | null;
+  demDays: number | null; detDays: number | null; product: string | null;
   blType: string | null; shipline: string | null; originPort: string | null;
   unitAmount: string | null; packageType: string | null; grossWeight: string | null;
   goodsValue: string | null; goodsCurrency: string | null;
@@ -314,10 +314,10 @@ export function BlEditPanel({
             </select>
           </Field>
           <Field label="DEM FREE (วัน)">
-            <input name="demDays" type="number" min={0} defaultValue={job.demDays} />
+            <input name="demDays" type="number" min={0} placeholder="N/A" defaultValue={job.demDays ?? ''} />
           </Field>
           <Field label="DET FREE (วัน)">
-            <input name="detDays" type="number" min={0} defaultValue={job.detDays} />
+            <input name="detDays" type="number" min={0} placeholder="N/A" defaultValue={job.detDays ?? ''} />
           </Field>
           <Field label="หมายเหตุถึงลูกค้า" wide>
             <textarea name="customerNote" rows={2} defaultValue={job.customerNote ?? ''} />

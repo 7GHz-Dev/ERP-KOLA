@@ -1,3 +1,4 @@
+import { daysText, freeLastDate } from '@/lib/free-time';
 import Link from 'next/link';
 import { ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
@@ -59,15 +60,15 @@ export const col = {
   /** จำนวนวันฟรี ไม่ใช่วันสุดท้าย — ใช้ตอนที่ยังแก้ตัวเลขได้อยู่ */
   demDet: (): Column => ({
     label: 'DEM / DET', align: 'center',
-    render: (r) => `${r.demDays} / ${r.detDays}`,
+    render: (r) => `${daysText(r.demDays)} / ${daysText(r.detDays)}`,
   }),
   lastDem: (): Column => ({
     label: 'Last Date of DEM', sortKey: 'demDays',
-    render: (r) => formatDate(addDays(r.eta, r.demDays)),
+    render: (r) => (r.demDays === null ? 'N/A' : formatDate(freeLastDate(r.eta, r.demDays))),
   }),
   lastDet: (): Column => ({
     label: 'Last Date of DET', sortKey: 'detDays',
-    render: (r) => formatDate(addDays(r.transportDate, r.detDays)),
+    render: (r) => (r.detDays === null ? 'N/A' : formatDate(freeLastDate(r.transportDate, r.detDays))),
   }),
   refNo: (): Column => ({
     label: 'Ref No.', searchKey: 'refNo', sortKey: 'draftRefNo',

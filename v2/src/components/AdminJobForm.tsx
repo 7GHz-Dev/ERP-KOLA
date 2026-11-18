@@ -176,8 +176,9 @@ export function AdminJobForm({ data, options }: { data: AdminJob; options: Optio
           <Field label="PORT OF LOADING"><OriginPortField choices={options.originPorts} initial={job.originPort ?? ''} /></Field>
           <Field label="PORT OF DISCHARGE"><MasterSelect name="portId" list={options.ports} value={job.portId} /></Field>
           <Field label="PORT TERMINAL"><MasterSelect name="terminalId" list={options.terminals} value={job.terminalId} /></Field>
-          <Field label="DEM FREE (วัน)"><input type="number" min={0} name="demDays" defaultValue={job.demDays} /></Field>
-          <Field label="DET FREE (วัน)"><input type="number" min={0} name="detDays" defaultValue={job.detDays} /></Field>
+          <Field label="DEM FREE (วัน)"><input type="number" min={0} name="demDays" placeholder="N/A" defaultValue={job.demDays ?? ''} /></Field>
+          <Field label="DET FREE (วัน)"><input type="number" min={0} name="detDays" placeholder="N/A" defaultValue={job.detDays ?? ''} /></Field>
+          <Field label="STORAGE FREE (วัน)"><input type="number" min={0} name="storageFreeDays" defaultValue={job.storageFreeDays ?? 3} /></Field>
           <Field label="PORT RELEASE PARTNER">
             <select name="releasePartner" defaultValue={job.releasePartner ?? ''}>
               <option value="">— ไม่ระบุ —</option>

@@ -63,7 +63,8 @@
     "test:sale": "tsx --tsconfig tsconfig.json tests/sale.ts",
     "migrate:total-cost": "tsx scripts/migrate-total-cost.ts",
     "test:total-cost": "tsx --tsconfig tsconfig.json tests/total-cost.ts",
-    "test:haul": "tsx --tsconfig tsconfig.json tests/haul-risk.ts"
+    "test:haul": "tsx --tsconfig tsconfig.json tests/haul-risk.ts",
+    "test:free-time": "tsx --tsconfig tsconfig.json tests/free-time.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

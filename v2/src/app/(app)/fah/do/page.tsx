@@ -11,6 +11,9 @@ import { isShipmePartner } from '@/lib/partner-message';
 import { fahDoVessels, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
 import { doHandoffSentAt } from '@/lib/queries/dashboard';
+import { formatDate } from '@/lib/format';
+import { freeUrgency, storageLastDate } from '@/lib/free-time';
+import { todayBangkok } from '@/lib/haul-risk';
 
 export const dynamic = 'force-dynamic';
 const TABS = [
@@ -68,6 +71,9 @@ export default async function FahDoPage({
     return partners.find((p) => p.name.trim().toUpperCase() === notify)?.id ?? null;
   };
   const sentMap = await doHandoffSentAt(rows.map((r) => r.id));
+  const today = todayBangkok();
+  // Storage ใกล้หมด / เกินแล้ว — แจ้งบนหัวตาราง ให้เห็นงานด่วนก่อนไล่ทีละแถว
+  const urgent = tab === 'sent' ? [] : rows.filter((r) => (freeUrgency(storageLastDate(r.eta, r.storageFreeDays), today)?.level ?? 'ok') !== 'ok');
   const sent = tab === 'sent';
 
   const columns: Column[] = [
@@ -79,6 +85,24 @@ export default async function FahDoPage({
      */
     { ...col.vessel(), searchKey: undefined, searchHint: undefined },
     col.lastDem(),
+    {
+      /*
+       * Storage free time — นับ ETA เป็นวันที่ 1 (ตั้งต้น 3 วัน) · Last Date = วันที่เริ่มมีค่าใช้จ่าย
+       * เหลือ ≤ 1 วันขึ้น Urgent สีแดง ให้รีบส่ง Partner / ลากตู้ก่อนเกิดค่าฝาก
+       */
+      label: 'Last Date Free Time (Storage)', kind: 'wrap', sortKey: 'eta',
+      render: (r) => {
+        const last = storageLastDate(r.eta, r.storageFreeDays);
+        const u = freeUrgency(last, today);
+        if (!last) return '-';
+        return (
+          <span className="haul-port">
+            <span>{formatDate(last)} <small>({r.storageFreeDays} วัน)</small></span>
+            {u && u.level !== 'ok' ? <span className="badge rejected">{u.text}</span> : <small>{u?.text}</small>}
+          </span>
+        );
+      },
+    },
     {
       // ชื่อไฟล์อยู่คนละบรรทัดกับปุ่ม ช่องจึงแคบลงและชื่อยาวขึ้นบรรทัดใหม่ได้
       label: 'Invoice DO', kind: 'wrap', className: 'col-file',
@@ -132,6 +156,10 @@ export default async function FahDoPage({
           sentAt={sentMap.get(r.id) ?? null}
           blNo={r.blNo}
           canEditBl={canEditBlAtDo(r.shipline)}
+          demDays={r.demDays}
+          detDays={r.detDays}
+          storageFreeDays={r.storageFreeDays}
+          today={today}
         />
       ),
     },
@@ -172,9 +200,17 @@ export default async function FahDoPage({
     <>
       <div className="page-head">
         <h1>Upload Invoice of D/O</h1>
-        <p>ใส่ ETA official (บันทึกแล้วขึ้น OFC และใช้เป็นวันหลัก) · Port of Loading · Port · Terminal · Partner แล้วจึงส่ง Partner</p>
+        <p>อัป Invoice DO แล้วกรอกคู่กับไฟล์: ETA official (ขึ้น OFC) · Port of Loading · Port · Terminal · Partner · DEM / DET (บังคับก่อนส่ง) · Storage free time (ตั้งต้น 3 วัน นับ ETA เป็นวันที่ 1)</p>
       </div>
       <Tabs basePath="/fah/do" items={TABS} active={tab} carry={carry} />
+      {urgent.length ? (
+        <div className="notice urgent-notice">
+          <b>Urgent · Storage free time ใกล้หมด/เกินแล้ว {urgent.length} งาน:</b>{' '}
+          {urgent.map((r, i) => (
+            <span key={r.id}>{i ? ' · ' : ''}{r.blNo ?? r.jobNo} (Last Date {formatDate(storageLastDate(r.eta, r.storageFreeDays))})</span>
+          ))}
+        </div>
+      ) : null}
 
       {/*
         กรองทั้งตารางด้วยเรือ/เที่ยว — เลือกจากรายการที่ยังมีงานค้างจริง
@@ -203,6 +239,9 @@ export default async function FahDoPage({
             canEditBl: canEditBlAtDo(r.shipline),
             noInvoiceDo: isPartnerRelease(r.jobTypeCode),
             defaultPartnerId: partnerDefaultFor(r),
+            demDays: r.demDays,
+            detDays: r.detDays,
+            storageFreeDays: r.storageFreeDays,
           }))}
           ports={ports}
           originPorts={originPorts}

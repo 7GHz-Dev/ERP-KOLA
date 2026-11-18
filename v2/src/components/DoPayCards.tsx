@@ -39,7 +39,7 @@ export function DoPayCards({
             <dt>ETA</dt>
             <dd>{formatDate(r.eta)}{r.etaIsOfficial ? ' (OFC)' : ''}</dd>
             <dt>Last DEM</dt>
-            <dd>{formatDate(addDays(r.eta, r.demDays))}</dd>
+            <dd>{r.demDays === null ? 'N/A' : formatDate(addDays(r.eta, r.demDays))}</dd>
             <dt>SHIPLINE</dt>
             <dd>{r.shipline ?? '-'}</dd>
             <dt>Terminal</dt>

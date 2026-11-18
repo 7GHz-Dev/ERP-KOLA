@@ -180,6 +180,7 @@ export async function listJobs(filter: JobFilter = {}) {
       transportDate: jobs.transportDate,
       demDays: jobs.demDays,
       detDays: jobs.detDays,
+      storageFreeDays: jobs.storageFreeDays,
       sourceType: jobs.sourceType,
       product: jobs.product,
       unitAmount: jobs.unitAmount,

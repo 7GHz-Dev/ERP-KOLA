@@ -343,8 +343,9 @@ export type ShipmentDraft = {
   containers: string[];
   unitAmount: string | null;
   grossWeight: string | null;
-  demDays: number;
-  detDays: number;
+  /** ว่าง = N/A */
+  demDays: number | null;
+  detDays: number | null;
   draftRefNo: string;
   customerNote: string;
   /** ชื่อจากไฟล์ รอจับกับ Master Data ฝั่งเซิร์ฟเวอร์ */
@@ -381,8 +382,8 @@ export function toDrafts(rows: SheetRow[]): { drafts: ShipmentDraft[]; skipped: 
       containers: splitContainers(cell['CONTAINER NO.']),
       unitAmount: sheetNumber(cell.UNIT),
       grossWeight: sheetNumber(cell.WEIGHT),
-      demDays: int(cell.DEM),
-      detDays: int(cell.DET),
+      demDays: (cell.DEM ?? '').trim() ? int(cell.DEM) : null,
+      detDays: (cell.DET ?? '').trim() ? int(cell.DET) : null,
       draftRefNo: cell.REF ?? '',
       customerNote: cell.REMARK ?? '',
       names: {

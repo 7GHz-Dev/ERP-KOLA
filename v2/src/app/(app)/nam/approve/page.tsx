@@ -55,8 +55,8 @@ export default async function NamApprovePage({
               render: (r) => (r.anId ? <PickBox id={r.anId} /> : null),
             },
             col.shipper(), col.blNo(), col.vessel(), col.eta(), col.consignee(),
-            { label: 'DEM', align: 'right', sortKey: 'demDays', render: (r) => r.demDays },
-            { label: 'DET', align: 'right', sortKey: 'detDays', render: (r) => r.detDays },
+            { label: 'DEM', align: 'right', sortKey: 'demDays', render: (r) => r.demDays ?? 'N/A' },
+            { label: 'DET', align: 'right', sortKey: 'detDays', render: (r) => r.detDays ?? 'N/A' },
             {
               label: 'จัดการ', kind: 'actions',
               render: (r) => (

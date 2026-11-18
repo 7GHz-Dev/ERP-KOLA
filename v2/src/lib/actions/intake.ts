@@ -1,5 +1,6 @@
 'use server';
 
+import { readDays } from '@/lib/free-time';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -236,8 +237,9 @@ async function createJobFromIntakeImpl(formData: FormData) {
       packageType: text(formData.get('packageType'), 40),
       grossWeight: String(number(formData.get('grossWeight'))),
       shipline,
-      demDays: number(formData.get('demDays')),
-      detDays: number(formData.get('detDays')),
+      // ว่าง = N/A — FAH กรอกที่ Upload Invoice of D/O ก่อนส่ง Partner
+      demDays: readDays(formData, 'demDays', null, 'DEM FREE'),
+      detDays: readDays(formData, 'detDays', null, 'DET FREE'),
       createdBy: user.id,
       updatedBy: user.id,
     });

@@ -471,7 +471,7 @@ export function EditBlForm({
     id: string;
     blNo: string | null; vessel: string | null; voyage: string | null;
     eta: string | null; transportDate: string | null;
-    demDays: number; detDays: number; product: string | null;
+    demDays: number | null; detDays: number | null; product: string | null;
     blType: string | null; shipline: string | null; originPort: string | null;
     unitAmount: string | null; packageType: string | null; grossWeight: string | null;
     goodsValue: string | null; goodsCurrency: string | null;
@@ -550,11 +550,11 @@ export function EditBlForm({
         <div className="field-pair">
           <label className="mini">
             <span>DEM (วัน)</span>
-            <input type="number" min={0} name="demDays" defaultValue={job.demDays} />
+            <input type="number" min={0} name="demDays" placeholder="N/A" defaultValue={job.demDays ?? ''} />
           </label>
           <label className="mini">
             <span>DET (วัน)</span>
-            <input type="number" min={0} name="detDays" defaultValue={job.detDays} />
+            <input type="number" min={0} name="detDays" placeholder="N/A" defaultValue={job.detDays ?? ''} />
           </label>
         </div>
 

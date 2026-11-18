@@ -134,8 +134,11 @@ export const jobs = pgTable('jobs', {
   goodsValue: numeric('goods_value', { precision: 18, scale: 2 }),
   goodsCurrency: text('goods_currency').default('USD'),
   shipline: text('shipline'),
-  demDays: integer('dem_days').default(0).notNull(),
-  detDays: integer('det_days').default(0).notNull(),
+  /** วันฟรี DEM / DET — null = N/A (ยังไม่ได้กรอก) · FAH ต้องกรอกที่ Upload Invoice of D/O ก่อนส่ง Partner */
+  demDays: integer('dem_days'),
+  detDays: integer('det_days'),
+  /** วันฟรีค่าฝากตู้ที่ท่า (Storage) นับ ETA เป็นวันที่ 1 — ETA 20/11 + 3 วัน = เริ่มมีค่าใช้จ่าย 23/11 */
+  storageFreeDays: integer('storage_free_days').default(3).notNull(),
   releasePartner: text('release_partner'),
   customerNote: text('customer_note'),
   /** NAMKANG กดยืนยันข้อมูลลูกค้าแล้ว — ใช้แยกแท็บรออัปเดต/อัปเดตแล้ว */

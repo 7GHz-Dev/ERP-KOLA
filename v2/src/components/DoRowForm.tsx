@@ -2,6 +2,8 @@ import { saveDoHandoff } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
 import { hasBlBrackets } from '@/lib/bl-format';
+import { formatDate } from '@/lib/format';
+import { daysText, freeLastDate, freeUrgency, storageLastDate, STORAGE_DEFAULT_DAYS } from '@/lib/free-time';
 
 /**
  * แถวจัดการ Invoice DO — แก้ได้ในตารางเลย ไม่ต้องเปิดแผง
@@ -16,7 +18,7 @@ export type Choice = { id: string; code: string | null; name: string };
 export function DoRowForm({
   jobId, eta, originPort, portId, terminalId, partnerName,
   ports, originPorts, terminals, partners, sentAt, defaultPartnerId, readOnly,
-  blNo, canEditBl,
+  blNo, canEditBl, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, today,
 }: {
   jobId: string;
   eta: string | null;
@@ -37,6 +39,12 @@ export function DoRowForm({
   blNo?: string | null;
   /** สายเรือที่ออกเลข BL ตัวจริงหลังเรือเข้า จึงให้แก้ตรงนี้ได้ */
   canEditBl?: boolean;
+  /** วันฟรี — null = N/A ต้องกรอกก่อนส่ง Partner · Storage ตั้งต้น 3 วัน (ETA = วันที่ 1) */
+  demDays?: number | null;
+  detDays?: number | null;
+  storageFreeDays?: number | null;
+  /** วันนี้ (YYYY-MM-DD เวลาไทย) ใช้บอก Urgent ของ Storage */
+  today?: string;
 }) {
   const partnerId =
     partners.find((p) => p.name === partnerName)?.id ?? defaultPartnerId ?? '';
@@ -46,7 +54,16 @@ export function DoRowForm({
    */
   // สายที่แก้เลข BL ได้ ต้องบันทึกเลขที่มีวงเล็บ ( ) ก่อนจึงจะส่งได้
   const blOk = !canEditBl || hasBlBrackets(blNo);
-  const ready = Boolean(eta && partnerName && originPort) && blOk;
+  // DEM / DET ตั้งต้น N/A ตั้งแต่ใส่ข้อมูล BL — ต้องกรอก (บันทึกแล้ว) ก่อนส่ง Partner
+  const freeOk = demDays !== null && detDays !== null;
+  const ready = Boolean(eta && partnerName && originPort) && blOk && freeOk;
+  const storageLast = storageLastDate(eta, storageFreeDays);
+  const storageUrgency = today ? freeUrgency(storageLast, today) : null;
+  const storageBadge = storageLast ? (
+    <span className={`badge ${storageUrgency?.level === 'over' ? 'rejected' : storageUrgency?.level === 'urgent' ? 'rejected' : 'neutral'}`}>
+      Last Date Free Time {formatDate(storageLast)}{storageUrgency && storageUrgency.level !== 'ok' ? ` · ${storageUrgency.text}` : ''}
+    </span>
+  ) : null;
 
   const options = (list: Choice[], placeholder: string) => (
     <>
@@ -80,6 +97,8 @@ export function DoRowForm({
         <div className="do-cell"><span>Port of Discharge</span><b>{nameOf(ports, portId)}</b></div>
         <div className="do-cell"><span>Terminal</span><b>{nameOf(terminals, terminalId)}</b></div>
         <div className="do-cell"><span>Port Release Partner</span><b>{partnerName ?? '-'}</b></div>
+        <div className="do-cell"><span>DEM / DET / Storage (วัน)</span><b>{daysText(demDays)} / {daysText(detDays)} / {storageFreeDays ?? STORAGE_DEFAULT_DAYS}</b></div>
+        {storageBadge ? <div className="do-cell"><span>Storage</span>{storageBadge}</div> : null}
         <div className="do-buttons">
           {/* ฝั่งรอส่งก็ใช้มุมมองอ่านอย่างเดียวนี้ ป้ายจึงต้องบอกตามจริงว่ายังไม่ได้ส่ง */}
           {sentAt
@@ -140,6 +159,22 @@ export function DoRowForm({
         </select>
       </label>
 
+      {/* วันฟรี — DEM / DET บังคับกรอกก่อนส่ง Partner · Storage ตั้งต้น 3 วัน นับ ETA เป็นวันที่ 1 */}
+      <label className="do-cell">
+        <span>DEM FREE (วัน) *</span>
+        <input key={`dem-${demDays ?? ''}`} type="number" min={0} name="demDays" placeholder="N/A" defaultValue={demDays ?? ''} />
+        {demDays !== null && eta ? <small className="do-sub">Last Date of DEM {formatDate(freeLastDate(eta, demDays))}</small> : null}
+      </label>
+      <label className="do-cell">
+        <span>DET FREE (วัน) *</span>
+        <input key={`det-${detDays ?? ''}`} type="number" min={0} name="detDays" placeholder="N/A" defaultValue={detDays ?? ''} />
+      </label>
+      <label className="do-cell">
+        <span>STORAGE FREE (วัน)</span>
+        <input key={`sto-${storageFreeDays ?? ''}`} type="number" min={0} name="storageFreeDays" defaultValue={storageFreeDays ?? STORAGE_DEFAULT_DAYS} />
+        {storageBadge ? <small className="do-sub">{storageBadge}</small> : null}
+      </label>
+
       <div className="do-buttons">
         <button className="button tiny primary" type="submit" name="sendToPartner" value="0">
           บันทึก
@@ -157,7 +192,9 @@ export function DoRowForm({
           />
         ) : (
           <span className="badge pending">
-            {blOk ? 'บันทึก ETA · Port of Loading · Partner ก่อน' : 'บันทึกเลข BL ที่มี ( ) ก่อนส่ง'}
+            {!blOk ? 'บันทึกเลข BL ที่มี ( ) ก่อนส่ง'
+              : !freeOk ? 'กรอก DEM · DET แล้วบันทึกก่อนส่ง'
+                : 'บันทึก ETA · Port of Loading · Partner ก่อน'}
           </span>
         )}
       </div>

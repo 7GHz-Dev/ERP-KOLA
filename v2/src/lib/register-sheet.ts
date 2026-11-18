@@ -42,7 +42,9 @@ const or = (...values: Array<string | null | undefined>) =>
 
 /** จำนวนวันฟรี 0 = ไม่มี DEM/DET ให้นับ — ตารางเดิมเขียน "-" ทั้งจำนวนวันและวันสุดท้าย */
 function freeDays(start: string | null, days: number | null): { days: string; last: string } {
-  if (!days || days <= 0) return { days: '-', last: '-' };
+  // null = ยังไม่ได้กรอก (N/A) · 0 = ไม่มีวันฟรีให้นับ
+  if (days === null || days === undefined) return { days: 'N/A', last: 'N/A' };
+  if (days <= 0) return { days: '-', last: '-' };
   return { days: String(days), last: start ? formatDate(addDays(start, days)) : '-' };
 }
 

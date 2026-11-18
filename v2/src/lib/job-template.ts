@@ -146,9 +146,9 @@ export async function templateRows(filter: TemplateFilter = {}) {
       K: '',
       O: '',
       DEM: String(r.dem_days ?? ''),
-      'DEM DATE': tplDate(addDays(eta, r.dem_days as number)),
+      'DEM DATE': r.dem_days === null || r.dem_days === undefined ? '' : tplDate(addDays(eta, r.dem_days as number)),
       DET: String(r.det_days ?? ''),
-      'DET DATE': tplDate(addDays(transport, r.det_days as number)),
+      'DET DATE': r.det_days === null || r.det_days === undefined ? '' : tplDate(addDays(transport, r.det_days as number)),
     };
     return cell;
   });

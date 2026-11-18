@@ -624,10 +624,10 @@ export function IntakeForm({
           </select>
         </Field>
         <Field label="DEM FREE (วัน)">
-          <input name="demDays" type="number" defaultValue={defaults.demDays} />
+          <input name="demDays" type="number" min={0} placeholder="N/A" defaultValue={defaults.demDays} />
         </Field>
         <Field label="DET FREE (วัน)">
-          <input name="detDays" type="number" defaultValue={defaults.detDays} />
+          <input name="detDays" type="number" min={0} placeholder="N/A" defaultValue={defaults.detDays} />
         </Field>
       </div>
 

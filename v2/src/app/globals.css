@@ -2952,3 +2952,11 @@ img.cgi-doc-file { overflow: auto; }
 .bl-boxes-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
 .bl-boxes-table td { padding: 3px 4px; }
 .bl-boxes-table input, .bl-boxes-table select { width: 100%; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; }
+
+/* Upload Invoice of D/O — แผงแบบแก้ข้อมูล BL (ฟอร์มซ้าย ไฟล์ขวา) */
+.do-pane-grid .do-pane-form .do-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.do-pane-grid .do-cell { display: flex; flex-direction: column; gap: 3px; }
+.do-pane-grid .do-cell input, .do-pane-grid .do-cell select { width: 100%; }
+.do-pane-grid .do-buttons { position: sticky; bottom: 0; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; padding: 10px 0 2px; background: var(--canvas); border-top: 1px solid var(--line); }
+.do-sub { font-size: 11.5px; color: var(--muted); }
+.urgent-notice { border-color: var(--red); background: #fff4f4; color: var(--red); }

@@ -41,5 +41,9 @@ const e = haulWarnings([
 assert.ok(e.includes('ETA ยังไม่ยืนยันจากระบบกรม (เรืออาจเลื่อน ตู้อาจยังไม่ลง): A, B'), e.join('|'));
 assert.ok(e.includes('วันลากก่อน ETA: C'));
 
+// Storage: ETA 15 + 3 วัน = 18 · ลากวันที่ 18 = เริ่มมีค่าฝากตู้
+assert.ok(haulWarnings([{ ...base, storageLast: '2026-11-18' }], '2026-11-18').some((t) => t.startsWith('เกิน Storage free time (Last Date 18/11/2026)')));
+assert.deepEqual(haulWarnings([{ ...base, storageLast: '2026-11-19' }], '2026-11-18'), []);
+
 assert.equal(todayBangkok(new Date('2026-11-17T18:30:00Z')), '2026-11-18');
 console.log('haul-risk ok');

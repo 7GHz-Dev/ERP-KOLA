@@ -24,6 +24,8 @@ export type HaulRisk = {
   demDays: number;
   detDays: number;
   doStage: DoStage;
+  /** Last Date Free Time ของ Storage (ETA + วันฟรี · ETA = วันที่ 1) — ลากตั้งแต่วันนี้มีค่าฝากตู้ */
+  storageLast?: string | null;
 };
 
 export const DO_TEXT: Record<DoStage, string> = {
@@ -85,6 +87,7 @@ export function haulWarnings(rows: HaulRisk[], haulDate: string): string[] {
     else if (!r.etaOfficial) add('ETA ยังไม่ยืนยันจากระบบกรม (เรืออาจเลื่อน ตู้อาจยังไม่ลง)', r.bl);
     const left = demLeft(r, haulDate);
     if (left !== null && left < 0) add(`เกิน free time DEM (ฟรีถึง ${formatDate(demUntil(r))})`, r.bl);
+    if (r.storageLast && haulDate >= r.storageLast) add(`เกิน Storage free time (Last Date ${formatDate(r.storageLast)})`, r.bl);
     if (r.detDays > 0 && r.detDays <= SHORT_DET_DAYS) add(`DET ${r.detDays} วัน ต้องรีบคืนตู้`, r.bl);
     const due = returnDue(haulDate, r.detDays);
     if (due && [0, 6].includes(weekday(due))) add(`วันคืนตู้ (${formatDate(due)}) ตรงวัน${WEEKDAY[weekday(due)]}`, r.bl);
@@ -98,7 +101,7 @@ export function haulWarnings(rows: HaulRisk[], haulDate: string): string[] {
 /** ข้อมูลประกอบของงานหนึ่งแถวในตาราง (JobRow) */
 export function haulRiskOf(r: {
   blNo: string | null; jobNo: string; shipline: string | null; terminalName: string | null; eta: string | null;
-  etaIsOfficial: boolean | null; demDays: number | null; detDays: number | null;
+  etaIsOfficial: boolean | null; demDays: number | null; detDays: number | null; storageFreeDays?: number | null;
   doExchangedAt: Date | string | null; doPayAmount: string | null; doClaimedAt: Date | string | null;
 }): HaulRisk {
   return {
@@ -110,6 +113,7 @@ export function haulRiskOf(r: {
     demDays: Number(r.demDays) || 0,
     detDays: Number(r.detDays) || 0,
     doStage: doStage(r),
+    storageLast: r.eta ? addDays(r.eta, r.storageFreeDays ?? 3) : null,
   };
 }
 
