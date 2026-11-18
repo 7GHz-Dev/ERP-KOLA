@@ -160,7 +160,7 @@ export function BulkBar({
               type="button"
               className="button"
               disabled={busy}
-              onClick={() => router.push(open.href.replace('{first}', encodeURIComponent(picked[0])).replace('{ids}', picked.map(encodeURIComponent).join(',')))}
+              onClick={() => router.push(open.href.replace('{first}', encodeURIComponent(picked[0])).replace('{ids}', picked.map(encodeURIComponent).join(',')).replace('{t}', String(Date.now())))}
             >
               {open.label.replace('{n}', String(picked.length))}
             </button>

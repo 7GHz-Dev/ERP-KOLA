@@ -261,10 +261,11 @@ export default async function FahDoPage({
           sentAt={Object.fromEntries(sentMap)}
           openFor={one('fill') || null}
           queue={one('fq') ? one('fq').split(',') : undefined}
+          openKey={one('n')}
         >
           {/* ติ๊กหลายงานแล้วกรอกต่อกันในแผงเดียว (ก่อนหน้า/ถัดไป · บันทึกแล้วไปงานถัดไป) */}
           <BulkBar idName="jobIds" label="" confirmText=""
-            open={{ label: '✎ กรอกข้อมูล {n} รายการ', href: `/fah/do?${new URLSearchParams({ ...carry, tab })}&fill={first}&fq={ids}` }}>
+            open={{ label: '✎ กรอกข้อมูล {n} รายการ', href: `/fah/do?${new URLSearchParams({ ...carry, tab })}&fill={first}&fq={ids}&n={t}` }}>
             {table}
           </BulkBar>
         </DoFillBoard>

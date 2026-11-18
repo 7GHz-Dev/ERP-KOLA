@@ -11,7 +11,7 @@ import type { Choice } from '@/components/DoRowForm';
  * เก็บไว้ตรงนี้ที่เดียว ตารางกับแผงจึงอ้างค่าเดียวกันเสมอ
  */
 export function DoFillBoard({
-  jobs, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, openFor, queue: queueIds, children,
+  jobs, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, openFor, queue: queueIds, openKey, children,
 }: {
   jobs: DoPaneJob[];
   ports: Choice[];
@@ -29,6 +29,8 @@ export function DoFillBoard({
   openFor?: string | null;
   /** ชุดงานที่ติ๊กกรอกต่อกัน (?fq=) — แผงมีปุ่มก่อนหน้า/ถัดไป · บันทึกแล้วไปงานถัดไป */
   queue?: string[];
+  /** เปลี่ยนทุกครั้งที่กดเปิดชุดใหม่ (?n=) — เปิดชุดเดิมซ้ำหลังปิดแผงได้ */
+  openKey?: string;
   /** ตารางฝั่งขวา เรนเดอร์มาจากเซิร์ฟเวอร์ */
   children: React.ReactNode;
 }) {
@@ -46,7 +48,7 @@ export function DoFillBoard({
    */
   useEffect(() => {
     if (openFor) setOpenId(openFor);
-  }, [openFor]);
+  }, [openFor, openKey]);
 
   /*
    * ทาคลาสให้แถวที่กำลังกรอกโดยตรง เพราะ <tr> มาจากตารางที่เรนเดอร์ฝั่งเซิร์ฟเวอร์
@@ -113,8 +115,10 @@ export function DoFillBoard({
              * เพราะที่เปลี่ยนคือสถานะบนจอล้วน ๆ
              */
             const url = new URL(window.location.href);
-            if (url.searchParams.has('fill')) {
+            if (url.searchParams.has('fill') || url.searchParams.has('fq')) {
               url.searchParams.delete('fill');
+              url.searchParams.delete('fq');
+              url.searchParams.delete('n');
               window.history.replaceState(null, '', url);
             }
           }}

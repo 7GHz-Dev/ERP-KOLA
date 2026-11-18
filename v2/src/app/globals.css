@@ -2968,3 +2968,4 @@ img.cgi-doc-file { overflow: auto; }
 .do-free-summary b { font-size: 13px; }
 .do-free-summary em { font-style: normal; white-space: normal; }
 .do-free-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.do-pane-upload { padding: 0 0 6px; position: relative; z-index: 5; }

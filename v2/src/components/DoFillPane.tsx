@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { DoRowForm, type Choice } from '@/components/DoRowForm';
 import { todayBangkok } from '@/lib/haul-risk';
+import { UploadForm } from '@/components/ActionForms';
 
 /**
  * แผงกรอกข้อมูล DO คู่กับไฟล์ Invoice DO
@@ -133,6 +134,13 @@ export function DoFillPane({
             />
           </div>
           <div className="bl-edit-view">
+            {/* อัป / เปลี่ยน Invoice DO ได้ในแผงนี้เลย — อัปเสร็จไฟล์ขึ้นด้านล่างทันที */}
+            {job.noInvoiceDo ? null : (
+              <div className="do-pane-upload">
+                <UploadForm jobId={job.id} category="INVOICE_DO" stayHere
+                  label={src ? 'เปลี่ยนไฟล์ Invoice DO' : 'อัปโหลด Invoice DO'} />
+              </div>
+            )}
             {src ? (
               <object className="bl-edit-file" data={src} type="application/pdf">
                 <p className="drawer-note warn">
@@ -140,7 +148,8 @@ export function DoFillPane({
                   <a href={src} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
                 </p>
               </object>
-            ) : job.noInvoiceDo ? (
+            ) : null}
+            {src ? null : job.noInvoiceDo ? (
               <p className="drawer-note">งาน MUO ไม่ต้องใช้ Invoice DO — Partner แลก DO เอง กรอกข้อมูลแล้วส่งได้เลย</p>
             ) : (
               <p className="drawer-note warn">ยังไม่ได้อัปโหลด Invoice DO ของงานนี้</p>
