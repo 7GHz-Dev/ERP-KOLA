@@ -629,7 +629,17 @@ const withoutOther = <A extends unknown[]>(q: QueueFn<A>): QueueFn<A> =>
 export const QUEUE = {
   ...BASE_QUEUE,
   pendingBl: withoutOther(BASE_QUEUE.pendingBl),
-  pendingFn: withoutOther(BASE_QUEUE.pendingFn),
+  /*
+   * แท็บ 2 Final Invoice ของ Import Officer — แท็บ "รอทำ" แสดงเฉพาะงานที่ Head Officer อัป Invoice สินค้าแล้ว
+   * (หน้า Upload cargo Invoice) ยังไม่มีไฟล์ก็ทำ Final Invoice ไม่ได้ ไม่ต้องรกรายการ
+   * งานที่ถูกตีกลับ (REJECTED) ก็ใช้เงื่อนไขเดียวกัน · แท็บรออนุมัติไม่กรอง
+   */
+  pendingFn: (sub: 'wait' | 'approve') => (ctx: JoinContext) => [
+    ...withoutOther(BASE_QUEUE.pendingFn)(sub)(ctx),
+    sub === 'wait'
+      ? sql`exists (select 1 from files f where f.job_id = ${jobs.id} and f.category = 'INVOICE_GOODS' and f.is_current = true)`
+      : undefined,
+  ],
   pendingDraft: withoutOther(BASE_QUEUE.pendingDraft),
   pendingEdoc: withoutOther(BASE_QUEUE.pendingEdoc),
   eofficeSigned: withoutOther(BASE_QUEUE.eofficeSigned),
