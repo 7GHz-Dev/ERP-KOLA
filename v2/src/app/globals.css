@@ -2967,3 +2967,4 @@ img.cgi-doc-file { overflow: auto; }
 .do-free-summary span { font-size: 10.5px; font-weight: 700; color: var(--muted); }
 .do-free-summary b { font-size: 13px; }
 .do-free-summary em { font-style: normal; white-space: normal; }
+.do-free-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }

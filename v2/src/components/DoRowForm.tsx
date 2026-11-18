@@ -127,12 +127,10 @@ export function DoRowForm({
       }}
     >
       <input type="hidden" name="jobId" value={jobId} />
-      {/* สรุปวันสุดท้ายของ free time — เห็นก่อนกรอก (ค่าที่บันทึกไว้) */}
+      {/* สรุปวันสุดท้ายของ free time (ค่าที่บันทึกไว้) · Storage ไม่แสดงในแผงนี้ — ใช้ค่าตั้งต้น 3 วัน ดูได้ที่คอลัมน์ในตาราง */}
       <div className="do-free-summary">
         <div><span>Last DEM date</span><b>{demDays === null ? 'N/A' : formatDate(freeLastDate(eta, demDays))}</b></div>
         <div><span>Last DET date</span><b>{detDays === null ? 'N/A' : formatDate(detLastDate({ eta, transportDate, detDays, demDetCombined: combined })) || '-'}</b></div>
-        <div><span>Last STORAGE date</span><b>{storageLast ? formatDate(storageLast) : '-'}</b>
-          {storageUrgency && storageUrgency.level !== 'ok' ? <em className="badge rejected">{storageUrgency.text}</em> : null}</div>
       </div>
 
       {/*
@@ -149,12 +147,6 @@ export function DoRowForm({
       <label className="do-cell">
         <span>ETA official</span>
         <input key={`eta-${eta ?? ''}`} type="date" name="eta" defaultValue={eta ?? ''} required />
-      </label>
-      {/* Storage นับจาก ETA (ETA = วันที่ 1) จึงอยู่ถัดจาก ETA */}
-      <label className="do-cell">
-        <span>STORAGE FREE (วัน)</span>
-        <input key={`sto-${storageFreeDays ?? ''}`} type="number" min={0} name="storageFreeDays" defaultValue={storageFreeDays ?? STORAGE_DEFAULT_DAYS} />
-        {storageBadge ? <small className="do-sub">{storageBadge}</small> : null}
       </label>
       {/*
         ท่าต้นทาง — เลือกจากรายการหรือพิมพ์เองก็ได้ เพราะท่าต่างประเทศ
