@@ -3,7 +3,7 @@
  *   npm run test:cargo-invoice
  *
  * ไฟล์ตัวอย่างอยู่ที่ test/INVOICE (ไฟล์ดิบจากผู้ขาย ไม่มีตารางสรุป)
- *   AICHI        แยกตู้ละชีต ("1", "2.") แต่ละชีตมี TOTAL ของตัวเอง · ENGINE TYPE "KF(GASOLINE/650 CC)" · ราคามี ¥
+ *   AICHI        แยกตู้ละชีต ("1" … "6") แต่ละชีตมี TOTAL ของตัวเอง · ENGINE TYPE "KF(GASOLINE/650 CC)" · ราคามี ¥
  *   JAN TRADING  ชีตเดียว 4 ตู้ · ENGINE NO. "4GR (GASOLINE/2490 CC)" · มีแถวสี/เลขอ้างอิง · ค่า Forwarding บวกใน TOTAL
  *   ทั้งสองใบช่อง B/L NO. ว่าง (ออก invoice ก่อนได้เลข BL)
  *
@@ -13,6 +13,8 @@
  *   4. worker ตรวจผ่าน แล้วเติมเลขเครื่องกลับลงช่องที่ถูกชีต
  *   5. JAN TRADING จัดหน้า Final Invoice: BL ของงาน · เลขเครื่อง LDA-1234567(GASOLINE/1330) · ตัดแถว COLOR / ค่าใช้จ่ายอื่น
  *      แล้ว worker เห็นเลขเครื่องครบ (ใช้เลขเดิม ไม่สุ่มซ้ำ) และแปลง PDF ได้
+ *   6. แก้ค่าในตาราง: ค่าที่แก้เขียนลงใบตรงช่องตามรูปแบบเดิม (¥ · KGS · USED · เลขเครื่อง+เชื้อเพลิง+CC) ทุกชีต
+ *      และ Preview ประกอบไฟล์ทางเดียวกับบันทึก (เลขเครื่อง xxxxxxx)
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -22,6 +24,8 @@ import { writeSummary } from '../src/lib/cargo-invoice/write';
 import ExcelJS from 'exceljs';
 import { enginePrefix, existingEngineNumber, finalEngineText } from '../src/lib/cargo-invoice/engine-format';
 import { finalizeJanTrading } from '../src/lib/cargo-invoice/jan-trading';
+import { applyEdits, changedFields, EDIT_FIELDS } from '../src/lib/cargo-invoice/edit';
+import { buildFinalInvoice } from '../src/lib/cargo-invoice/final';
 import { analyze, excelUpdates, NEW, REUSE } from '../src/lib/draft/analyze';
 import { xlsxToPdf } from '../src/lib/xlsx-pdf';
 import { loadDraftData, lookupTariff } from '../src/lib/draft/csv';
@@ -42,16 +46,17 @@ const SAMPLES: Array<{
   charges: Array<{ amount: number; inTotal: boolean }>; spots: Spot[];
 }> = [
   {
-    xlsx: 'example AICHI cargo invoice.xlsx', pattern: 'AICHI', invoice: 'AICHI 323', date: '22/10/2026',
-    booking: '2340232300', vessel: 'IRENES RESPECT V.007S', sheets: ['1', '2.'], boxes: ['WBPU7029762', 'CSNU7016204'],
-    cars: 9, stated: { units: 9, weight: 11030, amount: 2758335 }, charges: [],
+    xlsx: 'example AICHI cargo invoice Original.xlsx', pattern: 'AICHI', invoice: 'AICHI 325', date: '05/11/2026',
+    booking: '2342184670', vessel: 'IRENES RAINBOW V.037S', sheets: ['1', '2', '3', '4', '5', '6'],
+    boxes: ['CSGU7134867', 'SEGU6530270', 'SEKU4649054', 'MAGU5179399', 'CSNU6715819', 'CSNU6842177'],
+    cars: 29, stated: { units: 29, weight: 36570, amount: 7797851 }, charges: [],
     spots: [
-      { no: 1, sheet: '1', container: 'WBPU7029762', brand: 'DAIHATSU', model: 'HIJET', chassis: 'S500P-0014861', engine: 'KF',
-        fuel: 'GASOLINE', cc: 650, year: 2015, weight: 960, price: 299810, desc2: 'KF(GASOLINE/650),2015' },
-      { no: 3, sheet: '1', container: 'WBPU7029762', brand: 'HONDA', model: 'VEZEL HYBRID', chassis: 'RU3-1202192', engine: 'LEB-H1',
-        fuel: 'GASOLINE', cc: 1490, year: 2016, weight: 1310, price: 513450, desc2: 'LEB-H1(GASOLINE/1490),2016' },
-      { no: 9, sheet: '2.', container: 'CSNU7016204', brand: 'NISSAN', model: 'X-TRAIL', chassis: 'NT32-045681', engine: 'MR20',
-        fuel: 'GASOLINE', cc: 1990, year: 2016, weight: 1510, price: 451025, desc2: 'MR20(GASOLINE/1990),2016' },
+      { no: 1, sheet: '1', container: 'CSGU7134867', brand: 'HONDA', model: 'FIT SHUTTLE HYBRID', chassis: 'GP2-1001011', engine: 'LDA-MF6',
+        fuel: 'GASOLINE', cc: 1330, year: 2011, weight: 1200, price: 233620, desc2: 'LDA-MF6(GASOLINE/1330),2011' },
+      { no: 9, sheet: '2', container: 'SEGU6530270', brand: 'HONDA', model: 'VEZEL HYBRID', chassis: 'RU4-1018715', engine: 'LEB-H1',
+        fuel: 'GASOLINE', cc: 1490, year: 2014, weight: 1380, price: 560350, desc2: 'LEB-H1(GASOLINE/1490),2014' },
+      { no: 29, sheet: '6', container: 'CSNU6842177', brand: 'TOYOTA', model: 'WISH', chassis: 'ZGE25-6000663', engine: '2ZR',
+        fuel: 'GASOLINE', cc: 1790, year: 2013, weight: 1450, price: 430310, desc2: '2ZR(GASOLINE/1790),2013' },
     ],
   },
   {
@@ -248,4 +253,64 @@ async function janFinal() {
   console.log('✓ JAN TRADING Final Invoice: 17 คัน 4 แถว/คัน · เลขเครื่องใหม่ · ตัด COLOR และค่าใช้จ่าย · TOTAL 4,150,500 · worker ใช้เลขเดิม · PDF');
 }
 
-main().then(janFinal).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });
+/** 6. แก้ค่าในตาราง → เขียนลงใบ */
+async function editedFinal() {
+  const editsOf = (cars: Awaited<ReturnType<typeof parseCargoInvoice>>['cars']) =>
+    cars.map((c) => Object.fromEntries(EDIT_FIELDS.map((f) => [f, c[f]])));
+
+  /* JAN TRADING: แก้รุ่น ราคา น้ำหนัก เชื้อเพลิงของคันแรก */
+  const src = readFileSync(`${DIR}example JAN TRADING cargo invoice Original.xlsx`);
+  const inv = await parseCargoInvoice(src);
+  const original = inv.cars;
+  const edits = editsOf(inv.cars);
+  Object.assign(edits[0], { model: 'mark x zio', price: '190,000', weight: '1,600', fuel: 'diesel' });
+  inv.cars = applyEdits(inv.cars, edits);
+  assert.deepEqual(changedFields(original[0], inv.cars[0]), ['model', 'fuel', 'weight', 'price']);
+  assert.equal(inv.cars[0].model, 'MARK X ZIO');
+  assert.equal(inv.cars[0].desc2, '4GR(DIESEL/2490),2012');
+  assert.ok(inv.cars.every((c) => !c.problems.length));
+  assert.throws(() => applyEdits(original, edits.slice(1)), /จำนวนรถ/);
+  const bad = applyEdits(original, editsOf(original).map((e, i) => (i === 1 ? { ...e, chassis: original[0].chassis } : e)));
+  assert.match(bad[1].problems.join(), /เลขตัวถังซ้ำกับคันที่ 1/);
+
+  inv.blNo = 'EGLV022600156399';
+  const out = await buildFinalInvoice(src, inv, original, { tariffs: inv.cars.map(() => '87032290'), engineNumbers: null });
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(out as unknown as ArrayBuffer);
+  const ws = wb.worksheets[0];
+  const v = (ref: string) => String(ws.getCell(ref).value ?? '');
+  assert.equal(v('D18'), 'MARK X ZIO');
+  assert.equal(v('A18'), '1,600 KGS');
+  assert.equal(v('F18'), '¥190,000');
+  assert.equal(v('G18'), '¥190,000');
+  assert.equal(v('D20'), '4GR-xxxxxxx(DIESEL/2490)', 'Preview ยังไม่ออกเลขเครื่อง');
+  assert.equal(v('A90'), '23,630 KGS', 'น้ำหนักรวมใหม่');
+  assert.equal(v('G90'), '¥4,157,500', 'ยอดรวมใหม่');
+  const back = await parseCargoInvoice(out);
+  assert.deepEqual([back.cars[0].model, back.cars[0].fuel, back.cars[0].weight, back.cars[0].price], ['MARK X ZIO', 'DIESEL', 1600, 190000]);
+  assert.deepEqual(back.warnings, []);
+  assert.ok((await xlsxToPdf(out))!.length > 1000);
+
+  /* AICHI (ตู้ละชีต): แก้เลขตัวถังและ CC ของคันในชีตที่สอง — เขียนลงชีตนั้น ช่องเลขเครื่องได้ CC ใหม่ */
+  const aSrc = readFileSync(`${DIR}example AICHI cargo invoice Original.xlsx`);
+  const a = await parseCargoInvoice(aSrc);
+  const k = a.cars.findIndex((c) => c.sheet !== '1');
+  assert.ok(k > 0);
+  const aEdits = editsOf(a.cars);
+  Object.assign(aEdits[k], { chassis: 'TEST-123456', cc: '1500' });
+  const aOriginal = a.cars;
+  a.cars = applyEdits(a.cars, aEdits);
+  a.blNo = 'TESTAICHI01';
+  const aOut = await buildFinalInvoice(aSrc, a, aOriginal, { tariffs: a.cars.map(() => '87032290'), engineNumbers: null });
+  const aBack = await parseCargoInvoice(aOut);
+  assert.equal(aBack.cars[k].chassis, 'TEST-123456');
+  assert.equal(aBack.cars[k].cc, 1500);
+  assert.equal(aBack.cars[k].sheet, a.cars[k].sheet);
+  assert.deepEqual(aBack.cars.map((c, i) => (i === k ? null : c.chassis)), aOriginal.map((c, i) => (i === k ? null : c.chassis)), 'คันอื่นไม่เปลี่ยน');
+  const draft = await readInvoice(aOut);
+  assert.equal(draft.cars[k].chassis, 'TEST-123456', 'ตารางสรุปใช้ค่าที่แก้');
+
+  console.log('✓ แก้ค่าในตาราง: เขียนลงใบตามรูปแบบเดิม (¥ · KGS · เลขเครื่อง) ทุกชีต · TOTAL JAN คำนวณใหม่ · Preview ใช้ xxxxxxx · PDF');
+}
+
+main().then(janFinal).then(editedFinal).then(() => console.log('ผ่านทั้งหมด')).catch((e) => { console.error(e); process.exit(1); });

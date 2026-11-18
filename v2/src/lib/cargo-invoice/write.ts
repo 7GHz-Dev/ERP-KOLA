@@ -12,9 +12,10 @@
  * ช่องที่เดิมเป็นสูตรจะกลายเป็นค่าคงที่ — ตั้งแต่นี้หน้าเว็บเป็นตัวจัดเรียง ไม่ใช่สูตรในไฟล์
  */
 import JSZip from 'jszip';
-import { firstSheetPath } from '@/lib/draft/excel-patch';
+import { firstSheetPath, sheetPaths } from '@/lib/draft/excel-patch';
 import { colIndex } from '@/lib/draft/sheet';
-import type { CargoCar, CargoInvoice } from './parse';
+import type { CargoCar, CargoInvoice, CellSpot } from './parse';
+import { changedFields } from './edit';
 
 type Value = string | number | null;
 
@@ -182,6 +183,56 @@ export async function writeSummary(data: Buffer | Uint8Array, inv: CargoInvoice,
   const { xml, formulaRemoved } = writeCells(original, updates);
   zip.file(sheetPath, xml);
 
+  if (formulaRemoved) await dropCalcChain(zip);
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+}
+
+/** ค่าที่จะเขียนลงช่องตามรูปแบบที่ใบเขียนไว้ (ดู CellSpot) */
+function spotValue(spot: CellSpot, car: CargoCar): Value {
+  const n = (v: number | null) => (v === null ? '' : v.toLocaleString('en-US'));
+  switch (spot.fmt) {
+    case 'used': return `USED ${car.brand}`;
+    case 'engine': return car.fuel ? `${car.engine} (${car.fuel}/${car.cc ?? ''} CC)` : car.engine;
+    case 'kgs': return car.weight === null ? '' : `${n(car.weight)} KGS`;
+    case 'yen': return car.price === null ? '' : `¥${n(car.price)}`;
+    case 'jpy': return car.price === null ? '' : `JPY ${n(car.price)}`;
+    case 'num': {
+      const v = car[spot.field];
+      return typeof v === 'number' ? v : v === null ? null : String(v);
+    }
+    default: return String(car[spot.field] ?? '');
+  }
+}
+
+/**
+ * เขียนค่าที่แก้ในหน้าเว็บกลับลงส่วน invoice ของผู้ขาย — เฉพาะช่องที่ค่าเปลี่ยน รูปแบบช่องคงเดิม
+ * ช่องเลขเครื่องแบบก้อนเก็บเชื้อเพลิงกับ CC ไว้ด้วย แก้สามค่านี้ค่าไหนก็เขียนช่องนั้นใหม่
+ * ยอดในแถว TOTAL ของผู้ขายไม่คำนวณใหม่ (ยกเว้น JAN TRADING ที่จัดหน้าใหม่ทั้งใบ) — หน้าเว็บเตือนเมื่อยอดไม่ตรง
+ */
+export async function writeCarEdits(data: Buffer | Uint8Array, before: CargoCar[], after: CargoCar[]): Promise<Buffer | Uint8Array> {
+  const bySheet = new Map<string, Map<string, Value>>();
+  after.forEach((car, i) => {
+    const changed = new Set(changedFields(before[i], car));
+    if (!changed.size) return;
+    for (const spot of car.cells) {
+      const hit = spot.fmt === 'engine' ? ['engine', 'fuel', 'cc'].some((f) => changed.has(f as never)) : changed.has(spot.field);
+      if (!hit) continue;
+      if (!bySheet.has(spot.sheet)) bySheet.set(spot.sheet, new Map());
+      bySheet.get(spot.sheet)!.set(spot.ref, spotValue(spot, car));
+    }
+  });
+  if (!bySheet.size) return data;
+
+  const zip = await JSZip.loadAsync(data);
+  const paths = new Map((await sheetPaths(zip)).map((p) => [p.name, p.path]));
+  let formulaRemoved = false;
+  for (const [sheet, updates] of bySheet) {
+    const path = paths.get(sheet);
+    if (!path) throw new Error(`ไม่พบชีต ${sheet} ในไฟล์`);
+    const res = writeCells(await zip.file(path)!.async('string'), updates);
+    zip.file(path, res.xml);
+    formulaRemoved ||= res.formulaRemoved;
+  }
   if (formulaRemoved) await dropCalcChain(zip);
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 }

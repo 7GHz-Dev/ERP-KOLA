@@ -18,6 +18,19 @@
 import type ExcelJS from 'exceljs';
 import { colLetters, loadWorkbook, sheetReader, type Sheet } from '@/lib/draft/sheet';
 import { clean, pad2, toDecimal, type CellValue } from '@/lib/draft/values';
+import { engineDesc, normalizeFuel, withProblems, type EditField } from './edit';
+
+export { engineDesc, normalizeFuel };
+
+/**
+ * ช่องในไฟล์ที่ค่าของรถมาจาก — ใช้เขียนค่าที่แก้ในหน้าเว็บกลับลงใบ ให้ Final Invoice ที่พิมพ์ตรงกับค่าที่ใช้ทำใบขน
+ *   fmt บอกรูปแบบที่ใบเขียนไว้ เขียนกลับแบบเดียวกัน: used "USED TOYOTA" · kgs "1,520 KGS" · yen "¥183,000"
+ *   jpy "JPY 75,000" · engine "4GR (GASOLINE/2490 CC)" (เลขเครื่อง+เชื้อเพลิง+CC ในช่องเดียว) · num ตัวเลข · text ข้อความ
+ */
+export type CellSpot = {
+  field: EditField; sheet: string; ref: string;
+  fmt: 'text' | 'num' | 'used' | 'kgs' | 'yen' | 'jpy' | 'engine';
+};
 
 export type CargoCar = {
   /** ลำดับรถในใบ (1, 2, 3 …) */
@@ -39,6 +52,11 @@ export type CargoCar = {
   /** ชีตและแถวในไฟล์ที่รถคันนี้เริ่ม — บอกคนตรวจว่าไปดูตรงไหนในไฟล์ */
   sheet: string;
   row: number;
+  /** ช่องในไฟล์ของแต่ละค่า (ดู CellSpot) */
+  cells: CellSpot[];
+  /** ปัญหาจากโครงไฟล์ที่แก้ในตารางไม่ได้ เช่นหาตู้ไม่เจอ */
+  layoutProblems: string[];
+  /** ปัญหาทั้งหมด = layoutProblems + ปัญหาของค่า (edit.ts fieldProblems) */
   problems: string[];
 };
 
@@ -86,19 +104,12 @@ const num = (v: CellValue): number | null => {
   return d ? d.toNumber() : null;
 };
 
-/**
- * เชื้อเพลิงตามตารางพิกัด (มีแค่ GASOLINE · PETROL · DIESEL) — รถไฮบริดแยกด้วยชื่อรุ่น ("FIT HYBRID") ไม่ใช่เชื้อเพลิง
- * JAN TRADING เขียน "HYBRID-GASOLINE" จึงต้องเหลือ GASOLINE ไม่งั้นหาพิกัดไม่เจอ
- */
-export function normalizeFuel(raw: string) {
-  const f = raw.toUpperCase().replace(/\s+/g, '');
-  if (/HYBRID/.test(f)) {
-    if (/DIESEL/.test(f)) return 'DIESEL';
-    if (/PETROL/.test(f)) return 'PETROL';
-    return 'GASOLINE';
-  }
-  return f;
-}
+/** รูปแบบตัวเลขที่ใบเขียน — เขียนค่าที่แก้กลับแบบเดียวกัน */
+const moneyFmt = (v: CellValue): CellSpot['fmt'] => {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return /^[¥￥]/.test(s) ? 'yen' : /^JPY/i.test(s) ? 'jpy' : 'num';
+};
+const weightFmt = (v: CellValue): CellSpot['fmt'] => (typeof v === 'string' && /KG/i.test(v) ? 'kgs' : 'num');
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
@@ -125,10 +136,6 @@ export function splitEngineType(raw: string) {
   if (!m) return { engine: s.split('(')[0], fuel: '', cc: null as number | null };
   return { engine: m[1], fuel: normalizeFuel(m[2]), cc: Number(m[3]) };
 }
-
-/** use_desc_good2 แบบที่สูตรเดิมประกอบ: "4GR(GASOLINE/2490),2012" — ไม่มีช่องว่าง ไม่มี "CC" */
-export const engineDesc = (engine: string, fuel: string, cc: number | null, year: number | null) =>
-  `${engine}(${fuel}/${cc ?? ''}),${year ?? ''}`;
 
 /** ข้อความแรกที่ไม่ว่างในแถว (ช่วงคอลัมน์ที่ให้) — หัว invoice มักถูก merge ข้ามหลายช่อง */
 function firstText(ws: Sheet, row: number, from = 1, to = 20): string {
@@ -215,6 +222,7 @@ function readTable(ws: Sheet, inv: CargoInvoice) {
     const fuel = normalizeFuel(upper(ws.value(r, h.fuel)));
     const cc = num(ws.value(r, h.cc));
     const year = num(ws.value(r, h.year));
+    const at = (field: EditField, col: number, fmt: CellSpot['fmt']): CellSpot => ({ field, sheet: ws.name, ref: cellRef(r, col), fmt });
     inv.cars.push({
       no: num(ws.value(r, h.no)) ?? inv.cars.length + 1,
       container: '', brand, model, chassis, engine, fuel, cc, year,
@@ -222,7 +230,12 @@ function readTable(ws: Sheet, inv: CargoInvoice) {
       price: num(ws.value(r, h.amount)),
       desc1: `USED ${brand} ${model},`,
       desc2: engineDesc(engine, fuel, cc, year),
-      sheet: ws.name, row: r, problems: [],
+      sheet: ws.name, row: r, problems: [], layoutProblems: [],
+      cells: [
+        at('brand', h.make, 'text'), at('model', h.model, 'text'), at('chassis', h.chassis, 'text'),
+        at('engine', h.engine, 'text'), at('fuel', h.fuel, 'text'), at('cc', h.cc, 'num'), at('year', h.year, 'num'),
+        at('weight', h.weight, weightFmt(ws.value(r, h.weight))), at('price', h.amount, moneyFmt(ws.value(r, h.amount))),
+      ],
     });
     boxIndex.push(num(ws.value(r, h.box)) ?? 0);
   }
@@ -243,7 +256,7 @@ function readTable(ws: Sheet, inv: CargoInvoice) {
   inv.containers = [...boxes.values()];
   inv.cars.forEach((car, i) => {
     car.container = boxes.get(boxIndex[i]) ?? '';
-    if (!car.container) car.problems.push(`ไม่พบเลขตู้ลำดับ ${boxIndex[i] || '-'} ในรายการตู้ใต้ TOTAL`);
+    if (!car.container) car.layoutProblems.push(`ไม่พบเลขตู้ลำดับ ${boxIndex[i] || '-'} ในรายการตู้ใต้ TOTAL`);
   });
 }
 
@@ -278,7 +291,6 @@ function readBlocks(ws: Sheet, raw: ExcelJS.Worksheet, inv: CargoInvoice): State
     car.fuel = e.fuel;
     car.cc = e.cc;
     car.desc2 = e.fuel ? engineDesc(e.engine, e.fuel, e.cc, car.year) : `${engineRaw.replace(/\s+/g, '')},${car.year ?? ''}`;
-    if (!engineRaw) car.problems.push('ไม่มีเลขเครื่อง (ENGINE)');
     inv.cars.push(car);
     car = null;
     engineRaw = '';
@@ -323,12 +335,16 @@ function readBlocks(ws: Sheet, raw: ExcelJS.Worksheet, inv: CargoInvoice): State
       finish();
       const brand = c.replace(/^USED\s+/i, '').trim();
       const model = clean(ws.value(r, 4));
+      const spot = (field: EditField, col: number, fmt: CellSpot['fmt']): CellSpot => ({ field, sheet: ws.name, ref: cellRef(r, col), fmt });
       car = {
         no: inv.cars.length + 1, container, brand, model, chassis: '', engine: '', fuel: '',
         cc: null, year: null, weight: num(a), price: num(ws.value(r, 7)) ?? num(ws.value(r, 6)),
-        desc1: `USED ${brand} ${model},`, desc2: '', sheet: ws.name, row: r, problems: [],
+        desc1: `USED ${brand} ${model},`, desc2: '', sheet: ws.name, row: r, problems: [], layoutProblems: [],
+        cells: [spot('brand', 3, 'used'), spot('model', 4, 'text'), spot('weight', 1, weightFmt(a))],
       };
-      if (!container) car.problems.push('ไม่พบเลขตู้ก่อนรถคันนี้');
+      // ราคาต่อหน่วย (F) และยอด (G) — แก้ราคาแล้วเขียนทั้งสองช่องที่มีค่า (รถคันละ 1 UNIT)
+      for (const col of [6, 7]) if (num(ws.value(r, col)) !== null) car.cells.push(spot('price', col, moneyFmt(ws.value(r, col))));
+      if (!container) car.layoutProblems.push('ไม่พบเลขตู้ก่อนรถคันนี้');
       continue;
     }
     // แถวที่มียอดเงินแต่ไม่ใช่รถ เช่น "Forwarding, Dray, Loading Chg. etc." | 300000
@@ -341,9 +357,10 @@ function readBlocks(ws: Sheet, raw: ExcelJS.Worksheet, inv: CargoInvoice): State
     }
     if (!car) continue;
     const d = ws.value(r, 4);
-    if (lab.startsWith('CHASSIS')) car.chassis = clean(d);
-    else if (lab.startsWith('ENGINE') && clean(d)) engineRaw = clean(d);
-    else if (lab.startsWith('REGYEAR') || lab === 'YEAR') car.year = num(d);
+    const here = (field: EditField, fmt: CellSpot['fmt']) => car!.cells.push({ field, sheet: ws.name, ref: cellRef(r, 4), fmt });
+    if (lab.startsWith('CHASSIS')) { car.chassis = clean(d); here('chassis', 'text'); }
+    else if (lab.startsWith('ENGINE') && clean(d)) { engineRaw = clean(d); here('engine', 'engine'); }
+    else if (lab.startsWith('REGYEAR') || lab === 'YEAR') { car.year = num(d); here('year', 'num'); }
   }
   finish();
   return stated;
@@ -352,21 +369,7 @@ function readBlocks(ws: Sheet, raw: ExcelJS.Worksheet, inv: CargoInvoice): State
 /* ---------------- ตรวจ ---------------- */
 
 function check(inv: CargoInvoice) {
-  const seen = new Map<string, number>();
-  for (const car of inv.cars) {
-    if (!car.brand) car.problems.push('ไม่มียี่ห้อ');
-    if (!car.chassis) car.problems.push('ไม่มีเลขตัวถัง (CHASSIS)');
-    if (!car.fuel) car.problems.push('ไม่มีชนิดเชื้อเพลิง');
-    if (!car.cc) car.problems.push('ไม่มี CC');
-    if (!car.year || car.year < 1950 || car.year > 2100) car.problems.push('ปีรถไม่ถูกต้อง');
-    if (!car.weight) car.problems.push('ไม่มีน้ำหนัก');
-    if (car.price === null) car.problems.push('ไม่มีราคา');
-    const key = car.chassis.replace(/\s/g, '').toUpperCase();
-    if (key) {
-      if (seen.has(key)) car.problems.push(`เลขตัวถังซ้ำกับคันที่ ${seen.get(key)}`);
-      else seen.set(key, car.no);
-    }
-  }
+  inv.cars = withProblems(inv.cars);
   for (const [what, value] of [['เลข Invoice', inv.invoiceNo], ['วันที่ Invoice', inv.invoiceDate]]) {
     if (!value) inv.errors.push(`อ่าน${what}จากหัวใบไม่ได้`);
   }

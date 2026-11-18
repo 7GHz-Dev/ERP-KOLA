@@ -8,7 +8,7 @@
  *   ENGINE NO.      แทนด้วยเลขเครื่องที่ระบบออก เช่น LDA-1585235(GASOLINE/1330) (ดู engine-format.ts)
  *   ค่าใช้จ่ายอื่น   ตัดแถว Forwarding / Other Charges / (JPY … PER CONTAINER) / แถวว่างคั่น ก่อน TOTAL ออก
  *                   และข้อความ FREIGHT CHARGES กับยอดในแถว TOTAL
- *   ยอด TOTAL       ราคารถรวม (ค่าใช้จ่ายที่ตัดออกไม่อยู่ในยอดแล้ว) — น้ำหนักกับจำนวนคันคงตามเดิม
+ *   ยอด TOTAL       ราคารถรวม (ค่าใช้จ่ายที่ตัดออกไม่อยู่ในยอดแล้ว) และน้ำหนักรวม — จำนวนคันคงตามเดิม
  *
  * แก้ XML ตรง ๆ แบบเดียวกับ write.ts — รูปแบบช่อง โลโก้ ความสูงแถว ชีตอื่น ไม่ถูกแตะ
  * ช่องทางขวาของคอลัมน์ G (สูตรช่วยของไฟล์ imp3_ เดิม) ลบทิ้ง เพราะอ้างแถวเดิมที่ถูกย้ายแล้ว
@@ -42,6 +42,8 @@ export type JanFinal = {
   engines: string[];
   /** ราคารถรวม — ยอดใหม่ของแถว TOTAL */
   total: number;
+  /** น้ำหนักรวม (KG) — ไม่ส่ง = คงตามใบ (แก้น้ำหนักในตารางแล้วยอดเปลี่ยน) */
+  weight?: number;
 };
 
 function sharedStrings(xml: string | null): string[] {
@@ -182,6 +184,9 @@ export async function finalizeJanTrading(data: Buffer | Uint8Array, final: JanFi
   const amountText = text(total + 1, 7);
   const amount = final.total.toLocaleString('en-US');
   edit(total + 1, 7, /^[¥￥]/.test(amountText) ? `¥${amount}` : /^JPY/i.test(amountText) ? `JPY ${amount}` : final.total);
+  if (final.weight !== undefined) {
+    edit(total + 1, 1, /KG/i.test(text(total + 1, 1)) ? `${final.weight.toLocaleString('en-US')} KGS` : final.weight);
+  }
 
   /* ---------- เขียนแถวใหม่ ---------- */
   const out: string[] = [];
