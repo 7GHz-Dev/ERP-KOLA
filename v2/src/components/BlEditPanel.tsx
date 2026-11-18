@@ -40,8 +40,9 @@ export type PreviewDoc = { id: string; fileName: string; mimeType: string | null
 type Opts = {
   shippers: Option[];
   consignees: Option[]; notify: Option[]; people: Option[]; jobTypes: Option[];
-  ports: Option[]; originPorts: Option[]; terminals: Option[]; packageTypes: Option[];
+  ports: Option[]; originPorts: Option[]; terminals: Option[]; packageTypes: Option[]; containerTypes: Option[];
 };
+export type BoxRow = { id: string; containerNo: string; containerType: string; sealNo: string; weight: string };
 
 const LABEL: Record<string, string> = { ARRIVAL_NOTICE: 'Arrival Notice', BL: 'Bill of Lading' };
 
@@ -67,7 +68,7 @@ function Opts({ list, nameOnly = false }: { list: Option[]; nameOnly?: boolean }
 }
 
 export function BlEditPanel({
-  job, options, source, other, deletable, queue,
+  job, options, source, other, deletable, queue, containers,
 }: {
   job: BlEditJob;
   options: Opts;
@@ -77,6 +78,8 @@ export function BlEditPanel({
   deletable?: { waiting: boolean; returnTo: string } | null;
   /** แก้หลายงานต่อกัน — ปุ่มก่อนหน้า/ถัดไป · บันทึกแล้วไปงานถัดไป */
   queue?: EditQueue | null;
+  /** ตู้ของงาน — แก้/เพิ่ม/ลบในแผงนี้ (ส่งไปกับฟอร์มบันทึก) */
+  containers?: BoxRow[];
 }) {
   const router = useRouter();
   // แก้ช่องไหนแล้วยังไม่บันทึก — เลื่อนไปงานอื่นต้องถามก่อน ไม่งั้นค่าที่พิมพ์ไว้หาย
@@ -90,6 +93,9 @@ export function BlEditPanel({
     router.replace(hrefOf(k));
   };
   const next = queue && queue.index < queue.ids.length - 1 ? queue.index + 1 : null;
+  // ตู้: แถวเดิมมี id · แถวใหม่ id ว่าง (ระบบออกเลขประจำตู้ให้ตอนบันทึก) · ลบ = เอาออกจากรายการ
+  const [boxes, setBoxes] = useState<Array<BoxRow & { key: string }>>(() => (containers ?? []).map((c) => ({ ...c, key: c.id })));
+  const defaultType = options.containerTypes[0]?.name ?? '';
   const [deleting, setDeleting] = useState(false);
   const [shown, setShown] = useState(source?.id ?? '');
   // SearchSelect เป็นช่องพิมพ์ค้นหา ค่าจึงต้องเก็บเองแล้วส่งผ่าน hidden
@@ -227,9 +233,6 @@ export function BlEditPanel({
           <Field label="ETA">
             <input name="eta" type="date" defaultValue={job.eta ?? ''} />
           </Field>
-          <Field label="วันที่ขนย้าย">
-            <input name="transportDate" type="date" defaultValue={job.transportDate ?? ''} />
-          </Field>
           <Field label="SHIPPER" wide>
             {/*
               อยู่เหนือ CONSIGNEE ให้ตรงลำดับบนใบ AN/BL ที่กำลังเทียบอยู่ข้าง ๆ
@@ -316,16 +319,52 @@ export function BlEditPanel({
           <Field label="DET FREE (วัน)">
             <input name="detDays" type="number" min={0} defaultValue={job.detDays} />
           </Field>
-          <Field label="มูลค่าสินค้า">
-            <div className="pair">
-              <input name="goodsValue" type="number" step="any" defaultValue={job.goodsValue ?? ''} />
-              <input name="goodsCurrency" defaultValue={job.goodsCurrency ?? ''} maxLength={10} />
-            </div>
-          </Field>
           <Field label="หมายเหตุถึงลูกค้า" wide>
             <textarea name="customerNote" rows={2} defaultValue={job.customerNote ?? ''} />
           </Field>
         </div>
+
+        {/* ---------- ตู้ Container — เฉพาะหน้าที่ส่งรายการตู้มา (ไม่ส่ง = ไม่แตะตู้ตอนบันทึก) ---------- */}
+        {containers ? (<>
+        <input type="hidden" name="ct_edit" value="1" />
+        <div className="bl-boxes">
+          <div className="bl-boxes-head">
+            <b>CONTAINER {boxes.length} ตู้</b>
+            <button type="button" className="button tiny"
+              onClick={() => { setDirty(true); setBoxes((b) => [...b, { id: '', containerNo: '', containerType: b.at(-1)?.containerType || defaultType, sealNo: '', weight: '', key: `new-${Date.now()}` }]); }}>
+              + เพิ่มตู้
+            </button>
+          </div>
+          {boxes.length ? (
+            <table className="data bl-boxes-table">
+              <thead><tr><th>#</th><th>CONTAINER NO.</th><th>SIZE/TYPE</th><th>SEAL NO.</th><th>WEIGHT (KG)</th><th /></tr></thead>
+              <tbody>
+                {boxes.map((b, i) => (
+                  <tr key={b.key}>
+                    <td className="col-no">{i + 1}</td>
+                    <td>
+                      <input type="hidden" name="ct_id" value={b.id} />
+                      <input name="ct_no" defaultValue={b.containerNo} placeholder="ABCD1234567" required
+                        onBlur={(e) => { e.target.value = e.target.value.replace(/[\s-]/g, '').toUpperCase(); }} />
+                    </td>
+                    <td>
+                      <select name="ct_type" defaultValue={b.containerType}>
+                        {[...new Set([b.containerType, ...options.containerTypes.map((o) => o.name)].filter(Boolean))].map((n) => <option key={n}>{n}</option>)}
+                      </select>
+                    </td>
+                    <td><input name="ct_seal" defaultValue={b.sealNo} /></td>
+                    <td><input name="ct_weight" inputMode="decimal" defaultValue={b.weight} /></td>
+                    <td>
+                      <button type="button" className="icon-button" title={b.id ? 'ลบตู้นี้ (มีผลเมื่อกดบันทึก)' : 'เอาแถวนี้ออก'}
+                        onClick={() => { setDirty(true); setBoxes((list) => list.filter((x) => x.key !== b.key)); }}>×</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <p className="batch-note">ยังไม่มีตู้ในงานนี้ — กด + เพิ่มตู้</p>}
+        </div>
+        </>) : null}
 
         {/* ปุ่มติดอยู่ท้ายแผงเสมอ ฟอร์มยาวกว่าจอจึงไม่ต้องเลื่อนลงไปหา */}
         <div className="bl-edit-actions">

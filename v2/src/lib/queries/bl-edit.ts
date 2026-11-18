@@ -1,6 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
-import { approvals, files, jobs, masterRecords } from '@/db/schema';
+import { approvals, containers, files, jobs, masterRecords } from '@/db/schema';
 import { OTHER_KINDS } from '@/lib/other-cargo';
 import { roleAllows } from '@/lib/auth';
 
@@ -37,8 +37,17 @@ export async function loadBlEdit(jobId: string) {
   const code = (type?.code ?? '').trim().toUpperCase();
   const kind = Object.entries(OTHER_KINDS).find(([, k]) => k.code === code)?.[0];
   const byCategory = new Map(rows.map((r) => [r.category, r]));
+  // ตู้ของงาน — แก้ในแผงเดียวกัน (เลขตู้ · ขนาด · ซีล · น้ำหนัก)
+  const boxes = await db.select({
+    id: containers.id, containerNo: containers.containerNo, containerType: containers.containerType,
+    sealNo: containers.sealNo, weight: containers.weight,
+  }).from(containers).where(eq(containers.jobId, jobId)).orderBy(containers.createdAt, containers.containerNo);
   return {
     job,
+    containers: boxes.map((b) => ({
+      id: b.id, containerNo: b.containerNo ?? '', containerType: b.containerType ?? '', sealNo: b.sealNo ?? '',
+      weight: b.weight === null ? '' : String(Number(b.weight)),
+    })),
     deletable: !appr.some((a) => a.status === 'APPROVED'),
     waitingApproval: appr.some((a) => a.status === 'PENDING'),
     returnTo: kind ? `/other/${kind}?tab=bl` : '/pending?tab=bl',

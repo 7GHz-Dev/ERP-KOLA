@@ -15,6 +15,9 @@ import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 import { jobIsOtherCargo, requireJobActor, requireBlEditor } from '@/lib/job-actor';
 import { assertSalePrice } from '@/lib/sale/price-store';
+import { readContainerRows } from '@/lib/admin-job-rows';
+import { duplicateContainers } from '@/lib/intake-checks';
+import { nextContainerNos } from '@/lib/container-no';
 
 /**
  * การแก้ไขข้อมูลทั้งหมดผ่าน server action
@@ -738,7 +741,8 @@ async function updateBlInfoImpl(formData: FormData) {
     vessel: text(formData.get('vessel'), 120),
     voyage: text(formData.get('voyage'), 80),
     eta: day(formData.get('eta')) ?? job.eta,
-    transportDate: day(formData.get('transportDate')),
+    // แผงแก้ข้อมูล BL ไม่มีช่องวันที่ขนย้ายแล้ว — ไม่ได้ส่งมา = คงค่าเดิม
+    transportDate: formData.has('transportDate') ? day(formData.get('transportDate')) : job.transportDate,
     demDays: Math.round(demDays),
     detDays: Math.round(detDays),
     product: text(formData.get('product'), 1000),
@@ -789,7 +793,37 @@ async function updateBlInfoImpl(formData: FormData) {
     }
   }
 
-  await logActivity(user.id, 'UPDATE_BL_INFO', 'JOB', jobId, { demDays, detDays });
+  // ---------- ตู้ (แผงแก้ข้อมูล BL ส่งรายการตู้มาทั้งชุด) ----------
+  let boxes: { kept: number; added: number; removed: number } | null = null;
+  if (formData.has('ct_edit')) {
+    const ctRows = readContainerRows(formData);
+    const dups = duplicateContainers(ctRows.map((r) => r.containerNo));
+    if (dups.length) throw new Error(`เลขตู้ซ้ำในรายการ: ${dups.join(', ')}`);
+    boxes = await db.transaction(async (tx) => {
+      const old = await tx.select({ id: containers.id }).from(containers).where(eq(containers.jobId, jobId));
+      const keepIds = new Set(ctRows.filter((r) => r.id).map((r) => r.id));
+      const drop = old.map((r) => r.id).filter((id) => !keepIds.has(id));
+      if (drop.length) await tx.delete(containers).where(inArray(containers.id, drop));
+      for (const r of ctRows.filter((row) => row.id)) {
+        await tx.update(containers).set({
+          containerNo: r.containerNo, containerType: r.containerType, sealNo: r.sealNo, weight: r.weight, updatedAt: new Date(),
+        }).where(and(eq(containers.id, r.id), eq(containers.jobId, jobId)));
+      }
+      const added = ctRows.filter((row) => !row.id);
+      if (added.length) {
+        const typeId = keep('jobTypeId', job.jobTypeId, 80);
+        const [type] = typeId ? await tx.select({ code: masterRecords.code }).from(masterRecords).where(eq(masterRecords.id, typeId)).limit(1) : [];
+        const runningNos = await nextContainerNos(tx, (type?.code || 'MU').toUpperCase(), added.length);
+        await tx.insert(containers).values(added.map((r, i) => ({
+          id: newId('CT'), jobId, jobNo: job.jobNo, runningNo: runningNos[i],
+          containerNo: r.containerNo, containerType: r.containerType, sealNo: r.sealNo, weight: r.weight,
+        })));
+      }
+      return { kept: keepIds.size, added: added.length, removed: drop.length };
+    });
+  }
+
+  await logActivity(user.id, 'UPDATE_BL_INFO', 'JOB', jobId, { demDays, detDays, boxes });
   revalidatePath('/pending');
   // ช่องที่เพิ่มมามีผลกับหน้าอื่นด้วย เช่น SHIPLINE ที่หน้าแลก DO ใช้เลือกแบบฟอร์มจดหมาย
   revalidatePath('/jobs');

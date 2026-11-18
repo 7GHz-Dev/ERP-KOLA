@@ -34,6 +34,7 @@ export default async function BlEditDrawer({ params, searchParams }: {
       <BlEditPanel
         key={data.job.id}
         queue={queue}
+        containers={data.containers}
         job={data.job}
         options={options}
         source={data.source}

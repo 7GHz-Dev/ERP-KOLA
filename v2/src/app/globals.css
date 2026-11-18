@@ -2946,3 +2946,9 @@ img.cgi-doc-file { overflow: auto; }
 .bl-queue { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; padding: 6px 8px; border-radius: 8px; background: var(--blue-soft); border: 1px solid var(--line); }
 .bl-queue select { flex: 1; min-width: 160px; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .bl-queue-dirty { color: var(--amber); font-weight: 700; }
+
+/* แผงแก้ข้อมูล BL — ตารางตู้ */
+.bl-boxes { margin-top: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.bl-boxes-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+.bl-boxes-table td { padding: 3px 4px; }
+.bl-boxes-table input, .bl-boxes-table select { width: 100%; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; }

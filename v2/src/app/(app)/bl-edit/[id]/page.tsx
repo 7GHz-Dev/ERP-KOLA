@@ -27,7 +27,7 @@ export default async function BlEditPage({ params, searchParams }: {
           <Link className="cell-link" href="/pending">กลับไปหน้างานคงค้าง</Link>
         </p>
       </div>
-      <BlEditPanel key={data.job.id} queue={queue} job={data.job} options={options} source={data.source} other={data.other}
+      <BlEditPanel key={data.job.id} queue={queue} containers={data.containers} job={data.job} options={options} source={data.source} other={data.other}
         deletable={data.deletable ? { waiting: data.waitingApproval, returnTo: backTo(data, user.role) } : null} />
     </>
   );
