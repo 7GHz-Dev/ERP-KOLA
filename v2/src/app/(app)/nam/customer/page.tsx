@@ -64,7 +64,7 @@ export default async function NamCustomerPage({
             {/* ยืนยันแล้วล็อกไฟล์ไว้ ต้องขออนุมัติก่อนจึงแก้ได้ */}
             {done ? null : (
               <UploadForm jobId={r.id} category="INVOICE_GOODS"
-                label={file ? 'เปลี่ยนไฟล์' : 'อัปโหลด'} requireReason={Boolean(file)} />
+                label={file ? 'เปลี่ยนไฟล์' : 'อัปโหลด'} />
             )}
           </div>
         );

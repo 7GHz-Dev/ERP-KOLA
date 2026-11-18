@@ -79,24 +79,14 @@ async function uploadJobFileImpl(formData: FormData) {
     .limit(1);
 
   const changeReason = text(formData.get('changeReason'), 500);
-  // เปลี่ยนไฟล์ Invoice สินค้าต้องบอกเหตุผลเสมอ เพราะกระทบยอดที่ฝ่ายอื่นใช้ไปแล้ว
-  if (category === 'INVOICE_GOODS' && existing && !changeReason) {
-    throw new Error('การเปลี่ยนไฟล์ Invoice ต้องระบุเหตุผล');
-  }
+  // เปลี่ยนไฟล์ Invoice สินค้าไม่ต้องระบุเหตุผลแล้ว (ทีมขอ) — เวอร์ชันเก่ายังเก็บไว้ในประวัติไฟล์
 
   const bytes = Buffer.from(await blob.arrayBuffer());
   const { id, version, current } = await storeJobFileVersion({
     jobId, category, bytes, fileName: blob.name, mimeType: blob.type,
     userId: user.id, note: text(formData.get('note'), 500), changeReason, multi,
-    // Invoice ที่เปลี่ยนใหม่ต้องมีคนกดรับทราบก่อน แถวจึงจะหายแดง
-    isAcknowledged: !(category === 'INVOICE_GOODS' && Boolean(existing)),
+    // เปลี่ยน Invoice สินค้าไม่ต้องให้ใครกดรับทราบ / ไม่ทำแถวสีแดงแล้ว (ทีมขอ)
   });
-
-  if (category === 'INVOICE_GOODS' && current) {
-    await db.update(jobs)
-      .set({ hasInvoiceAlert: true, updatedBy: user.id, updatedAt: new Date() })
-      .where(eq(jobs.id, jobId));
-  }
 
   /*
    * จดหมายแลก D/O ที่อัปเข้ามาเอง ถือว่าผ่านขั้นทำจดหมายเหมือนกับที่ระบบออกให้

@@ -38,7 +38,11 @@ const STEPS = ['อัปโหลด Invoice', 'ตรวจข้อมูล'
 const LAID_OUT = ['JAN TRADING', 'AICHI'];
 type NormalPrefill = React.ComponentProps<typeof CargoInvoiceNormal>['prefill'];
 
-export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
+/**
+ * presetJob — เปิดจาก Pending jobs > 2. Final Invoice > Create FN Invoice (popup ของงานนั้น)
+ * ใช้งานนี้เสมอ ไม่ต้องหางานจาก BL / เลขตู้ · บันทึกแล้วเป็น FINAL_INVOICE ของงานนี้
+ */
+export function CargoInvoiceTool({ shippers, presetJob }: { shippers: ShipperChoice[]; presetJob?: JobMatch | null }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -81,7 +85,7 @@ export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
     setFile(f);
     // รูป / PDF — ไปฟอร์ม NORMAL เลย (ฟอร์มให้ AI อ่านแล้วเติมให้)
     if (!/\.xlsx$/i.test(f.name)) {
-      setNormal({ cars: [], invoiceNo: '', invoiceDate: '', supplier: '', jobs: [], note: '' });
+      setNormal({ cars: [], invoiceNo: '', invoiceDate: '', supplier: '', jobs: presetJob ? [presetJob] : [], note: '' });
       return;
     }
     setBusy('กำลังอ่านไฟล์…');
@@ -94,7 +98,7 @@ export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
         const ok = !data.invoice.errors.length && data.invoice.cars.length > 0;
         setNormal({
           cars: ok ? data.invoice.cars : [], invoiceNo: data.invoice.invoiceNo, invoiceDate: data.invoice.invoiceDate,
-          supplier: data.invoice.supplier, jobs: data.jobs,
+          supplier: data.invoice.supplier, jobs: presetJob ? [presetJob] : data.jobs,
           note: ok ? `อ่านรายการรถจากไฟล์ (${data.invoice.pattern}) ได้ ${data.invoice.cars.length} คัน — ตรวจทุกช่องก่อนบันทึก`
             : 'ไฟล์นี้ระบบอ่านรายการรถเองไม่ได้',
         });
@@ -104,6 +108,11 @@ export function CargoInvoiceTool({ shippers }: { shippers: ShipperChoice[] }) {
       setSuggest(data.invoiceSuggest);
       setInvoiceNum(data.invoiceSuggest?.next ? String(data.invoiceSuggest.next) : '');
       setCars(data.invoice.cars);
+      if (presetJob) {
+        setJobs([presetJob]);
+        setJobId(presetJob.id);
+        return;
+      }
       setJobs(data.jobs);
       setMatchedBy(data.matchedBy);
       // หาด้วยเลขตู้แล้วเจอหลายงาน: เลือกให้เฉพาะเมื่องานแรกตู้ตรงครบทุกตู้และมากกว่างานอื่น

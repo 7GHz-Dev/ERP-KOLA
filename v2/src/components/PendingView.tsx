@@ -228,9 +228,16 @@ function columnsFor(
       render: (r) => (
         <div className="row-actions">
           <FileChip file={r.currentFiles?.FINAL_INVOICE} />
+          {/* สร้าง Final Invoice จาก Invoice ผู้ขายในหน้าต่าง popup ของงานนี้ — บันทึกแล้วเป็นไฟล์ Final Invoice */}
           {sub === 'wait' ? (
-            <UploadForm jobId={r.id} category="FINAL_INVOICE"
-              label={r.currentFiles?.FINAL_INVOICE ? 'เปลี่ยนไฟล์' : 'อัปโหลด'} />
+            other ? (
+              <UploadForm jobId={r.id} category="FINAL_INVOICE"
+                label={r.currentFiles?.FINAL_INVOICE ? 'เปลี่ยนไฟล์' : 'อัปโหลด'} />
+            ) : (
+              <Link className="button tiny primary" href={`/fn-invoice/${r.id}`}>
+                {r.currentFiles?.FINAL_INVOICE ? 'Create FN Invoice ใหม่' : 'Create FN Invoice'}
+              </Link>
+            )
           ) : null}
         </div>
       ),
