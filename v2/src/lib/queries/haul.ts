@@ -28,6 +28,9 @@ export type HaulSummary = {
   lastDate: string | null;
   sentAt: Date | null;
   ackAt: Date | null;
+  /** ตู้ที่ถึง ERP TTN แล้ว · ข้อความผิดพลาดล่าสุดของการส่ง TTN (ว่าง = ไม่มี) */
+  ttnSent: number;
+  ttnError: string | null;
 };
 
 /** สรุปแพลนของหลายงานพร้อมกัน ไม่ยิงทีละแถว */
@@ -43,6 +46,8 @@ export async function haulSummaries(jobIds: string[]): Promise<Map<string, HaulS
     lastDate: sql<string | null>`max(${haulPlans.haulDate})::text`,
     sentAt: sql<Date | null>`max(${haulPlans.sentAt})`,
     ackAt: sql<Date | null>`max(${haulPlans.ackAt})`,
+    ttnSent: sql<number>`count(${haulPlans.ttnSentAt})::int`,
+    ttnError: sql<string | null>`max(${haulPlans.ttnError})`,
   })
     .from(containers)
     .leftJoin(haulPlans, eq(haulPlans.containerId, containers.id))

@@ -284,6 +284,9 @@ export const haulPlans = pgTable('haul_plans', {
   /** MAY รับแพลนแล้ว */
   ackAt: timestamp('ack_at', { withTimezone: true }),
   ackBy: text('ack_by'),
+  /** ส่งเข้า ERP TTN (ทีมจัดรถ) สำเร็จล่าสุด · ttnError = ส่งไม่สำเร็จครั้งล่าสุด ว่างแปลว่าไม่มีปัญหา */
+  ttnSentAt: timestamp('ttn_sent_at', { withTimezone: true }),
+  ttnError: text('ttn_error'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => ({

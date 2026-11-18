@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { haulWarnings, weekdayName, type HaulRisk } from '@/lib/haul-risk';
 
 /**
  * เลือกหลายแถวแล้วสั่งทีเดียว
@@ -30,7 +31,7 @@ export type BulkAction = {
 };
 
 export function BulkBar({
-  action, label, confirmText, idName, fields, extra, dateField, children,
+  action, label, confirmText, idName, fields, extra, dateField, dateRisks, children,
 }: {
   action: (formData: FormData) => Promise<unknown>;
   /** ข้อความบนปุ่ม — {n} จะถูกแทนด้วยจำนวนที่เลือก */
@@ -47,6 +48,11 @@ export function BulkBar({
    * ต้องเลือกก่อนกด ไม่งั้นบอกให้เลือกบนแถบเลย ไม่ต้องรอไปเจอ error จากเซิร์ฟเวอร์
    */
   dateField?: { name: string; label: string };
+  /**
+   * ข้อมูลประกอบของแต่ละรายการ (id → ความเสี่ยงของวันลาก) — เลือกวันแล้วแถบบอกคำเตือนทันที
+   * (ลากวันศุกร์ · DET สั้น · คืนตู้ตรงวันหยุด · เกิน DEM · ยังไม่ได้ D/O · ETA ยังไม่ยืนยัน) และใส่ในข้อความยืนยัน
+   */
+  dateRisks?: Record<string, HaulRisk>;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -86,6 +92,10 @@ export function BulkBar({
       all.indeterminate = picked.length > 0 && picked.length < boxes.length;
     }
   }, [picked]);
+
+  const warnings = dateRisks && date
+    ? haulWarnings(picked.map((id) => dateRisks[id]).filter(Boolean), date)
+    : [];
 
   const run = async (
     fn: (formData: FormData) => Promise<unknown>,
@@ -157,6 +167,7 @@ export function BulkBar({
             <label className="mini">
               {dateField.label}{' '}
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              {date ? <small className="bulk-weekday"> วัน{weekdayName(date)}</small> : null}
             </label>
           ) : null}
           <button
@@ -165,12 +176,16 @@ export function BulkBar({
             disabled={busy}
             onClick={() => {
               if (dateField && !date) { setError(`กรุณาเลือก${dateField.label}`); return; }
-              const text = confirmText.replace('{n}', String(picked.length)).replace('{date}', date.split('-').reverse().join('/'));
+              const base = confirmText.replace('{n}', String(picked.length)).replace('{date}', date.split('-').reverse().join('/'));
+              const text = warnings.length ? `${base}\n\n⚠ ข้อควรระวัง\n${warnings.map((w) => `• ${w}`).join('\n')}` : base;
               if (window.confirm(text)) void run(action, dateField ? { ...fields, [dateField.name]: date } : fields);
             }}
           >
             {busy ? 'กำลังทำ…' : label.replace('{n}', String(picked.length))}
           </button>
+          {warnings.length ? (
+            <ul className="bulk-warnings">{warnings.map((w) => <li key={w}>⚠ {w}</li>)}</ul>
+          ) : null}
         </div>
       ) : null}
     </div>

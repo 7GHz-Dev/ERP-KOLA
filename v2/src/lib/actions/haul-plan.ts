@@ -7,6 +7,7 @@ import { containers, haulPlans, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { notPartnerRelease } from '@/lib/queries/jobs';
 import { formatDate } from '@/lib/format';
+import { pushToTtn } from '@/lib/ttn';
 import { day, logActivity, newId, recordStatus, runAction } from './common';
 
 const idsOf = (formData: FormData) =>
@@ -57,16 +58,37 @@ async function sendHaulPlanImpl(formData: FormData) {
   }
   for (const [jobId, entry] of byJob) {
     await recordStatus(jobId, entry.status, 'HAUL_PLAN_SENT',
-      `ส่งแพลนลากตู้ ${entry.nos.join(', ')} วันที่ ${formatDate(haulDate)} ให้ MAY`, user.id);
+      `สั่งลากตู้ ${entry.nos.join(', ')} วันที่ ${formatDate(haulDate)} (MAY + ERP TTN)`, user.id);
   }
   await logActivity(user.id, 'HAUL_PLAN_SENT', 'JOB', [...byJob.keys()].join(','),
     { haulDate, jobs: byJob.size, containers: ready.length });
 
+  // ส่งต่อให้ทีมจัดรถที่ ERP TTN — แพลนฝั่ง KOLA บันทึกแล้ว ส่งไม่ผ่านกดส่งซ้ำได้จากแท็บสั่งลากแล้ว
+  const ttn = await pushToTtn(ready.map((r) => r.containerId));
+  await logActivity(user.id, 'HAUL_PLAN_TTN', 'JOB', [...byJob.keys()].join(','), ttn);
+
   revalidatePath('/nam/haul');
   revalidatePath('/may/haul');
+  const problems: string[] = [];
   if (byJob.size < ids.length) {
-    throw new Error(`ส่งแพลนแล้ว ${byJob.size} งาน · ไม่สำเร็จ ${ids.length - byJob.size} งาน (ยังไม่ได้ส่ง Partner · ไม่มีตู้ · หรือเป็นงาน MUO)`);
+    problems.push(`ไม่สำเร็จ ${ids.length - byJob.size} งาน (ยังไม่ได้ส่ง Partner · ไม่มีตู้ · หรือเป็นงาน MUO)`);
   }
+  if (!ttn.ok) problems.push(`ส่ง ERP TTN ไม่สำเร็จ: ${ttn.error} — กด "ส่ง TTN อีกครั้ง" ที่แท็บสั่งลากแล้ว`);
+  if (problems.length) throw new Error(`สั่งลากแล้ว ${byJob.size} งาน · ${problems.join(' · ')}`);
+}
+
+/** ส่งตู้ที่สั่งลากแล้วเข้า ERP TTN อีกครั้ง (ครั้งก่อนส่งไม่ผ่าน หรืออยากอัปเดตข้อมูลประกอบ) — วันลากเดิม */
+async function resendTtnImpl(formData: FormData) {
+  const user = await requireActiveSession(['NAMKANG']);
+  const ids = idsOf(formData);
+  if (!ids.length) throw new Error('ยังไม่ได้เลือกงาน');
+  const plans = await db.select({ containerId: haulPlans.containerId, jobId: haulPlans.jobId })
+    .from(haulPlans).where(and(inArray(haulPlans.jobId, ids), isNotNull(haulPlans.sentAt)));
+  if (!plans.length) throw new Error('งานที่เลือกยังไม่ได้สั่งลาก');
+  const ttn = await pushToTtn(plans.map((p) => p.containerId));
+  await logActivity(user.id, 'HAUL_PLAN_TTN', 'JOB', [...new Set(plans.map((p) => p.jobId))].join(','), ttn);
+  revalidatePath('/nam/haul');
+  if (!ttn.ok) throw new Error(`ส่ง ERP TTN ไม่สำเร็จ: ${ttn.error}`);
 }
 
 /** MAY รับแพลนลากตู้ — เลือกหลายงานแล้วกดทีเดียว ตู้ที่รับไปแล้วข้าม ไม่เขียนเวลาทับ */
@@ -90,6 +112,10 @@ async function ackHaulPlanImpl(formData: FormData) {
 
 export async function sendHaulPlan(formData: FormData) {
   return runAction(() => sendHaulPlanImpl(formData));
+}
+
+export async function resendTtn(formData: FormData) {
+  return runAction(() => resendTtnImpl(formData));
 }
 
 export async function ackHaulPlan(formData: FormData) {

@@ -28,7 +28,7 @@ const EVENT_LABELS: Record<string, string> = {
   CUSTOMS_CANCELED: 'ใบขนถูกยกเลิกใน NETBAY',
   EOFFICE_HANDOVER: 'ส่งมอบคนเดินเอกสาร',
   EOFFICE_HANDOVER_UNDO: 'คืนไปเตรียมเอกสารเดิน E',
-  HAUL_PLAN_SENT: 'ส่งแพลนลากตู้ให้ MAY',
+  HAUL_PLAN_SENT: 'สั่งลากตู้ (MAY + ERP TTN)',
   PARTNER_NOTIFIED: 'ส่งชุดปล่อยให้ Partner (Email / LINE)',
 };
 
