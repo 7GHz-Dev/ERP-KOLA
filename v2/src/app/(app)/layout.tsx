@@ -177,6 +177,9 @@ async function signOut() {
   redirect('/login');
 }
 
+/** ปุ่มผู้ช่วย "ถาม KOLA" — ซ่อนไว้ตามที่ทีมขอ (โค้ดยังอยู่ครบ) */
+const SHOW_ASSISTANT = false;
+
 export default async function AppLayout({
   children, drawer,
 }: {
@@ -248,7 +251,8 @@ export default async function AppLayout({
       {/* เช็คสถานะ BL (หลอดขั้นงาน ไม่ใช้ AI) — ทุกคน · วางเหนือปุ่มผู้ช่วยเมื่อมีปุ่มนั้น */}
       <JobTracker stacked={homePageFor(user.role) === '/overview'} />
       {/* ผู้ช่วยถามข้อมูล — role เดียวกับหน้าภาพรวมงาน (API ตรวจสิทธิ์ซ้ำอีกชั้น) */}
-      {homePageFor(user.role) === '/overview' ? <AssistantChat /> : null}
+      {/* ผู้ช่วย "ถาม KOLA" ซ่อนไว้ก่อน — เปิดกลับโดยตั้ง SHOW_ASSISTANT เป็น true */}
+      {SHOW_ASSISTANT && homePageFor(user.role) === '/overview' ? <AssistantChat /> : null}
     </div>
   );
 }
