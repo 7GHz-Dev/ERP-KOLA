@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     .from(masterRecords).where(and(eq(masterRecords.id, String(body.shipperId)), eq(masterRecords.type, 'shippers'))).limit(1) : [];
   if (!shipper && mode === 'save') return json({ error: 'เลือก Shipper ก่อน' }, 400);
 
-  const currency = String(body.currency ?? '').trim().toUpperCase() || 'USD';
+  const currency = String(body.currency ?? '').trim().toUpperCase() || 'JPY';
   if (!/^[A-Z]{3}$/.test(currency)) return json({ error: 'สกุลเงิน (Currency) ต้องเป็นตัวอักษร 3 ตัว เช่น USD' }, 400);
   const invoiceDate = ymdToDmy(String(body.invoiceDate ?? ''));
   const invoiceNo = String(body.invoiceNo ?? '').trim().toUpperCase().slice(0, 60);

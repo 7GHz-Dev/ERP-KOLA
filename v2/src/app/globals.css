@@ -2933,17 +2933,17 @@ img.cgi-doc-file { overflow: auto; }
 .cgi-normal-table .w-no { width: 34px; text-align: center; color: var(--muted); padding-top: 8px; }
 .cgi-normal-table .w-brand { min-width: 13ch; }
 .cgi-normal-table .w-model { min-width: 20ch; }
-.cgi-normal-table .w-chassis { min-width: 21ch; }
-.cgi-normal-table .w-engine { min-width: 24ch; }
+.cgi-normal-table .w-chassis { min-width: 23.1ch; width: 23.1ch; }
+.cgi-normal-table .w-engine { min-width: 16.8ch; width: 16.8ch; }
 .cgi-normal-table .w-num { min-width: 11ch; text-align: right; }
 .cgi-normal-table .w-num input { text-align: right; }
 /* น้ำหนัก · CC ตัวเลขสั้น (เช่น 1,330) — แคบกว่าช่องยอดเงิน */
 .cgi-normal-table .w-weight { min-width: 8ch; width: 8ch; }
-.cgi-normal-table .w-cc { min-width: 7ch; width: 7ch; }
+.cgi-normal-table .w-cc { min-width: 9.2ch; width: 9.2ch; }
 .cgi-normal-table th.w-weight { white-space: normal; line-height: 1.2; }
-.cgi-normal-table .w-year { min-width: 8ch; }
-.cgi-normal-table .w-fuel { min-width: 13ch; }
-.cgi-normal-table .w-box { min-width: 19ch; }
+.cgi-normal-table .w-year { min-width: 9.2ch; width: 9.2ch; }
+.cgi-normal-table .w-fuel { min-width: 15.6ch; width: 15.6ch; }
+.cgi-normal-table .w-box { min-width: 20.9ch; width: 20.9ch; }
 .cgi-normal-table .w-tariff { min-width: 14ch; }
 .cgi-normal-table .w-act { width: 64px; white-space: nowrap; }
 .cgi-normal-table tfoot td { padding-top: 6px; border-top: 1px solid var(--line); }

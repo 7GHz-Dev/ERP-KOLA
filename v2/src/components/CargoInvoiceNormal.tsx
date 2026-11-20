@@ -37,7 +37,7 @@ type CarKey = keyof FormCar;
 type Saved = { jobId: string; jobNo: string; version: number; pdf: boolean; invoiceNo: string; engines: { issued: number; reused: number } | null };
 type View = 'file' | 'fn' | 'both';
 
-const CURRENCIES = ['USD', 'JPY', 'EUR', 'GBP', 'CNY', 'AED', 'SGD', 'HKD', 'AUD', 'KRW', 'THB'];
+const CURRENCIES = ['JPY', 'USD', 'EUR', 'GBP', 'CNY', 'AED', 'SGD', 'HKD', 'AUD', 'KRW', 'THB'];
 const FUELS = ['GASOLINE', 'DIESEL', 'PETROL'];
 const blank = (container = ''): FormCar => ({ brand: '', model: '', chassis: '', weight: '', year: '', engine: '', cc: '', fuel: 'GASOLINE', amount: '', container });
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -94,7 +94,8 @@ export function CargoInvoiceNormal({
   const allShippers = useMemo(() => [...shippers, ...added], [shippers, added]);
   const matchShipper = (name: string) => allShippers.find((s) => name && norm(s.name) === norm(name))?.id ?? '';
   const [shipperId, setShipperId] = useState(() => matchShipper(prefill.supplier));
-  const [currency, setCurrency] = useState('USD');
+  // สกุลเงินตั้งต้น JPY (ทีมขอ) — AI อ่านเจอสกุลอื่นในใบจะเปลี่ยนให้เอง แก้ได้ที่ช่อง CURRENCY
+  const [currency, setCurrency] = useState('JPY');
   const [invoiceDate, setInvoiceDate] = useState(dmyToYmd(prefill.invoiceDate) || today());
   const [invoiceNo, setInvoiceNo] = useState(prefill.invoiceNo);
   const [cars, setCars] = useState<FormCar[]>(() => (prefill.cars.length ? prefill.cars.map(fromParsed) : [blank()]));
