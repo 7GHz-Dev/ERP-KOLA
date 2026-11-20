@@ -17,7 +17,8 @@ import { AddRule, call, type Tariff } from './CargoShared';
 /**
  * Create Cargo Invoice แบบ NORMAL — ผู้ขายที่ไม่ใช่ JAN TRADING / AICHI
  *
- * บน: แผงดูเอกสารกลางจอ สลับ ไฟล์ผู้ขาย (รูป · PDF · Excel แปลงเป็น PDF) / Preview FN Invoice / ดูคู่กัน
+ * บน: แผงดูเอกสารกลางจอ สลับ OG Invoice (ไฟล์ผู้ขาย: รูป · PDF · Excel แปลงเป็น PDF) / Preview FN Invoice / ดูคู่กัน
+ *     popup Create FN Invoice (side) — แผงเอกสารอยู่ซ้ายของ drawer ข้อมูลอยู่ขวา
  * ล่าง: งาน · Shipper · Currency · Invoice Date / No. (ใช้ทั้งชุด) แล้วตารางรถ แถวละ 1 คัน
  *
  * ระบบเติมให้ก่อนเท่าที่อ่านได้ — Excel ที่รู้จักรูปแบบ (MSFZ · JTC · HUAYO) อ่านเอง ที่เหลือ (PDF · รูป · Excel อื่น) ให้ AI อ่าน
@@ -74,12 +75,14 @@ const COLS: Array<{ k: CarKey; label: string; num?: boolean; cls?: string }> = [
 ];
 
 export function CargoInvoiceNormal({
-  file, shippers, prefill, onReset,
+  file, shippers, prefill, onReset, side,
 }: {
   file: File;
   shippers: ShipperChoice[];
   prefill: { cars: CargoCar[]; invoiceNo: string; invoiceDate: string; supplier: string; jobs: JobMatch[]; note: string };
   onReset: () => void;
+  /** popup Create FN Invoice — เอกสารซ้าย ข้อมูลขวา (ไม่ใส่ = เอกสารบน ข้อมูลล่าง) */
+  side?: boolean;
 }) {
   const router = useRouter();
   const [jobs, setJobs] = useState<JobMatch[]>(prefill.jobs);
@@ -299,14 +302,14 @@ export function CargoInvoiceNormal({
   const cellCls = (i: number, k: CarKey) => (auto.has(`${i}:${k}`) ? 'auto' : '');
 
   return (
-    <div className="cgi-normal">
+    <div className={`cgi-normal${side ? ' side' : ''}`}>
       {/* ---------- บน: เอกสาร ---------- */}
       <section className="cgi-doc">
         <div className="cgi-doc-bar">
           <span className="badge neutral">NORMAL</span>
           <b className="cgi-doc-name" title={file.name}>{file.name}</b>
           <div className="cgi-doc-tabs" role="tablist" aria-label="เอกสารที่แสดง">
-            {([['file', 'ไฟล์ผู้ขาย'], ['fn', `FN Invoice${previewStale ? ' •' : ''}`], ['both', 'ดูคู่กัน']] as Array<[View, string]>).map(([v, label]) => (
+            {([['file', 'OG Invoice'], ['fn', `FN Invoice${previewStale ? ' •' : ''}`], ['both', 'ดูคู่กัน']] as Array<[View, string]>).map(([v, label]) => (
               <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} onClick={() => setView(v)}>{label}</button>
             ))}
           </div>
@@ -318,12 +321,13 @@ export function CargoInvoiceNormal({
         </div>
         {previewStale && view !== 'file' ? <p className="cgi-doc-stale">ข้อมูลด้านล่างเปลี่ยนหลัง Preview — กด ↻ Preview FN Invoice เพื่อดูฉบับล่าสุด</p> : null}
         <div className={`cgi-doc-body ${view}`}>
-          {view !== 'fn' ? <div className="cgi-doc-pane">{view === 'both' ? <small>ไฟล์ผู้ขาย</small> : null}{vendorPane}</div> : null}
+          {view !== 'fn' ? <div className="cgi-doc-pane">{view === 'both' ? <small>OG Invoice</small> : null}{vendorPane}</div> : null}
           {view !== 'file' ? <div className="cgi-doc-pane">{view === 'both' ? <small>FN Invoice{preview ? ' (ยังไม่บันทึก · เลขเครื่อง xxxxxxx)' : ''}</small> : null}{fnPane}</div> : null}
         </div>
       </section>
 
-      {/* ---------- ล่าง: ข้อมูล ---------- */}
+      {/* ---------- ล่าง (popup: ขวา): ข้อมูล ---------- */}
+      <div className="cgi-normal-data">
       {reading ? <p className="cgi-busy"><span className="ai-dot" />AI กำลังอ่านไฟล์และเติมข้อมูลให้… (ราว 10–40 วินาที)</p> : null}
       {note && !reading ? (
         <p className="batch-note cgi-normal-note">
@@ -528,6 +532,7 @@ export function CargoInvoiceNormal({
             </div>
           </>
         )}
+      </div>
       </div>
 
       {csv ? (

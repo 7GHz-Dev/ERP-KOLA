@@ -361,7 +361,7 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
         {error ? <p className="cgi-error">⚠️ {error}</p> : null}
       </section>
 
-      {normal && file ? <CargoInvoiceNormal key={`${file.name}-${file.lastModified}`} file={file} shippers={shippers} prefill={normal} onReset={reset} /> : null}
+      {normal && file ? <CargoInvoiceNormal key={`${file.name}-${file.lastModified}`} file={file} shippers={shippers} prefill={normal} onReset={reset} side={Boolean(presetFile)} /> : null}
 
       {inv ? (
         <>
@@ -585,11 +585,12 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
     </div>
   );
 
-  if (!presetFile) return tool;
+  // NORMAL จัดเอกสารซ้าย / ข้อมูลขวาเองใน CargoInvoiceNormal (มีแท็บ OG Invoice · FN Invoice · ดูคู่กัน)
+  if (!presetFile || normal) return tool;
 
   /*
    * popup Create FN Invoice — ไฟล์ซ้าย กรอกข้อมูลขวา (ทีมขอ) ดูใบไปแก้ไปได้โดยไม่ต้องเปิดแผงทับ
-   * แผงซ้ายสลับได้ระหว่าง Invoice สินค้าของงาน กับ Preview FN Invoice (กด Preview แล้วสลับให้เอง)
+   * แผงซ้ายสลับได้ระหว่าง OG Invoice (Invoice สินค้าของงาน) กับ Preview FN Invoice (กด Preview แล้วสลับให้เอง)
    */
   const showing = leftView === 'preview' && preview ? preview : `/files/${presetFile.id}`;
   return (
@@ -597,7 +598,7 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
       <div className="fn-split-view">
         <div className="fn-split-tabs">
           <button type="button" className={`button tiny${leftView === 'goods' || !preview ? ' primary' : ''}`} onClick={() => setLeftView('goods')}>
-            Invoice สินค้า
+            OG Invoice
           </button>
           <button type="button" className={`button tiny${leftView === 'preview' && preview ? ' primary' : ''}`} disabled={!preview} onClick={() => setLeftView('preview')}
             title={preview ? undefined : 'กด Preview FN Invoice ทางขวาก่อน'}>

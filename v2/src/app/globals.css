@@ -2871,8 +2871,18 @@ table.data td.col-lib { min-width: 300px; }
 /* Master Data: ที่อยู่ Shipper หลายบรรทัด */
 .master-address { white-space: pre-line; font-size: 12px; }
 
-/* Create Cargo Invoice แบบ NORMAL — เอกสารด้านบนกลางจอ (ไฟล์ผู้ขาย / FN Invoice / คู่กัน) · ข้อมูลด้านล่าง แถวละ 1 คัน */
+/* Create Cargo Invoice แบบ NORMAL — เอกสารด้านบนกลางจอ (OG Invoice / FN Invoice / คู่กัน) · ข้อมูลด้านล่าง แถวละ 1 คัน */
 .cgi-normal { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; min-width: 0; }
+.cgi-normal-data { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* popup Create FN Invoice — เอกสารซ้ายของ drawer (ติดอยู่ขณะเลื่อน) · ข้อมูลขวา */
+.cgi-normal.side { display: grid; grid-template-columns: minmax(0, 45fr) minmax(0, 55fr); gap: 12px; align-items: start; }
+.cgi-normal.side > .cgi-doc { position: sticky; top: 0; max-width: none; margin: 0; height: calc(100vh - 120px); display: flex; flex-direction: column; }
+.cgi-normal.side .cgi-doc-body { flex: 1; height: auto; resize: none; }
+.cgi-normal.side .cgi-normal-headgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .cgi-normal.side { grid-template-columns: 1fr; }
+  .cgi-normal.side > .cgi-doc { position: static; height: 60vh; }
+}
 .cgi-doc { width: 100%; max-width: 1280px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .cgi-doc-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .cgi-doc-name { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
