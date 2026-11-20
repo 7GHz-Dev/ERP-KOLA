@@ -70,9 +70,9 @@ const COLS: Array<{ k: CarKey; label: string; num?: boolean; cls?: string }> = [
   { k: 'model', label: 'MODEL', cls: 'w-model' },
   { k: 'chassis', label: 'CHASSIS NO.', cls: 'w-chassis' },
   { k: 'engine', label: 'ENGINE NO.', cls: 'w-engine' },
-  { k: 'weight', label: 'WEIGHT (KG)', num: true, cls: 'w-num' },
+  { k: 'weight', label: 'WEIGHT (KG)', num: true, cls: 'w-num w-weight' },
   { k: 'year', label: 'YEAR', num: true, cls: 'w-year' },
-  { k: 'cc', label: 'CC', num: true, cls: 'w-num' },
+  { k: 'cc', label: 'CC', num: true, cls: 'w-num w-cc' },
 ];
 
 export function CargoInvoiceNormal({
