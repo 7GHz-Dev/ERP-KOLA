@@ -11,6 +11,7 @@ import { CargoReference } from './CargoReference';
 import { AddRule, call, type Tariff } from './CargoShared';
 import { CargoInvoiceNormal, type ShipperChoice } from './CargoInvoiceNormal';
 import { CsvDrawer, PdfDrawer } from './CargoDocDrawers';
+import { ZoomImage } from './ZoomImage';
 import type { DraftCsv } from '@/lib/cargo-invoice/draft-csv';
 
 /**
@@ -63,11 +64,11 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
    * OG Invoice ที่แผงซ้าย — PDF / รูป เปิดตรงได้ · Excel ต้องแปลงเป็น PDF ก่อน
    * ห้ามส่ง /files/<xlsx> ให้ <object> ตรง ๆ เพราะเบราว์เซอร์แสดง Excel ไม่ได้แล้วจะดาวน์โหลดไฟล์ลงเครื่องแทน
    */
-  const [ogView, setOgView] = useState<{ url: string; note: string }>({ url: '', note: '' });
+  const [ogView, setOgView] = useState<{ url: string; note: string; img?: boolean }>({ url: '', note: '' });
   useEffect(() => {
     if (!presetFile) return;
     const name = presetFile.fileName;
-    if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(name)) { setOgView({ url: `/files/${presetFile.id}`, note: '' }); return; }
+    if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(name)) { setOgView({ url: `/files/${presetFile.id}`, note: '', img: !/\.pdf$/i.test(name) }); return; }
     if (!/\.xlsx$/i.test(name)) { setOgView({ url: '', note: 'ไฟล์ชนิดนี้แสดงในหน้าไม่ได้' }); return; }
     if (!file) { setOgView({ url: '', note: 'กำลังโหลด OG Invoice…' }); return; }
     let url = '';
@@ -634,7 +635,10 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
           ) : null}
           {showing ? <a className="button tiny fn-split-open" href={showing} target="_blank" rel="noreferrer" title="เปิดแท็บใหม่">⤢</a> : null}
         </div>
-        {showing ? (
+        {showing && leftView !== 'preview' && ogView.img ? (
+          // OG Invoice เป็นรูป — ย่อ / ขยาย / ลากเลื่อนได้
+          <ZoomImage className="fn-split-file" src={showing} alt={presetFile.fileName} />
+        ) : showing ? (
           <object key={showing} className="fn-split-file" data={showing} type="application/pdf">
             <p className="drawer-note warn">
               เบราว์เซอร์นี้แสดงไฟล์ในหน้าไม่ได้ · <a href={showing} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
@@ -663,7 +667,7 @@ function Cell({
       title={edited ? `ในไฟล์: ${original[field] ?? '-'}` : undefined}>
       <input
         key={text}
-        className={`cgi-cell${wide ? ' wide' : ''}`}
+        className={`cgi-cell f-${field}${wide ? ' wide' : ''}`}
         defaultValue={text}
         inputMode={num ? 'decimal' : undefined}
         onBlur={(e) => { if (e.target.value !== text) onEdit(field, e.target.value); }}

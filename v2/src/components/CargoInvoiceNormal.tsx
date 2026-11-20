@@ -13,6 +13,7 @@ import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { CsvDrawer } from './CargoDocDrawers';
 import { AddRule, call, type Tariff } from './CargoShared';
+import { ZoomImage } from './ZoomImage';
 
 /**
  * Create Cargo Invoice แบบ NORMAL — ผู้ขายที่ไม่ใช่ JAN TRADING / AICHI
@@ -288,7 +289,7 @@ export function CargoInvoiceNormal({
     ['CARRIER', job.ship.carrier], ['ตู้', job.containers.join(', ')],
   ] : [];
 
-  const vendorPane = fileView?.kind === 'img' ? <img className="cgi-doc-file" src={fileView.url} alt={file.name} />
+  const vendorPane = fileView?.kind === 'img' ? <ZoomImage className="cgi-doc-file" src={fileView.url} alt={file.name} />
     : fileView ? <object className="cgi-doc-file" data={fileView.url} type="application/pdf"><p>{file.name}</p></object>
       : <p className="batch-note">{fileNote}</p>;
   const fnPane = preview

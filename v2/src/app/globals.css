@@ -2647,6 +2647,16 @@ table.data td.col-lib { min-width: 300px; }
   background: transparent; border: 1px solid transparent; border-radius: 4px; text-align: inherit;
 }
 .cgi-table input.cgi-cell.wide { min-width: 130px; }
+/* ช่องกรอกข้อมูลรถ กว้างพอดีชนิดข้อมูล — เลขตัวถัง 17 หลัก · เลขเครื่องยาวมีวงเล็บ · ตัวเลขสั้น */
+.cgi-table input.cgi-cell.f-brand { min-width: 12ch; }
+.cgi-table input.cgi-cell.f-model { min-width: 18ch; }
+.cgi-table input.cgi-cell.f-chassis { min-width: 20ch; }
+.cgi-table input.cgi-cell.f-engine { min-width: 22ch; }
+.cgi-table input.cgi-cell.f-fuel { min-width: 11ch; }
+.cgi-table input.cgi-cell.f-cc { min-width: 7ch; }
+.cgi-table input.cgi-cell.f-year { min-width: 6ch; }
+.cgi-table input.cgi-cell.f-weight { min-width: 8ch; }
+.cgi-table input.cgi-cell.f-price { min-width: 11ch; }
 .cgi-table input.cgi-cell:hover { border-color: var(--line); }
 .cgi-table input.cgi-cell:focus { outline: none; border-color: var(--blue); background: var(--surface); }
 .cgi-table td.cgi-edited { background: var(--amber-soft); }
@@ -2875,7 +2885,7 @@ table.data td.col-lib { min-width: 300px; }
 .cgi-normal { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; min-width: 0; }
 .cgi-normal-data { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 /* popup Create FN Invoice — เอกสารซ้ายของ drawer (ติดอยู่ขณะเลื่อน) · ข้อมูลขวา */
-.cgi-normal.side { display: grid; grid-template-columns: minmax(0, 45fr) minmax(0, 55fr); gap: 12px; align-items: start; }
+.cgi-normal.side { display: grid; grid-template-columns: minmax(0, 35fr) minmax(0, 65fr); gap: 12px; align-items: start; }
 .cgi-normal.side > .cgi-doc { position: sticky; top: 0; max-width: none; margin: 0; height: calc(100vh - 120px); display: flex; flex-direction: column; }
 .cgi-normal.side .cgi-doc-body { flex: 1; height: auto; resize: none; }
 .cgi-normal.side .cgi-normal-headgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2912,7 +2922,7 @@ img.cgi-doc-file { overflow: auto; }
 .cgi-auto-key { margin-left: 10px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .cgi-auto-key i { display: inline-block; width: 12px; height: 12px; margin-right: 3px; vertical-align: -1px; border-radius: 3px; background: var(--blue-soft, #e8f1fb); border: 1px solid #9cc1ea; }
 .cgi-normal-tablewrap { max-height: none; }
-.cgi-normal-table { min-width: 1180px; }
+.cgi-normal-table { min-width: 100%; width: max-content; }
 .cgi-normal-table th { font-size: 11px; white-space: nowrap; }
 .cgi-normal-table td { padding: 3px 4px; vertical-align: top; }
 .cgi-normal-table input, .cgi-normal-table select {
@@ -2921,16 +2931,16 @@ img.cgi-doc-file { overflow: auto; }
 .cgi-normal-table input.auto, .cgi-normal-table select.auto { background: var(--blue-soft, #e8f1fb); border-color: #9cc1ea; }
 .cgi-normal-table tr.bad > td { background: #fff4f4; }
 .cgi-normal-table .w-no { width: 34px; text-align: center; color: var(--muted); padding-top: 8px; }
-.cgi-normal-table .w-brand { width: 110px; }
-.cgi-normal-table .w-model { width: 150px; }
-.cgi-normal-table .w-chassis { width: 170px; }
-.cgi-normal-table .w-engine { width: 150px; }
-.cgi-normal-table .w-num { width: 100px; text-align: right; }
+.cgi-normal-table .w-brand { min-width: 13ch; }
+.cgi-normal-table .w-model { min-width: 20ch; }
+.cgi-normal-table .w-chassis { min-width: 21ch; }
+.cgi-normal-table .w-engine { min-width: 24ch; }
+.cgi-normal-table .w-num { min-width: 11ch; text-align: right; }
 .cgi-normal-table .w-num input { text-align: right; }
-.cgi-normal-table .w-year { width: 70px; }
-.cgi-normal-table .w-fuel { width: 110px; }
-.cgi-normal-table .w-box { width: 150px; }
-.cgi-normal-table .w-tariff { width: 130px; }
+.cgi-normal-table .w-year { min-width: 8ch; }
+.cgi-normal-table .w-fuel { min-width: 13ch; }
+.cgi-normal-table .w-box { min-width: 15ch; }
+.cgi-normal-table .w-tariff { min-width: 14ch; }
 .cgi-normal-table .w-act { width: 64px; white-space: nowrap; }
 .cgi-normal-table tfoot td { padding-top: 6px; border-top: 1px solid var(--line); }
 .cgi-engine-out { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); white-space: nowrap; }
@@ -2982,11 +2992,11 @@ img.cgi-doc-file { overflow: auto; }
 .do-free-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .do-pane-upload { padding: 0 0 6px; position: relative; z-index: 5; }
 .fn-popup { width: 100%; overflow: auto; padding: 12px; }
-/* Create FN Invoice — แผงกว้าง 2 เท่าของแผงดูเอกสาร (ไม่เกินจอ) · ไฟล์ซ้าย กรอกข้อมูลขวา */
+/* Create FN Invoice — แผงกว้าง 2 เท่าของแผงดูเอกสาร (ไม่เกินจอ) · ไฟล์ซ้าย 35% กรอกข้อมูลขวา 65% */
 .job-drawer.wide:has(.fn-popup) { width: min(calc(var(--doc-drawer-w) * 2), 98vw); }
 .job-drawer .drawer-content:has(> .fn-popup) { display: flex; padding: 0; overflow: hidden; }
 .fn-popup:has(> .fn-split) { overflow: hidden; }
-.fn-split { display: grid; grid-template-columns: minmax(0, 45fr) minmax(0, 55fr); gap: 12px; height: 100%; min-height: 0; }
+.fn-split { display: grid; grid-template-columns: minmax(0, 35fr) minmax(0, 65fr); gap: 12px; height: 100%; min-height: 0; }
 .fn-split-view { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .fn-split-tabs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .fn-split-open { margin-left: auto; }
@@ -3001,3 +3011,13 @@ img.cgi-doc-file { overflow: auto; }
   .fn-split-form { overflow: visible; }
 }
 .fn-split-empty { display: grid; place-items: center; }
+
+/* รูปที่ย่อ/ขยายได้ (OG Invoice เป็นรูป) */
+.zoom-img { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.zoom-img-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 6px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.zoom-img-bar small { color: var(--muted); font-size: 11.5px; }
+.zoom-img-pct { min-width: 44px; text-align: center; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.zoom-img-box { flex: 1; min-height: 0; overflow: auto; background: #525659; cursor: grab; touch-action: none; }
+.zoom-img-box.dragging { cursor: grabbing; }
+.zoom-img-box img { display: block; max-width: none; height: auto; margin: 0 auto; user-select: none; }
+.fn-split-file.zoom-img { overflow: hidden; }
