@@ -105,7 +105,7 @@ export function DoFillBoard({
             labels: queue.map((id) => { const j = jobs.find((x) => x.id === id)!; return j.blNo ?? j.jobNo; }),
             go: (k: number) => setOpenId(queue[k] ?? openId),
           } : null}
-          // กดบันทึกแล้วบันทึกและปิดแผงเสมอ (ทีมขอ) — เลื่อนงานในชุดด้วยปุ่มก่อนหน้า/ถัดไป
+          // กดบันทึกแล้วแผงยังเปิดอยู่ · ส่ง Partner แล้วปิด — เลื่อนงานในชุดด้วยปุ่มก่อนหน้า/ถัดไป
           onClose={() => {
             setOpenId(null);
             /*

@@ -7,6 +7,7 @@ import { DoFillBoard } from '@/components/DoFillBoard';
 import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
 import { VesselFilter } from '@/components/VesselFilter';
 import { canEditBlAtDo } from '@/lib/do-letter';
+import { sendDoHandoffMany } from '@/lib/actions/jobs';
 import { isPartnerRelease } from '@/lib/job-types';
 import { isShipmePartner } from '@/lib/partner-message';
 import { fahDoVessels, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
@@ -263,8 +264,14 @@ export default async function FahDoPage({
           queue={one('fq') ? one('fq').split(',') : undefined}
           openKey={one('n')}
         >
-          {/* ติ๊กหลายงานแล้วกรอกต่อกันในแผงเดียว (ก่อนหน้า/ถัดไป · บันทึกแล้วไปงานถัดไป) */}
-          <BulkBar idName="jobIds" label="" confirmText=""
+          {/*
+            ติ๊กหลายงานแล้วกรอกต่อกันในแผงเดียว (ก่อนหน้า/ถัดไป)
+            หรือส่ง Partner ทีเดียว — ส่งเฉพาะงานที่บันทึกข้อมูลบังคับครบแล้ว งานที่ขาดข้ามไปพร้อมบอกว่าขาดอะไร
+          */}
+          <BulkBar idName="jobIds"
+            action={sendDoHandoffMany}
+            label="ส่ง Partner {n} รายการ"
+            confirmText={'ส่งข้อมูลให้ Partner {n} รายการใช่ไหม\n\nส่งเฉพาะงานที่บันทึก ETA · Port of Loading · Partner · DEM / DET ครบแล้ว\nงานที่ยังขาดข้อมูลจะข้ามไปและแจ้งให้ทราบ'}
             open={{ label: '✎ กรอกข้อมูล {n} รายการ', href: `/fah/do?${new URLSearchParams({ ...carry, tab })}&fill={first}&fq={ids}&n={t}` }}>
             {table}
           </BulkBar>

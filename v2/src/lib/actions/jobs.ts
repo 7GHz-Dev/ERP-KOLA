@@ -935,6 +935,51 @@ export async function saveDoHandoff(formData: FormData) {
   return runAction(() => saveDoHandoffImpl(formData));
 }
 
+/**
+ * ส่ง Partner หลายงานพร้อมกัน (Upload Invoice of D/O > ติ๊กหลายรายการ)
+ *
+ * ใช้ค่าที่บันทึกไว้แล้วของแต่ละงาน ไม่ได้รับค่าจากฟอร์ม — ต้องกรอกและกดบันทึกในแผงก่อน
+ * เงื่อนไขเดียวกับปุ่มส่งทีละงาน: ETA · Port of Loading · Partner · DEM / DET · เลข BL มี ( ) (สายที่แก้เลขได้)
+ * งานที่ยังขาดข้อมูลข้ามไป แล้วบอกว่าใบไหนขาดอะไร งานที่ครบส่งไปตามปกติ
+ */
+export async function sendDoHandoffMany(formData: FormData) {
+  return runAction(async () => {
+    const ids = [...new Set(String(formData.get('jobIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean))];
+    if (!ids.length) throw new Error('ยังไม่ได้เลือกงาน');
+    const rows = await db.select().from(jobs).where(inArray(jobs.id, ids));
+    const handoffs = await db.select({ jobId: doHandoffs.jobId, note: doHandoffs.note, sentAt: doHandoffs.sentAt })
+      .from(doHandoffs).where(inArray(doHandoffs.jobId, ids));
+    const failed: string[] = [];
+    let sent = 0;
+    for (const job of rows) {
+      const name = job.blNo ?? job.jobNo;
+      const handoff = handoffs.find((h) => h.jobId === job.id);
+      if (handoff?.sentAt) continue;
+      const missing = [
+        !job.eta && 'ETA',
+        !job.originPort && 'Port of Loading',
+        !job.releasePartner && 'Partner',
+        (job.demDays === null || job.detDays === null) && 'DEM / DET',
+        canEditBlAtDo(job.shipline) && !hasBlBrackets(job.blNo) && 'เลข BL ที่มี ( )',
+      ].filter(Boolean);
+      if (missing.length) { failed.push(`${name}: ยังไม่ได้บันทึก ${missing.join(' · ')}`); continue; }
+      const fd = new FormData();
+      fd.set('jobId', job.id);
+      fd.set('eta', job.eta!);
+      fd.set('partnerName', job.releasePartner!);
+      fd.set('note', handoff?.note ?? '');
+      fd.set('sendToPartner', '1');
+      try { await saveDoHandoffImpl(fd); sent += 1; } catch (e) {
+        failed.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (failed.length) {
+      throw new Error(`ส่ง Partner แล้ว ${sent} งาน · ไม่ได้ส่ง ${failed.length} งาน — ${failed.slice(0, 5).join(' · ')}${failed.length > 5 ? ' …' : ''}`);
+    }
+    await backWithOk(`ส่ง Partner แล้ว ${sent} งาน`);
+  });
+}
+
 export async function updateSurrender(formData: FormData) {
   return runAction(() => updateSurrenderImpl(formData));
 }

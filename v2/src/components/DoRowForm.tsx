@@ -46,7 +46,7 @@ export function DoRowForm({
   demDays?: number | null;
   detDays?: number | null;
   storageFreeDays?: number | null;
-  /** บันทึกสำเร็จแล้ว — แผงกรอกใช้ปิดตัวเอง */
+  /** ส่ง Partner สำเร็จแล้ว — แผงกรอกใช้ปิดตัวเอง (กดบันทึกเฉย ๆ ไม่เรียก) */
   onSaved?: () => void;
   /** วันที่ขนย้าย — Last DET date แบบปกตินับจากวันนี้ */
   transportDate?: string | null;
@@ -122,8 +122,13 @@ export function DoRowForm({
     <form
       className="do-row"
       action={(fd) => {
-        // บันทึก / ส่ง Partner สำเร็จแล้วปิดแผง (ถ้ามี) · ไม่สำเร็จ ระบบแจ้งที่แถบด้านบนและแผงยังเปิดอยู่
-        void saveDoHandoff(fd).then(() => onSaved?.());
+        /*
+         * กด "บันทึก" แล้วแผงยังเปิดอยู่ (ทีมขอ) — ดูไฟล์ทวนค่าต่อได้ และปุ่มส่ง Partner ขึ้นทันทีเมื่อข้อมูลครบ
+         * กด "ส่ง Partner" แล้วงานย้ายไปแท็บส่งแล้ว จึงเรียก onSaved ให้แผงปิด
+         * ไม่สำเร็จ ระบบแจ้งที่แถบด้านบนและแผงยังเปิดอยู่
+         */
+        const sending = fd.get('sendToPartner') === '1';
+        void saveDoHandoff(fd).then(() => { if (sending) onSaved?.(); });
       }}
     >
       <input type="hidden" name="jobId" value={jobId} />

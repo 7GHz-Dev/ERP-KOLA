@@ -53,7 +53,7 @@ export function DoFillPane({
   defaultPartnerId: string | null;
   sentAt: string | null;
   onClose: () => void;
-  /** บันทึกสำเร็จ — ไม่ใส่ = ปิดแผง · ชุดหลายงาน = ไปงานถัดไป */
+  /** ส่ง Partner สำเร็จ — ไม่ใส่ = ปิดแผง (กดบันทึกเฉย ๆ แผงยังเปิดอยู่) */
   onSaved?: () => void;
   /** ชุดงานที่ติ๊กกรอกต่อกัน */
   nav?: { index: number; labels: string[]; go: (k: number) => void } | null;
