@@ -6,7 +6,11 @@ import type { TariffResult, TariffRule } from '@/lib/cargo-invoice/tariff';
 
 /** ส่วนที่ใช้ร่วมกันระหว่าง Create Cargo Invoice แบบอ่านไฟล์ (CargoInvoiceTool) กับแบบคีย์เอง (CargoInvoiceNormal) */
 
-export type Tariff = TariffResult & { similar: TariffRule[]; suggest: { ccMin: number; ccMax: number } | null };
+export type Tariff = TariffResult & {
+  similar: TariffRule[]; suggest: { ccMin: number; ccMax: number } | null;
+  /** ยี่ห้อ · รุ่น · รหัส Chassis · รหัสเครื่อง ไม่สัมพันธ์กัน — เตือนอย่างเดียว ไม่บล็อกการบันทึก */
+  mismatch?: string[];
+};
 
 export async function call<T>(url: string, init: RequestInit): Promise<T> {
   const res = await fetch(url, init);

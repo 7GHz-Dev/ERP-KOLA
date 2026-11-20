@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { CheckedRule } from '@/lib/cargo-invoice/tariff';
+import type { CarCode } from '@/lib/cargo-invoice/car-codes';
 
 /**
  * ข้อมูลอ้างอิงใต้ Create Cargo Invoice — ให้ PAINT ตรวจว่ามีอะไรซ้ำหรือผิดไหม
  *   Datatariff   กฎพิกัดทั้งหมด (ตารางหลัก + ที่เพิ่มเอง) ระบบตรวจกฎซ้ำ / ขัดกันให้ · ปิดกฎที่เพิ่มผิดได้
  *   เลขเครื่อง   เลขเครื่องที่ระบบออกไปแล้ว ระบบตรวจเลขซ้ำต่างตัวถัง / ตัวถังที่ได้หลายเลข
+ *   ยี่ห้อ/รุ่น ↔ Chassis ↔ เครื่อง  ชุดที่ระบบจำจากใบที่บันทึก ใช้เตือนข้อมูลไม่สัมพันธ์กัน · ปิดชุดที่จำผิดได้
  * หัวคอลัมน์ทุกช่องพิมพ์ค้นได้
  */
 
@@ -31,7 +33,7 @@ function Filter({ value, onChange, placeholder = 'ค้น…' }: { value: stri
 }
 
 export function CargoReference({ version, onChanged }: { version: number; onChanged: () => void }) {
-  const [tab, setTab] = useState<'tariff' | 'engine'>('tariff');
+  const [tab, setTab] = useState<'tariff' | 'engine' | 'codes'>('tariff');
   return (
     <section className="cgi-card cgr">
       <div className="cgr-tabs" role="tablist">
@@ -41,8 +43,12 @@ export function CargoReference({ version, onChanged }: { version: number; onChan
         <button type="button" role="tab" aria-selected={tab === 'engine'} className={tab === 'engine' ? 'on' : ''} onClick={() => setTab('engine')}>
           🔢 เลขเครื่องที่ระบบออก
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'codes'} className={tab === 'codes' ? 'on' : ''} onClick={() => setTab('codes')}>
+          🔗 ยี่ห้อ/รุ่น ↔ Chassis ↔ เครื่อง
+        </button>
       </div>
-      {tab === 'tariff' ? <TariffTable version={version} onChanged={onChanged} /> : <EngineTable />}
+      {tab === 'tariff' ? <TariffTable version={version} onChanged={onChanged} />
+        : tab === 'engine' ? <EngineTable /> : <CodeTable onChanged={onChanged} />}
     </section>
   );
 }
@@ -269,6 +275,100 @@ function EngineTable() {
           </tbody>
         </table>
       </div>
+    </>
+  );
+}
+
+/* ---------------- ยี่ห้อ/รุ่น ↔ Chassis ↔ เครื่อง ---------------- */
+
+const C_EMPTY = { brand: '', model: '', chassis: '', engine: '', state: 'on' };
+
+/**
+ * ชุดที่ระบบจำจากใบที่บันทึก Final Invoice — ใช้เตือนตอนดึงพิกัดว่ารถคันไหนข้อมูลไม่สัมพันธ์กัน
+ * ใบที่บันทึกทั้งที่ข้อมูลผิด ชุดผิดจะถูกจำไปด้วย ปิดที่นี่แล้วระบบเลิกใช้เทียบ (บันทึกชุดเดิมอีกครั้งจะเปิดกลับเอง)
+ */
+function CodeTable({ onChanged }: { onChanged: () => void }) {
+  const [codes, setCodes] = useState<CarCode[] | null>(null);
+  const [error, setError] = useState('');
+  const [f, setF] = useState(C_EMPTY);
+  const [busy, setBusy] = useState('');
+  const [reload, setReload] = useState(0);
+  const set = (k: keyof typeof C_EMPTY) => (v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    let alive = true;
+    setError('');
+    fetch('/api/cargo-invoice/car-codes')
+      .then(async (r) => { const b = await r.json(); if (!r.ok || b.error) throw new Error(b.error ?? `HTTP ${r.status}`); return b; })
+      .then((b) => { if (alive) setCodes(b.codes); })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { alive = false; };
+  }, [reload]);
+
+  const shown = useMemo(() => (codes ?? []).filter((c) =>
+    has(c.brand, f.brand) && has(c.model, f.model) && has(c.chassis, f.chassis) && has(c.engine, f.engine)
+    && (f.state === '' || (f.state === 'on' ? c.isActive : !c.isActive))), [codes, f]);
+
+  async function toggle(c: CarCode) {
+    if (c.isActive && !window.confirm(`ปิดชุด ${c.brand} ${c.model} · Chassis ${c.chassis || '-'} · เครื่อง ${c.engine || '-'}?\nระบบจะเลิกใช้ชุดนี้เทียบตอนตรวจ`)) return;
+    setBusy(c.id);
+    try {
+      const res = await fetch('/api/cargo-invoice/car-codes', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: c.id, active: !c.isActive }),
+      });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok || b.error) throw new Error(b.error ?? `HTTP ${res.status}`);
+      setReload((n) => n + 1);
+      onChanged();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  if (error) return <p className="cgi-error">⚠️ โหลดข้อมูลไม่ได้: {error}</p>;
+  if (!codes) return <p className="cgi-busy"><span className="ai-dot" />กำลังโหลด…</p>;
+
+  return (
+    <>
+      <div className="cgr-bar">
+        <span>จำไว้ <b>{codes.filter((c) => c.isActive).length.toLocaleString()}</b> ชุด · ตรงที่ค้น <b>{shown.length.toLocaleString()}</b></span>
+        <small className="muted">ระบบจำจากใบที่บันทึก Final Invoice แล้ว ใช้เตือนตอนดึงพิกัด · คู่ Chassis ↔ เครื่อง ใช้เลขเครื่องที่ระบบเคยออกประกอบด้วย</small>
+      </div>
+      <div className="table-wrap cgr-wrap">
+        <table className="data cgi-table cgr-table">
+          <thead>
+            <tr><th>ยี่ห้อ</th><th>รุ่น</th><th>รหัส Chassis</th><th>รหัสเครื่อง</th><th className="num">จำนวนคัน</th><th>ล่าสุด</th><th>สถานะ</th><th /></tr>
+            <tr className="filters">
+              <th><Filter value={f.brand} onChange={set('brand')} /></th>
+              <th><Filter value={f.model} onChange={set('model')} /></th>
+              <th><Filter value={f.chassis} onChange={set('chassis')} /></th>
+              <th><Filter value={f.engine} onChange={set('engine')} /></th>
+              <th /><th />
+              <th>
+                <select className="cgr-filter" value={f.state} onChange={(e) => set('state')(e.target.value)}>
+                  <option value="on">ใช้อยู่</option><option value="off">ปิดแล้ว</option><option value="">ทั้งหมด</option>
+                </select>
+              </th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {shown.length === 0 ? <tr><td className="empty" colSpan={8}>{codes.length ? 'ไม่พบชุดที่ตรงกับที่ค้น' : 'ยังไม่มีข้อมูล — ระบบเริ่มจำเมื่อบันทึก Final Invoice'}</td></tr> : null}
+            {shown.slice(0, SHOW_MAX).map((c) => (
+              <tr key={c.id}>
+                <td>{c.brand}</td><td>{c.model}</td><td><b>{c.chassis || '-'}</b></td><td><b>{c.engine || '-'}</b></td>
+                <td className="num">{c.count.toLocaleString()}</td>
+                <td>{c.updatedAt.slice(0, 10).split('-').reverse().join('/')}</td>
+                <td>{c.isActive ? <span className="badge approved">ใช้อยู่</span> : <span className="badge neutral">ปิดแล้ว</span>}</td>
+                <td><button type="button" className="button tiny" disabled={busy === c.id} onClick={() => void toggle(c)}>{c.isActive ? 'ปิด' : 'เปิดใช้'}</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {shown.length > SHOW_MAX ? <p className="muted small">แสดง {SHOW_MAX} แถวแรกจาก {shown.length.toLocaleString()} — พิมพ์ค้นที่หัวคอลัมน์เพื่อให้แคบลง</p> : null}
     </>
   );
 }

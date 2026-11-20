@@ -12,6 +12,7 @@ import { recordInvoiceNo, runningInvoiceNo } from '@/lib/cargo-invoice/invoice-n
 import { assignEngineNumbers } from '@/lib/engine-numbers';
 import { allRules, lookup, TARIFF_CODE } from '@/lib/cargo-invoice/tariff';
 import { cargoUser, invoiceFile, json } from '@/lib/cargo-invoice/http';
+import { learnCarCodes } from '@/lib/cargo-invoice/car-codes';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -106,6 +107,9 @@ export async function POST(request: Request) {
   // PDF สำหรับรวมชุด E-Office — แปลงไม่ได้ก็ไม่ทำให้การบันทึกล้ม ตอนรวมชุดจะลองใหม่และแจ้งเหตุผล
   let pdf = true;
   try { pdf = Boolean(await storeInvoicePdf(job.id, user.id, bytes)); } catch { pdf = false; }
+
+  // จำชุด ยี่ห้อ+รุ่น ↔ รหัส Chassis ↔ รหัสเครื่อง ไว้เตือนใบถัดไป — จำไม่สำเร็จก็ไม่ทำให้การบันทึกล้ม
+  try { await learnCarCodes(inv.cars); } catch { /* ข้าม */ }
 
   await logActivity(user.id, stored.current ? 'REPLACE_FILE' : 'UPLOAD_FILE', 'FILE', stored.id,
     { jobId: job.id, category: 'FINAL_INVOICE', version: stored.version, source: 'CARGO_INVOICE', cars: inv.cars.length, engines });

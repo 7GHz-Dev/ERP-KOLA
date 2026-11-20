@@ -158,7 +158,7 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
     try {
       const data = await call<{ results: Tariff[] }>('/api/cargo-invoice/tariff', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ cars: list.map(({ brand, model, fuel, cc, weight }) => ({ brand, model, fuel, cc, weight })) }),
+        body: JSON.stringify({ cars: list.map(({ brand, model, fuel, cc, weight, chassis, engine }) => ({ brand, model, fuel, cc, weight, chassis, engine })) }),
       });
       setTariffs(data.results);
       setTariffFor(tariffKey(list));
@@ -289,8 +289,15 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
           ? `เลขตู้ไม่ตรงกับงาน ${job.jobNo}${missing.length ? ` · ใน Invoice แต่ไม่มีในงาน: ${missing.join(', ')}` : ''}${extra.length ? ` · ในงานแต่ไม่มีใน Invoice: ${extra.join(', ')}` : ''}`
           : `เลขตู้ ${inv.containers.length} ตู้ ตรงกับงาน ${job.jobNo}` });
     }
+    // ยี่ห้อ · รุ่น · Chassis · เครื่อง ไม่สัมพันธ์กัน (ได้มาตอนดึงพิกัด) — เตือนอย่างเดียว บันทึกได้
+    const odd = (tariffs ?? []).filter((t) => t.mismatch?.length).length;
+    if (tariffs) {
+      out.push(odd
+        ? { ok: false, text: `ยี่ห้อ / รุ่น / Chassis / เครื่อง ไม่สัมพันธ์กัน ${odd} คัน (แถวสีส้มด้านล่าง) — ตรวจก่อนบันทึก ยังบันทึกได้` }
+        : { ok: true, text: 'ยี่ห้อ / รุ่น / Chassis / เครื่อง สัมพันธ์กันตามข้อมูลที่มี' });
+    }
     return out;
-  }, [inv, cars, job]);
+  }, [inv, cars, job, tariffs]);
 
   const tariffSummary = tariffs ? {
     found: tariffs.filter((t) => t.status === 'found').length,
@@ -683,6 +690,9 @@ function CarRow({
       {jan && car.engine ? (
         // เลข 7 หลักออกตอนบันทึก — แสดงรูปแบบที่จะเขียนลงใบ
         <tr className="cgi-subrow"><td /><td colSpan={11}>ENGINE NO. ในใบ: <b>{finalEngineText(car)}</b></td></tr>
+      ) : null}
+      {tariff?.mismatch?.length ? (
+        <tr className="cgi-oddrow"><td /><td colSpan={11}>⚠ {tariff.mismatch.join(' · ')}</td></tr>
       ) : null}
       {bad ? (
         <tr className="cgi-badrow"><td /><td colSpan={11}>⚠ {car.problems.join(' · ')} <small>({multiSheet ? `ชีต ${car.sheet} ` : ''}แถว {car.row} ในไฟล์)</small></td></tr>

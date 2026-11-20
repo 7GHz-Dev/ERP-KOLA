@@ -2638,6 +2638,8 @@ table.data td.col-lib { min-width: 300px; }
 .cgi-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .cgi-table tr.cgi-box td { background: var(--blue-soft); font-size: 12px; }
 .cgi-table tr.cgi-badrow td { background: var(--red-soft); color: var(--red); }
+/* ยี่ห้อ / รุ่น / Chassis / เครื่อง ไม่สัมพันธ์กัน — เตือน (ส้ม) ไม่ใช่ผิด (แดง) */
+.cgi-table tr.cgi-oddrow td { background: #fff4e0; color: #7a5200; font-size: 12.5px; }
 /* แก้ในตาราง — ช่องดูเหมือนข้อความ เห็นกรอบเมื่อชี้/กด · ช่องที่ต่างจากไฟล์เป็นสีเหลือง */
 .cgi-table td.cgi-edit { padding: 2px 4px; }
 .cgi-table input.cgi-cell {
