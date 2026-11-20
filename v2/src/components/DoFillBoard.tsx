@@ -40,7 +40,6 @@ export function DoFillBoard({
   const queue = (queueIds ?? []).filter((id) => jobs.some((j) => j.id === id));
   const qIndex = openId ? queue.indexOf(openId) : -1;
   const inQueue = queue.length > 1 && qIndex >= 0;
-  const nextId = inQueue ? queue[qIndex + 1] ?? null : null;
 
   /*
    * อัปไฟล์เสร็จแล้วเปิดแผงของงานนั้นให้เลย
@@ -106,7 +105,7 @@ export function DoFillBoard({
             labels: queue.map((id) => { const j = jobs.find((x) => x.id === id)!; return j.blNo ?? j.jobNo; }),
             go: (k: number) => setOpenId(queue[k] ?? openId),
           } : null}
-          onSaved={nextId ? () => setOpenId(nextId) : undefined}
+          // กดบันทึกแล้วบันทึกและปิดแผงเสมอ (ทีมขอ) — เลื่อนงานในชุดด้วยปุ่มก่อนหน้า/ถัดไป
           onClose={() => {
             setOpenId(null);
             /*
