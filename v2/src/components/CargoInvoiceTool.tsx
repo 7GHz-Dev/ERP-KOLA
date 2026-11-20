@@ -57,6 +57,8 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
   const [cars, setCars] = useState<CargoCar[]>([]);
   const [tariffFor, setTariffFor] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
+  /** popup Create FN Invoice: แผงซ้ายแสดงไฟล์ไหน — Invoice สินค้าของงาน หรือ Preview FN Invoice */
+  const [leftView, setLeftView] = useState<'goods' | 'preview'>('goods');
   /** AICHI: เลข INVOICE NO. รันของระบบ (แก้ได้) */
   const [suggest, setSuggest] = useState<Suggest | null>(null);
   const [invoiceNum, setInvoiceNum] = useState('');
@@ -217,13 +219,14 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
       }
       const url = URL.createObjectURL(await res.blob());
       setPreview((old) => { if (old) URL.revokeObjectURL(old); return url; });
+      setLeftView('preview');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy('');
     }
   }
-  const closePreview = () => setPreview((old) => { if (old) URL.revokeObjectURL(old); return null; });
+  const closePreview = () => { setPreview((old) => { if (old) URL.revokeObjectURL(old); return null; }); setLeftView('goods'); };
 
   /** CSV สำหรับ Draft ใบขน — ก่อนบันทึก: ประกอบไฟล์แบบ Preview (เลขเครื่อง 0000000) · หลังบันทึก: จากไฟล์ที่บันทึก (เลขจริง) */
   async function showCsv() {
@@ -321,7 +324,7 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
     return [...new Set(order)].map((box) => ({ box, cars: cars.map((c, i) => ({ c, i })).filter(({ c }) => c.container === box) }));
   }, [inv, cars]);
 
-  return (
+  const tool = (
     <div className="cgi">
       <ol className="cgi-steps">
         {steps.map((s, i) => (
@@ -560,7 +563,8 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
       ) : null}
 
       {/* ---------- Preview FN Invoice — PDF ที่ประกอบแบบเดียวกับตอนบันทึก ---------- */}
-      {preview ? (
+      {/* popup Create FN Invoice แสดง Preview ที่แผงซ้ายแทน ไม่เปิดแผงทับฟอร์ม */}
+      {preview && !presetFile ? (
         <PdfDrawer url={preview} title={`Preview FN Invoice${inv?.invoiceNo ? ` · ${inv.invoiceNo}` : ''}`}
           note={`ยังไม่ได้บันทึก${jan ? ' · เลขเครื่องออกจริงตอนบันทึก (แสดงเป็น xxxxxxx)' : ''}`} onClose={closePreview} />
       ) : null}
@@ -571,6 +575,39 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
 
       {/* ---------- ข้อมูลอ้างอิง: Datatariff + เลขเครื่องที่ระบบออก ---------- */}
       <CargoReference version={rulesVersion} onChanged={() => { if (tariffs) void fetchTariffs(); }} />
+    </div>
+  );
+
+  if (!presetFile) return tool;
+
+  /*
+   * popup Create FN Invoice — ไฟล์ซ้าย กรอกข้อมูลขวา (ทีมขอ) ดูใบไปแก้ไปได้โดยไม่ต้องเปิดแผงทับ
+   * แผงซ้ายสลับได้ระหว่าง Invoice สินค้าของงาน กับ Preview FN Invoice (กด Preview แล้วสลับให้เอง)
+   */
+  const showing = leftView === 'preview' && preview ? preview : `/files/${presetFile.id}`;
+  return (
+    <div className="fn-split">
+      <div className="fn-split-view">
+        <div className="fn-split-tabs">
+          <button type="button" className={`button tiny${leftView === 'goods' || !preview ? ' primary' : ''}`} onClick={() => setLeftView('goods')}>
+            Invoice สินค้า
+          </button>
+          <button type="button" className={`button tiny${leftView === 'preview' && preview ? ' primary' : ''}`} disabled={!preview} onClick={() => setLeftView('preview')}
+            title={preview ? undefined : 'กด Preview FN Invoice ทางขวาก่อน'}>
+            Preview FN Invoice
+          </button>
+          {leftView === 'preview' && preview ? (
+            <small className="muted">ยังไม่ได้บันทึก{jan ? ' · เลขเครื่องแสดงเป็น xxxxxxx' : ''}</small>
+          ) : null}
+          <a className="button tiny fn-split-open" href={showing} target="_blank" rel="noreferrer" title="เปิดแท็บใหม่">⤢</a>
+        </div>
+        <object key={showing} className="fn-split-file" data={showing} type="application/pdf">
+          <p className="drawer-note warn">
+            เบราว์เซอร์นี้แสดงไฟล์ในหน้าไม่ได้ · <a href={showing} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
+          </p>
+        </object>
+      </div>
+      <div className="fn-split-form">{tool}</div>
     </div>
   );
 }

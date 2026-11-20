@@ -2970,3 +2970,21 @@ img.cgi-doc-file { overflow: auto; }
 .do-free-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .do-pane-upload { padding: 0 0 6px; position: relative; z-index: 5; }
 .fn-popup { width: 100%; overflow: auto; padding: 12px; }
+/* Create FN Invoice — แผงกว้าง 2 เท่าของแผงดูเอกสาร (ไม่เกินจอ) · ไฟล์ซ้าย กรอกข้อมูลขวา */
+.job-drawer.wide:has(.fn-popup) { width: min(calc(var(--doc-drawer-w) * 2), 98vw); }
+.job-drawer .drawer-content:has(> .fn-popup) { display: flex; padding: 0; overflow: hidden; }
+.fn-popup:has(> .fn-split) { overflow: hidden; }
+.fn-split { display: grid; grid-template-columns: minmax(0, 45fr) minmax(0, 55fr); gap: 12px; height: 100%; min-height: 0; }
+.fn-split-view { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.fn-split-tabs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fn-split-open { margin-left: auto; }
+.fn-split-file { flex: 1; width: 100%; min-height: 0; border: 1px solid var(--line); border-radius: 8px; background: #f4f6f8; }
+.fn-split-form { min-height: 0; overflow: auto; padding-right: 4px; }
+/* หน้าเต็ม /fn-invoice/[id] (กด ⤢) — ไม่มีแผงคุมความสูง จึงกำหนดเองให้เต็มจอ */
+.main > .fn-split { height: calc(100vh - 150px); min-height: 460px; }
+@media (max-width: 900px) {
+  .fn-popup:has(> .fn-split) { overflow: auto; }
+  .fn-split, .main > .fn-split { grid-template-columns: 1fr; height: auto; }
+  .fn-split-file { flex: none; height: 60vh; }
+  .fn-split-form { overflow: visible; }
+}
