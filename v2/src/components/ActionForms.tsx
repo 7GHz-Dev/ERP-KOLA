@@ -444,7 +444,7 @@ export function DraftActions({
       {hasRefNo ? (
         <SubmitDraftForReview
           jobId={jobId}
-          label={draftStatus === 'REJECTED' ? 'ส่งตรวจอีกครั้ง' : 'ส่งให้ Senior Officer ตรวจ'}
+          label={draftStatus === 'REJECTED' ? 'ส่งตรวจอีกครั้ง' : 'ส่งตรวจ'}
         />
       ) : null}
       {hasInvoice ? (

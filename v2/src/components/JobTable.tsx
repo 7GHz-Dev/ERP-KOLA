@@ -262,7 +262,11 @@ export function ApprovalBadge({ status }: { status: string | null }) {
   return <span className="badge pending">รออนุมัติ</span>;
 }
 
-export function FileChip({ file }: { file?: { id: string; fileName: string } }) {
+export function FileChip({ file, label }: {
+  file?: { id: string; fileName: string };
+  /** ข้อความบนปุ่มแทนชื่อไฟล์ (ชื่อไฟล์ยังขึ้นตอนชี้) — ไม่ใส่ = แสดงชื่อไฟล์ */
+  label?: string;
+}) {
   if (!file) return <span className="badge pending">รอดำเนินการ</span>;
   /*
    * กดชื่อไฟล์แล้วกางแผงดูไฟล์ทับหน้าเดิม ไม่เด้งแท็บใหม่
@@ -270,7 +274,7 @@ export function FileChip({ file }: { file?: { id: string; fileName: string } }) 
    */
   return (
     <Link className="badge approved file-link" href={`/file/${file.id}`} title={file.fileName}>
-      {file.fileName}
+      {label ?? file.fileName}
     </Link>
   );
 }

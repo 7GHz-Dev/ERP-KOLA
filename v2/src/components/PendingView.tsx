@@ -221,7 +221,8 @@ function columnsFor(
       label: 'Invoice สินค้า', kind: 'actions',
       render: (r) => (
         <div className="row-actions">
-          <FileChip file={r.currentFiles?.INVOICE_GOODS} />
+          {/* ไม่แสดงชื่อไฟล์ (ทีมขอ) — ชี้ดูชื่อได้ กดเปิดดูไฟล์ */}
+          <FileChip file={r.currentFiles?.INVOICE_GOODS} label="📄 ดูไฟล์" />
           {/* เปลี่ยน Invoice สินค้าไม่ต้องกดรับทราบแล้ว (ทีมขอ) */}
         </div>
       ),
@@ -230,7 +231,13 @@ function columnsFor(
       label: 'Final Invoice', kind: 'actions',
       render: (r) => (
         <div className="row-actions">
-          <FileChip file={r.currentFiles?.FINAL_INVOICE} />
+          {/*
+            ไม่แสดงชื่อไฟล์ (ทีมขอ) · กดดูเปิด PDF ที่แปลงจาก Excel ไว้แล้วตอนบันทึก (FINAL_INVOICE_PDF)
+            ยังไม่มี PDF หรือ PDF เก่ากว่าไฟล์ Excel (บันทึกใหม่แล้วแปลงไม่สำเร็จ) เปิดไฟล์ Excel แทน ไม่แสดงฉบับเก่า
+          */}
+          {r.currentFiles?.FINAL_INVOICE ? (
+            <FileChip file={finalInvoiceView(r.currentFiles)} label="📄 ดูไฟล์" />
+          ) : <FileChip />}
           {/* สร้าง Final Invoice จาก Invoice ผู้ขายในหน้าต่าง popup ของงานนี้ — บันทึกแล้วเป็นไฟล์ Final Invoice */}
           {sub === 'wait' ? (
             other ? (
@@ -267,6 +274,15 @@ function columnsFor(
   ];
 }
 
+/** Final Invoice ที่เปิดดู — PDF ที่แปลงแล้วถ้าใหม่ทันไฟล์ Excel ไม่งั้นใช้ไฟล์ Excel */
+function finalInvoiceView(files: NonNullable<JobRow['currentFiles']>) {
+  const xlsx = files.FINAL_INVOICE;
+  const pdf = files.FINAL_INVOICE_PDF;
+  if (!pdf) return xlsx;
+  if (!xlsx?.at || !pdf.at) return pdf;
+  return new Date(pdf.at).getTime() >= new Date(xlsx.at).getTime() - 1000 ? pdf : xlsx;
+}
+
 /**
  * แท็บ 2 ของ Import Officer — ต่อจากคอลัมน์ Final Invoice
  *   สร้าง Draft   ปุ่มสร้าง Draft ใบขนบนเครื่องที่กด (ต้องมี Final Invoice)
@@ -296,7 +312,7 @@ function draftColumns(sub: 'wait' | 'approve'): Column[] {
           <ShowReason reason={r.draftStatus === 'REJECTED' || r.draftStatus === 'HUB_ERROR' ? r.draftRejectReason : null} />
           {sub === 'wait' && r.draftRefNo && r.draftStatus !== 'SENT_TO_HUB' ? (
             <SubmitDraftForReview jobId={r.id}
-              label={r.draftStatus === 'REJECTED' ? 'ส่งตรวจอีกครั้ง' : 'ส่งให้ Senior Officer ตรวจ'} />
+              label={r.draftStatus === 'REJECTED' ? 'ส่งตรวจอีกครั้ง' : 'ส่งตรวจ'} />
           ) : null}
         </div>
       ),

@@ -272,7 +272,8 @@ export async function listJobs(filter: JobFilter = {}) {
       fnId: fn.id,
       fnReason: fn.reason,
       // ไฟล์ปัจจุบันของแต่ละหมวด รวมมาในรอบเดียวกัน หน้าที่ต้องใช้ไฟล์จึงไม่ต้องยิง query ซ้ำ
-      currentFiles: sql<Record<string, { id: string; fileName: string }> | null>`cf.files`,
+      // at = เวลาอัป (ISO) — ใช้เทียบว่าไฟล์ที่แปลงแล้ว (เช่น FINAL_INVOICE_PDF) ใหม่ทันไฟล์ต้นทางไหม
+      currentFiles: sql<Record<string, { id: string; fileName: string; at?: string }> | null>`cf.files`,
       // นับทั้งหมดมาพร้อมกันในรอบเดียว ประหยัดการไป-กลับฐานข้อมูล
       total: sql<number>`count(*) over()::int`,
     })
@@ -304,7 +305,7 @@ export async function listJobs(filter: JobFilter = {}) {
     )
     .leftJoin(
       sql`(select job_id,
-                  jsonb_object_agg(category, jsonb_build_object('id', id, 'fileName', file_name)) as files
+                  jsonb_object_agg(category, jsonb_build_object('id', id, 'fileName', file_name, 'at', uploaded_at)) as files
              from files where is_current = true group by job_id) as cf`,
       sql`cf.job_id = ${jobs.id}`,
     )
