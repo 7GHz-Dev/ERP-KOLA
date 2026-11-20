@@ -2931,18 +2931,18 @@ img.cgi-doc-file { overflow: auto; }
 .cgi-normal-table input.auto, .cgi-normal-table select.auto { background: var(--blue-soft, #e8f1fb); border-color: #9cc1ea; }
 .cgi-normal-table tr.bad > td { background: #fff4f4; }
 .cgi-normal-table .w-no { width: 34px; text-align: center; color: var(--muted); padding-top: 8px; }
-.cgi-normal-table .w-brand { min-width: 15.6ch; width: 15.6ch; }
+.cgi-normal-table .w-brand { min-width: 17.16ch; width: 17.16ch; }
 .cgi-normal-table .w-model { min-width: 20ch; }
-.cgi-normal-table .w-chassis { min-width: 23.1ch; width: 23.1ch; }
+.cgi-normal-table .w-chassis { min-width: 25.41ch; width: 25.41ch; }
 .cgi-normal-table .w-engine { min-width: 16.8ch; width: 16.8ch; }
 .cgi-normal-table .w-num { min-width: 11ch; text-align: right; }
 .cgi-normal-table .w-num input { text-align: right; }
 /* น้ำหนัก · CC ตัวเลขสั้น (เช่น 1,330) — แคบกว่าช่องยอดเงิน */
-.cgi-normal-table .w-weight { min-width: 8ch; width: 8ch; }
+.cgi-normal-table .w-weight { min-width: 6.4ch; width: 6.4ch; }
 .cgi-normal-table .w-cc { min-width: 9.2ch; width: 9.2ch; }
 .cgi-normal-table th.w-weight { white-space: normal; line-height: 1.2; }
-/* AMOUNT แคบกว่าช่องตัวเลขอื่น 20% (ทีมขอ) · หัวคอลัมน์ตัด 2 บรรทัดได้ ไม่ดันช่องให้กว้าง */
-.cgi-normal-table .w-amount { min-width: 8.8ch; width: 8.8ch; }
+/* AMOUNT ขนาดตามที่ทีมกำหนด · หัวคอลัมน์ตัด 2 บรรทัดได้ ไม่ดันช่องให้กว้าง */
+.cgi-normal-table .w-amount { min-width: 9.68ch; width: 9.68ch; }
 .cgi-normal-table th.w-amount { white-space: normal; line-height: 1.2; }
 .cgi-normal-table .w-year { min-width: 9.2ch; width: 9.2ch; }
 .cgi-normal-table .w-fuel { min-width: 15.6ch; width: 15.6ch; }
