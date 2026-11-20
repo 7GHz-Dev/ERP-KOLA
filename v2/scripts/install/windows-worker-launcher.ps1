@@ -3,7 +3,7 @@
 # ลงทะเบียนลิงก์ให้ผู้ใช้คนนี้ (ไม่ต้องใช้สิทธิ์ Administrator)
 #   kola-worker://start        หน้าจัดการแลก DO  -> npm run worker:web
 #   kola-worker://draft        แท็บ Draft ใบขน     -> npm run worker:draft
-#   kola-worker://draft?task=… ปุ่ม "สร้าง Draft"  -> npm run worker:draft -- --task … (ทำงานนั้นบนเครื่องนี้)
+#   kola-worker://draft?task=… ปุ่ม "สร้าง Draft"  -> npm run worker:draft -- --task … (ทำงานนั้นบนเครื่องนี้ · log: draft-task.log)
 #   kola-netbay://open?ref=…   เลข Ref No.        -> npm run netbay:open (เปิดใบขนนั้นใน NETBAY)
 #   kola-worker://customs      ปุ่ม "สร้างใบขนแล้ว" / "Refresh" -> npm run worker:customs (ตัว monitor ใบขน จน ACCEPT ครบ)
 #   kola-worker://update       ตอนเปิด Windows (Run key KOLA-Update) -> อัปเดตโค้ดอย่างเดียว
@@ -144,7 +144,9 @@ if ($url -like '*//update*') {
 } elseif ($url -like '*draft*task=*') {
   # กด "สร้าง Draft" ที่เครื่องนี้ — ทำเฉพาะงานนั้นบนเครื่องนี้ (เลขงานตรวจรูปแบบก่อน ห้ามต่อ URL เป็นคำสั่งตรง ๆ)
   if ($url -notmatch '[?&]task=(TASK-[A-F0-9]{8,40})(&|$)') { Show "ลิงก์งาน Draft ไม่ถูกต้อง: $url"; exit }
-  Start-Npm ('worker:draft -- --task ' + $Matches[1]) 'draft-worker.log'
+  # log แยกไฟล์จาก worker ตัวหลัก — worker ตัวหลักเปิด draft-worker.log ค้างไว้ ถ้าใช้ไฟล์เดียวกัน
+  # cmd เปิดไฟล์ไม่ได้ (ไฟล์ถูกใช้อยู่) แล้วจบทันทีโดยไม่รัน worker เลย = กดสร้าง Draft แล้ว NETBAY ไม่เปิด
+  Start-Npm ('worker:draft -- --task ' + $Matches[1]) 'draft-task.log'
 } elseif ($url -like '*draft*') {
   Start-Worker 'worker:draft' 'draft-worker' 'draft-worker.log' 'worker สร้าง Draft ใบขน'
 } else {
