@@ -3000,3 +3000,4 @@ img.cgi-doc-file { overflow: auto; }
   .fn-split-file { flex: none; height: 60vh; }
   .fn-split-form { overflow: visible; }
 }
+.fn-split-empty { display: grid; place-items: center; }

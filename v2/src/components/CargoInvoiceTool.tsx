@@ -59,6 +59,31 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
   const [preview, setPreview] = useState<string | null>(null);
   /** popup Create FN Invoice: แผงซ้ายแสดงไฟล์ไหน — Invoice สินค้าของงาน หรือ Preview FN Invoice */
   const [leftView, setLeftView] = useState<'goods' | 'preview'>('goods');
+  /*
+   * OG Invoice ที่แผงซ้าย — PDF / รูป เปิดตรงได้ · Excel ต้องแปลงเป็น PDF ก่อน
+   * ห้ามส่ง /files/<xlsx> ให้ <object> ตรง ๆ เพราะเบราว์เซอร์แสดง Excel ไม่ได้แล้วจะดาวน์โหลดไฟล์ลงเครื่องแทน
+   */
+  const [ogView, setOgView] = useState<{ url: string; note: string }>({ url: '', note: '' });
+  useEffect(() => {
+    if (!presetFile) return;
+    const name = presetFile.fileName;
+    if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(name)) { setOgView({ url: `/files/${presetFile.id}`, note: '' }); return; }
+    if (!/\.xlsx$/i.test(name)) { setOgView({ url: '', note: 'ไฟล์ชนิดนี้แสดงในหน้าไม่ได้' }); return; }
+    if (!file) { setOgView({ url: '', note: 'กำลังโหลด OG Invoice…' }); return; }
+    let url = '';
+    let gone = false;
+    setOgView({ url: '', note: 'กำลังแปลง Excel เป็น PDF…' });
+    const fd = new FormData();
+    fd.set('file', file);
+    void fetch('/api/cargo-invoice/file-preview', { method: 'POST', body: fd }).then(async (res) => {
+      if (gone) return;
+      if (!res.ok) { setOgView({ url: '', note: (await res.json().catch(() => ({}))).error ?? 'แปลงไฟล์ไม่ได้' }); return; }
+      url = URL.createObjectURL(await res.blob());
+      setOgView({ url, note: '' });
+    }).catch(() => { if (!gone) setOgView({ url: '', note: 'แปลงไฟล์ไม่ได้' }); });
+    return () => { gone = true; if (url) URL.revokeObjectURL(url); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetFile?.id, file]);
   /** AICHI: เลข INVOICE NO. รันของระบบ (แก้ได้) */
   const [suggest, setSuggest] = useState<Suggest | null>(null);
   const [invoiceNum, setInvoiceNum] = useState('');
@@ -592,7 +617,7 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
    * popup Create FN Invoice — ไฟล์ซ้าย กรอกข้อมูลขวา (ทีมขอ) ดูใบไปแก้ไปได้โดยไม่ต้องเปิดแผงทับ
    * แผงซ้ายสลับได้ระหว่าง OG Invoice (Invoice สินค้าของงาน) กับ Preview FN Invoice (กด Preview แล้วสลับให้เอง)
    */
-  const showing = leftView === 'preview' && preview ? preview : `/files/${presetFile.id}`;
+  const showing = leftView === 'preview' && preview ? preview : ogView.url;
   return (
     <div className="fn-split">
       <div className="fn-split-view">
@@ -607,13 +632,15 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
           {leftView === 'preview' && preview ? (
             <small className="muted">ยังไม่ได้บันทึก{jan ? ' · เลขเครื่องแสดงเป็น xxxxxxx' : ''}</small>
           ) : null}
-          <a className="button tiny fn-split-open" href={showing} target="_blank" rel="noreferrer" title="เปิดแท็บใหม่">⤢</a>
+          {showing ? <a className="button tiny fn-split-open" href={showing} target="_blank" rel="noreferrer" title="เปิดแท็บใหม่">⤢</a> : null}
         </div>
-        <object key={showing} className="fn-split-file" data={showing} type="application/pdf">
-          <p className="drawer-note warn">
-            เบราว์เซอร์นี้แสดงไฟล์ในหน้าไม่ได้ · <a href={showing} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
-          </p>
-        </object>
+        {showing ? (
+          <object key={showing} className="fn-split-file" data={showing} type="application/pdf">
+            <p className="drawer-note warn">
+              เบราว์เซอร์นี้แสดงไฟล์ในหน้าไม่ได้ · <a href={showing} target="_blank" rel="noreferrer">เปิดในแท็บใหม่</a>
+            </p>
+          </object>
+        ) : <div className="fn-split-file fn-split-empty"><p className="batch-note">{ogView.note || 'กำลังโหลด…'}</p></div>}
       </div>
       <div className="fn-split-form">{tool}</div>
     </div>
