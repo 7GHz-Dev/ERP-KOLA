@@ -407,7 +407,7 @@ export function CargoInvoiceNormal({
                 <th className="w-no">#</th>
                 {COLS.map((c) => <th key={c.k} className={c.cls}>{c.label}</th>)}
                 <th className="w-fuel">FUEL</th>
-                <th className="w-num">AMOUNT ({currency})</th>
+                <th className="w-num w-amount">AMOUNT ({currency})</th>
                 <th className="w-box">CONTAINER</th>
                 <th className="w-tariff">พิกัด</th>
                 <th className="w-act" />
@@ -437,7 +437,7 @@ export function CargoInvoiceNormal({
                         {[...new Set([...FUELS, c.fuel].filter(Boolean))].map((f) => <option key={f}>{f}</option>)}
                       </select>
                     </td>
-                    <td className="w-num">
+                    <td className="w-num w-amount">
                       <input className={cellCls(i, 'amount')} value={c.amount} inputMode="decimal" disabled={locked} aria-label={`คันที่ ${i + 1} AMOUNT`}
                         onChange={(e) => setCar(i, { amount: e.target.value })} />
                     </td>
@@ -498,7 +498,7 @@ export function CargoInvoiceNormal({
                 </td>
                 <td className="w-num"><b>{fmt(sum('weight'))}</b></td>
                 <td colSpan={3} />
-                <td className="w-num"><b>{fmt(sum('price'))}</b></td>
+                <td className="w-num w-amount"><b>{fmt(sum('price'))}</b></td>
                 <td colSpan={3} />
               </tr>
             </tfoot>
