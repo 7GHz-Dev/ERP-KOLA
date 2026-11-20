@@ -7,9 +7,11 @@ import { automationTasks, customsEntries, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { requireJobActor } from '@/lib/job-actor';
 import { assertSalePrice } from '@/lib/sale/price-store';
-import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
+import { buildKey, downloadFile, ensureBucket, uploadFile } from '@/lib/storage';
 import { logActivity, newId, required, runAction } from './common';
-import { reuseOpenTask, TASK_TYPES } from '@/lib/automation';
+import { DRAFT_CSV_CATEGORY, reuseOpenTask, TASK_TYPES } from '@/lib/automation';
+import { draftCsvInput } from '@/lib/draft-input';
+import { storeJobFileVersion } from '@/lib/job-files';
 import { requestRefresh } from '@/lib/customs-monitor';
 import { isCustomsSimulation, simulateAccept } from '@/lib/customs-simulation';
 import { netbayCredentials } from '@/lib/netbay-accounts';
@@ -45,14 +47,34 @@ async function submitDraftTaskImpl(formData: FormData) {
   const existing = await reuseOpenTask(jobId, TASK_TYPES.DRAFT);
   if (!existing) {
     const id = newId('TASK');
+    /*
+     * ใช้ CSV ที่ได้จาก Final Invoice ยื่น NETBAY แทนไฟล์ .xlsx (ทีมขอ)
+     * เซิร์ฟเวอร์สร้าง CSV ด้วยตัวสร้างชุดเดียวกับ worker แล้วเก็บเป็นไฟล์ "CSV นำเข้า NETBAY" ของงาน
+     * worker เอาไฟล์นี้ไปแนบใน NETBAY ตรง ๆ ไม่อ่าน Excel ไม่ออกเลขเครื่องซ้ำ
+     * Final Invoice ที่ยังไม่มีเลขเครื่อง (อัปโหลดเอง) ใช้ทางเดิม: worker อ่าน .xlsx แล้วออกเลขเอง
+     */
+    let input = { storageKey: invoice.storageKey, fileName: invoice.fileName };
+    let csvExtra: Record<string, unknown> = {};
+    if (/\.xlsx$/i.test(invoice.fileName)) {
+      const { body } = await downloadFile(invoice.storageKey);
+      const csv = await draftCsvInput(body, { jobId, jobBl: job.blNo, sourceFile: invoice.fileName });
+      if (csv) {
+        const stored = await storeJobFileVersion({
+          jobId, category: DRAFT_CSV_CATEGORY, bytes: csv.bytes, fileName: csv.fileName, mimeType: 'text/csv',
+          userId: user.id, note: `สร้างจาก Final Invoice v${invoice.version} ตอนกดสร้าง Draft`, changeReason: 'กดสร้าง Draft ใหม่',
+        });
+        input = { storageKey: stored.storageKey, fileName: csv.fileName };
+        csvExtra = { inputKind: 'csv', totals: csv.totals, invoiceBl: csv.blNo, finalInvoiceId: invoice.id };
+      }
+    }
     await db.insert(automationTasks).values({
       id, type: TASK_TYPES.DRAFT, status: 'QUEUED', jobId,
       // local: ให้เครื่องที่กดเป็นคนทำ (ปุ่มเปิดลิงก์ kola-worker://draft?task=…) worker กลางไม่หยิบ
       payload: JSON.stringify({
-        jobNo: job.jobNo, blNo: job.blNo, local: true, requestedBy: user.id, ...(netbayUser ? { netbayUser } : {}),
+        jobNo: job.jobNo, blNo: job.blNo, local: true, requestedBy: user.id, ...(netbayUser ? { netbayUser } : {}), ...csvExtra,
       }),
-      inputStorageKey: invoice.storageKey,
-      inputFileName: invoice.fileName,
+      inputStorageKey: input.storageKey,
+      inputFileName: input.fileName,
     });
     await db.update(jobs)
       .set({ draftTaskId: id, draftStatus: 'SENT_TO_HUB', updatedBy: user.id, updatedAt: new Date() })

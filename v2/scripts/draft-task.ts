@@ -7,6 +7,9 @@
  *   3. สร้างใบขนใน NETBAY กรอกหัวใบขน แนบ CSV แล้วจบเมื่อขึ้น "success please check your invoice"
  *   4. ส่ง Reference No. + Excel ที่เติมเลขเครื่อง + CSV กลับเข้างานใน ERP
  *
+ * งานที่ ERP แนบ CSV มาแล้ว (data.inputKind = 'csv') — ERP สร้าง CSV จาก Final Invoice ตอนกดสร้าง Draft
+ * (เลขเครื่องออกไว้ตั้งแต่บันทึก Final Invoice) worker ข้ามข้อ 1–2 เอา CSV ไปทำข้อ 3 ตรง ๆ แล้วส่งแค่ Ref No. กลับ
+ *
  * แยกจาก draft-worker.ts (วนรับงาน) เพื่อให้เทสต์เรียกได้โดยไม่ต้องต่อ ERP จริง
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -15,7 +18,7 @@ import type { Page } from 'playwright-core';
 import {
   analyze, buildCsv, excelUpdates, KEEP, lookupKeys, NEW, safeName, type EngineLookup, type EngineRow,
 } from '../src/lib/draft/analyze';
-import type { DraftData } from '../src/lib/draft/csv';
+import type { DraftData, Totals } from '../src/lib/draft/csv';
 import { patchWorkbook } from '../src/lib/draft/excel-patch';
 import { readInvoice } from '../src/lib/draft/invoice';
 import { createDraft, type DraftInfo, type NetbaySettings } from './netbay-kola';
@@ -23,7 +26,11 @@ import { createDraft, type DraftInfo, type NetbaySettings } from './netbay-kola'
 export type Api = <T = unknown>(fn: string, args?: Record<string, unknown>) => Promise<T>;
 export type Task = {
   id: string; jobId: string | null; inputFileName: string | null; hasInputFile: boolean;
-  data: { jobNo?: string; blNo?: string; netbayUser?: string };
+  data: {
+    jobNo?: string; blNo?: string; netbayUser?: string;
+    /** 'csv' = ไฟล์ที่แนบคือ CSV นำเข้า NETBAY ที่ ERP สร้างไว้แล้ว · ไม่มี = Final Invoice .xlsx (ทางเดิม) */
+    inputKind?: string; totals?: Totals; invoiceBl?: string;
+  };
   /** บัญชี NETBAY ที่ผู้กด "สร้าง Draft" เลือกไว้ — null = ใช้บัญชีประจำเครื่อง (.env.local) */
   netbay?: { username: string; password: string } | null;
 };
@@ -43,6 +50,7 @@ const normBl = (s: string) => (s || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const safeId = (s: string) => s.replace(/[^\w.-]/g, '_');
 
+/** excel = '' เมื่อทำจาก CSV ที่ ERP แนบมา (ไม่มี Excel ให้ส่งกลับ) */
 type Result = { refNo: string; excel: string; csv: string };
 
 function lookupFrom(rows: EngineRow[]): EngineLookup {
@@ -58,6 +66,7 @@ export async function makeDraft(task: Task, deps: Deps, info: DraftInfo): Promis
   const input = await api<{ fileName: string; base64: string }>('downloadInputFile', { taskId: task.id });
   const name = input.fileName || task.inputFileName || 'invoice.xlsx';
   const ext = extname(name).toLowerCase();
+  if (task.data.inputKind === 'csv' || ext === '.csv') return draftFromCsv(task, deps, info, name, Buffer.from(input.base64, 'base64'));
   if (ext !== '.xlsx' && ext !== '.xlsm') throw new DraftError(`Final Invoice ต้องเป็นไฟล์ Excel (.xlsx) — ไฟล์ที่แนบคือ ${name}`);
   const dir = join(deps.workDir, safeId(task.id));
   mkdirSync(dir, { recursive: true });
@@ -113,6 +122,22 @@ export async function makeDraft(task: Task, deps: Deps, info: DraftInfo): Promis
   return { refNo, excel: excelPath, csv: csvPath };
 }
 
+/** CSV ที่ ERP สร้างจาก Final Invoice แล้ว — แนบเข้า NETBAY ตรง ๆ (ไม่อ่าน Excel ไม่ออกเลขเครื่อง) */
+async function draftFromCsv(task: Task, deps: Deps, info: DraftInfo, name: string, bytes: Buffer): Promise<Result> {
+  const { log } = deps;
+  const totals = task.data.totals;
+  if (!totals) throw new DraftError('งานนี้ไม่มียอดรวมสำหรับหัวใบขน — กดสร้าง Draft ใหม่อีกครั้ง');
+  const blNo = task.data.invoiceBl || task.data.blNo || '';
+  if (!blNo) throw new DraftError('งานนี้ไม่มีเลข BL');
+  const dir = join(deps.workDir, safeId(task.id));
+  mkdirSync(dir, { recursive: true });
+  const csvPath = join(dir, `${safeName(blNo)}.csv`);
+  writeFileSync(csvPath, bytes);
+  log(`ได้ CSV ${name} จาก ERP (สร้างจาก Final Invoice) — ${totals.package_amount} ${totals.package_unit} · ${totals.gross_weight} KG`);
+  const refNo = await createDraft({ csvPath, blNo, totals, settings: deps.netbay, info, log, onStep: deps.onStep });
+  return { refNo, excel: '', csv: csvPath };
+}
+
 /* ---------------- งานที่ทำใน NETBAY แล้ว (กันสร้างใบขนซ้ำ) ---------------- */
 
 const donePath = (deps: Deps, taskId: string) => join(deps.workDir, 'done', `${safeId(taskId)}.json`);
@@ -121,7 +146,7 @@ function readDone(deps: Deps, taskId: string): Result | null {
   const p = donePath(deps, taskId);
   if (!existsSync(p)) return null;
   const d = JSON.parse(readFileSync(p, 'utf8')) as Result;
-  return existsSync(d.excel) && existsSync(d.csv) ? d : null;
+  return (!d.excel || existsSync(d.excel)) && existsSync(d.csv) ? d : null;
 }
 
 function writeDone(deps: Deps, taskId: string, r: Result) {
@@ -156,9 +181,11 @@ export async function processTask(task: Task, deps: Deps) {
     return;
   }
 
-  let file: ReturnType<typeof asFile> | undefined = asFile(result.excel, XLSX_MIME);
-  let csv: ReturnType<typeof asFile> | undefined = asFile(result.csv, 'text/csv');
-  if (file.base64.length + csv.base64.length > MAX_UPLOAD) {
+  // ทำจาก CSV ที่ ERP แนบมา — ERP เก็บ CSV ไว้แล้ว ไม่มี Excel ให้ส่งกลับ ส่งแค่ Ref No.
+  const fromCsv = !result.excel;
+  let file: ReturnType<typeof asFile> | undefined = fromCsv ? undefined : asFile(result.excel, XLSX_MIME);
+  let csv: ReturnType<typeof asFile> | undefined = fromCsv ? undefined : asFile(result.csv, 'text/csv');
+  if (file && csv && file.base64.length + csv.base64.length > MAX_UPLOAD) {
     log(`ไฟล์ใหญ่เกินส่งขึ้น ERP — ส่งเฉพาะ Ref No. (ไฟล์อยู่ที่ ${result.excel})`);
     file = undefined; csv = undefined;
   }

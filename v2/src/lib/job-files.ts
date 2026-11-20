@@ -46,5 +46,5 @@ export async function storeJobFileVersion(input: {
       .set({ isCurrent: false, supersededBy: id })
       .where(eq(files.id, current.id));
   }
-  return { id, version, current: current ?? null };
+  return { id, version, current: current ?? null, storageKey: key };
 }

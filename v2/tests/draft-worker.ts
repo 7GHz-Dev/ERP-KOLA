@@ -89,6 +89,25 @@ async function main() {
     assert.ok(lines.some((l) => l.includes('พิกัดยังไม่ครบ 1 คัน')));         // คันที่ 3 ไม่มีพิกัด -> XXXX
     console.log('✓ สร้าง Draft + Import CSV แล้วส่ง Ref No. กลับ');
 
+    /* ---- 1b. ERP แนบ CSV ที่สร้างจาก Final Invoice มาแล้ว — ใช้ไฟล์นั้นตรง ๆ ไม่อ่าน Excel ไม่ออกเลข ---- */
+    const csvIn = Buffer.from(mock.state.upload!);
+    const createdBefore = mock.state.created;
+    const erpC = fakeErp({ TC: { name: 'TESTBL0001.csv', body: csvIn } });
+    const totalsIn = { package_amount: '3', package_unit: 'UNIT', gross_weight: '3,000.00', price: '9,000.00', currency: 'USD' };
+    await processTask({ ...task('TC'), data: { jobNo: 'KOLA-2026-0001', blNo: 'TESTBL0001', inputKind: 'csv', totals: totalsIn, invoiceBl: 'TESTBL0001' } }, deps(erpC.api));
+    assert.deepEqual(erpC.of('failTask'), [], lines.join('\n'));
+    assert.deepEqual(erpC.of('engineLookup'), [], 'ไม่อ่าน Excel');
+    assert.deepEqual(erpC.of('engineIssue'), [], 'ไม่ออกเลขเครื่อง');
+    const [doneC] = erpC.of('completeTask');
+    assert.equal(doneC.args.refNo, REF_NO);
+    assert.equal(doneC.args.file, undefined, 'ไม่มี Excel ส่งกลับ');
+    assert.equal(doneC.args.csv, undefined, 'ERP เก็บ CSV ไว้แล้ว');
+    assert.ok(mock.state.upload!.equals(csvIn), 'CSV ที่นำเข้า NETBAY = ไฟล์ที่ ERP แนบมา');
+    assert.equal(mock.state.decl!.bl, 'TESTBL0001');
+    assert.equal(mock.state.created, createdBefore + 1);
+    mock.state.created = createdBefore;   // ขั้นถัดไปนับใบขนจากค่าเดิม
+    console.log('✓ ใช้ CSV จาก ERP ยื่น NETBAY ตรง ๆ (ไม่อ่าน .xlsx · ไม่ออกเลขเครื่อง)');
+
     /* ---- 2. ส่งผลกลับไม่ถึง -> หยิบใหม่ -> ส่งซ้ำ ไม่สร้างใบขนใหม่ ---- */
     const erp2 = fakeErp({ T2: msfz }, { failComplete: 2 });
     const d2 = deps(erp2.api);

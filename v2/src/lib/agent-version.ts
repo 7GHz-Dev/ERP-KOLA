@@ -8,7 +8,7 @@
  * รูปแบบ ปี.เดือน.วัน.ครั้งที่ — ตัวเปิดบน Windows อ่านเลขจากไฟล์นี้ด้วย regex (AGENT_VERSION = '…') อย่าเปลี่ยนรูปบรรทัด
  * ไฟล์นี้ไม่แตะฐานข้อมูล worker ในเครื่อง import ได้ตรง ๆ
  */
-export const AGENT_VERSION = '2026.10.31.1';
+export const AGENT_VERSION = '2026.11.20.1';
 
 /** เทียบเลขเวอร์ชันทีละส่วน — ค่าว่าง/อ่านไม่ออกถือว่าเก่าที่สุด */
 export function compareVersion(a: string | null | undefined, b: string | null | undefined) {
