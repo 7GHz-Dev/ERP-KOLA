@@ -69,8 +69,10 @@ function buildTrack(r: JobRow, x: Extra | undefined): Track {
     ['intake', '📥', 'รับงาน', imp, true, iso(r.createdAt), r.sourceType === 'BL' ? 'เพิ่มจาก BL' : 'จาก Arrival Notice'],
     ['an', '✅', other ? 'ยืนยัน BL' : 'อนุมัติ BL', head, r.anStatus === 'APPROVED', iso(x?.an_at),
       r.anStatus === 'PENDING' ? 'รอ Head Officer อนุมัติ' : r.anStatus === 'REJECTED' ? 'ถูกตีกลับ — แก้แล้วส่งใหม่' : undefined],
-    ['fn', '🧾', 'Final Invoice', other ? head : `${imp} → ${senior}`, r.fnStatus === 'APPROVED', iso(x?.fn_at),
-      r.fnStatus === 'PENDING' ? 'รอ Senior Officer อนุมัติ' : r.fnStatus === 'REJECTED' ? 'ถูกตีกลับ' : r.currentFiles?.FINAL_INVOICE ? 'อัปไฟล์แล้ว ยังไม่ส่งอนุมัติ' : undefined],
+    // Import Officer ไม่มีขั้นอนุมัติ FN แล้ว — ระบบอนุมัติให้ตอนกดสร้าง Draft
+    ['fn', '🧾', 'Final Invoice', other ? head : imp, r.fnStatus === 'APPROVED', iso(x?.fn_at),
+      other && r.fnStatus === 'PENDING' ? 'รออนุมัติ' : r.fnStatus === 'REJECTED' ? 'ถูกตีกลับ'
+        : r.fnStatus !== 'APPROVED' && r.currentFiles?.FINAL_INVOICE ? (other ? 'อัปไฟล์แล้ว ยังไม่ส่งอนุมัติ' : 'มี Final Invoice แล้ว รอสร้าง Draft') : undefined],
     ['draft', '📝', 'Draft ใบขน', imp, other ? Boolean(r.draftRefNo) || filed : draftSent, null,
       r.draftStatus === 'REJECTED' ? 'ถูกตีกลับ' : r.draftStatus === 'SENT_TO_HUB' ? 'Automation กำลังสร้าง' : r.draftRefNo && !draftSent ? `Ref ${r.draftRefNo}` : undefined],
     ['customs', '🏛️', 'ได้เลขใบขน', senior, filed, iso(x?.filed_at), r.declarationNo ?? undefined],

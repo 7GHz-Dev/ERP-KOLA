@@ -23,13 +23,8 @@ export default async function SeniorPendingPage({
           href: '/fah/do', hrefLabel: 'Upload Invoice of D/O',
         },
         {
-          key: 'fn', label: 'Approve cargo Invoice', where: SENIOR_QUEUES.fn,
-          hint: 'Import Officer ส่ง Final Invoice มาแล้ว รออนุมัติ',
-          href: '/fah/fn', hrefLabel: 'Approve cargo Invoice', extra: [col.fnStatus()],
-        },
-        {
           key: 'draft', label: 'ตรวจ Draft', where: SENIOR_QUEUES.draft,
-          hint: 'Import Officer ส่ง Draft ใบขนมาแล้ว รอตรวจและยื่นใบขน',
+          hint: 'Import Officer ส่ง Draft ใบขน (พร้อม Final Invoice) มาแล้ว รอตรวจและยื่นใบขน',
           href: '/fah/draft', hrefLabel: 'Submit import decl.',
           extra: [col.refNo(), { label: 'Draft', render: (r) => draftBadge(r) }],
         },

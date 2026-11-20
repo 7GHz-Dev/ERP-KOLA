@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { automationTasks, customsEntries, files, jobs } from '@/db/schema';
+import { approvals, automationTasks, customsEntries, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { requireJobActor } from '@/lib/job-actor';
 import { assertSalePrice } from '@/lib/sale/price-store';
@@ -24,12 +24,24 @@ import { netbayCredentials } from '@/lib/netbay-accounts';
  * เหลือระบบที่ต้องดูแลตัวเดียว
  */
 
+async function autoApproveFn(jobId: string, userId: string) {
+  const [latest] = await db.select({ status: approvals.status }).from(approvals)
+    .where(and(eq(approvals.jobId, jobId), eq(approvals.approvalType, 'FN')))
+    .orderBy(desc(approvals.requestedAt)).limit(1);
+  if (latest?.status === 'APPROVED') return;
+  const id = newId('APR');
+  await db.insert(approvals).values({
+    id, jobId, approvalType: 'FN', status: 'APPROVED', requestedBy: userId,
+    decidedBy: userId, decidedAt: new Date(), reason: 'อนุมัติอัตโนมัติตอนสร้าง Draft (ไม่มีขั้นอนุมัติ Final Invoice แล้ว)',
+  });
+  await logActivity(userId, 'AUTO_APPROVE_FN', 'APPROVAL', id, { jobId, reason: 'CREATE_DRAFT' });
+}
+
 /** PAINT ส่ง Final Invoice เข้าคิวเพื่อให้ automate สร้าง Draft ใบขน */
 async function submitDraftTaskImpl(formData: FormData) {
   const jobId = required(formData.get('jobId'), 'งาน', 80);
   const user = await requireJobActor(jobId, ['PAINT']);
-  // ราคาเก็บลูกค้าจาก Sale ต้องยืนยันก่อนยิงใบขน (lib/sale/price-store.ts)
-  await assertSalePrice(jobId);
+  // ไม่บังคับราคาจาก Sale ที่ขั้นสร้าง Draft แล้ว (ทีมขอ) — ยังบังคับตอน Senior Officer ยื่นใบขน (submitCustomsTask)
   // บัญชี NETBAY ที่เลือกไว้ก่อนกด — ว่าง = บัญชีประจำเครื่องที่กด (.env.local)
   const netbayUser = String(formData.get('netbayUser') ?? '').trim().slice(0, 80);
   if (netbayUser && !netbayCredentials(netbayUser)) throw new Error(`ไม่รู้จักบัญชี NETBAY "${netbayUser}"`);
@@ -43,6 +55,13 @@ async function submitDraftTaskImpl(formData: FormData) {
     .where(and(eq(files.jobId, jobId), eq(files.category, 'FINAL_INVOICE'), eq(files.isCurrent, true)))
     .limit(1);
   if (!invoice) throw new Error('ต้องมีไฟล์ Final Invoice ก่อนส่งสร้าง Draft');
+
+  /*
+   * ไม่มีขั้นอนุมัติ Final Invoice แล้ว (ทีมขอ) — กดสร้าง Draft = ใช้ Final Invoice นี้ยื่นใบขน
+   * บันทึกเป็นการอนุมัติ FN อัตโนมัติ หน้าที่ดูสถานะ FN (ติดตามงาน · Sale · ทะเบียนงาน) จึงเห็นว่าผ่านขั้นนี้แล้ว
+   * Senior Officer ตรวจ Final Invoice พร้อม Draft ที่หน้า Submit import decl.
+   */
+  await autoApproveFn(jobId, user.id);
 
   const existing = await reuseOpenTask(jobId, TASK_TYPES.DRAFT);
   if (!existing) {

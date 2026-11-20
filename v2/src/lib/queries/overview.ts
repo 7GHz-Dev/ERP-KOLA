@@ -39,14 +39,9 @@ export const STAGES: Stage[] = [
     href: '/pending?tab=bl', where: QUEUE.pendingBl('wait'),
   },
   {
-    key: 'paint-fn', owner: 'PAINT', label: 'ทำ Final Invoice',
-    hint: 'AN ผ่านแล้ว รอ PAINT ส่ง Final Invoice ให้ FAH',
+    key: 'paint-fn', owner: 'PAINT', label: 'ทำ Final Invoice / สร้าง Draft ใบขน',
+    hint: 'AN ผ่านแล้ว รอ PAINT ทำ Final Invoice สร้าง Draft แล้วส่งให้ Senior Officer ตรวจ',
     href: '/pending?tab=fn', where: QUEUE.pendingFn('wait'),
-  },
-  {
-    key: 'paint-draft', owner: 'PAINT', label: 'สร้าง Draft ใบขน',
-    hint: 'FN ผ่านแล้ว รอสร้าง Draft ส่งให้ FAH ตรวจ',
-    href: '/pending?tab=draft', where: QUEUE.pendingDraft('wait'),
   },
   {
     key: 'paint-edoc', owner: 'PAINT', label: 'เตรียมเอกสาร E-Office',
@@ -64,13 +59,8 @@ export const STAGES: Stage[] = [
     href: '/fah/do', where: QUEUE.fahDo('wait'),
   },
   {
-    key: 'fah-fn', owner: 'FAH', label: 'อนุมัติ Final Invoice',
-    hint: 'PAINT ส่ง Final Invoice มาแล้ว รอ FAH อนุมัติ',
-    href: '/fah/fn', where: QUEUE.fahFn(),
-  },
-  {
     key: 'fah-draft', owner: 'FAH', label: 'ตรวจ Draft / ทำใบขน',
-    hint: 'PAINT ส่ง Draft มาแล้ว รอ FAH ตรวจและยื่นใบขน',
+    hint: 'PAINT ส่ง Draft (พร้อม Final Invoice) มาแล้ว รอ FAH ตรวจและยื่นใบขน',
     href: '/fah/draft', where: QUEUE.fahDraftReview(),
   },
   {

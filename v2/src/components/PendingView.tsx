@@ -2,7 +2,7 @@ import { col, draftBadge, readParams } from '@/lib/columns';
 import { JobTable, Tabs, ApprovalBadge, FileChip, type Column } from '@/components/JobTable';
 import {
   DraftActions, EofficeRequestForm, FileCustomsForm, MergeEofficeButton,
-  RequestApproval, ShowReason, UploadForm, DeleteJob } from '@/components/ActionForms';
+  RequestApproval, ShowReason, SubmitDraftForReview, UploadForm, DeleteJob } from '@/components/ActionForms';
 import { DraftLocalLaunch, SubmitDraftLocal } from '@/components/DraftLocalRun';
 import { signedColumns } from '@/components/SignedColumns';
 import { BulkBar, PickAllBox, PickBox } from '@/components/BulkBar';
@@ -12,7 +12,6 @@ import { deleteJobs } from '@/lib/actions/job-delete';
 import Link from 'next/link';
 import { hasArrivalFiles, listJobs, otherQueue, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { queueCounts } from '@/lib/queries/dashboard';
-import { priceStatus } from '@/lib/sale/price-store';
 import { DRAFT_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
 import { DraftWorkerBar } from '@/components/DraftWorkerBar';
 
@@ -25,13 +24,24 @@ import { DraftWorkerBar } from '@/components/DraftWorkerBar';
  */
 export type PendingMode = 'paint' | 'MO' | 'TO';
 
+/*
+ * Import Officer — ไม่มีขั้นอนุมัติ Final Invoice แล้ว (ทีมขอ)
+ * แท็บ 2 ทำ Final Invoice → สร้าง Draft → ได้ Ref No. → ส่งให้ Senior Officer ตรวจ ในแถวเดียว
+ * ส่งแล้วงานไปอยู่หน้า Submit import decl. ของ Senior Officer · แท็บ Draft ใบขนแยกจึงไม่มีแล้ว
+ */
 const TABS = [
+  { key: 'bl', label: '1. งานใส่ข้อมูล BL' },
+  { key: 'fn', label: '2. Final Invoice & Draft ใบขน' },
+  { key: 'edoc', label: '3. เตรียมเอกสารเดิน E' },
+];
+/* Other cargo (Head Officer ทำเองทั้งเส้น) ยังเป็นขั้นเดิม */
+const OTHER_TABS = [
   { key: 'bl', label: '1. งานใส่ข้อมูล BL' },
   { key: 'fn', label: '2. Final Invoice' },
   { key: 'draft', label: '3. Draft ใบขน' },
   { key: 'edoc', label: '4. เตรียมเอกสารเดิน E' },
+  { key: 'signed', label: '5. Submit (Signed) E-office' },
 ];
-const OTHER_TABS = [...TABS, { key: 'signed', label: '5. Submit (Signed) E-office' }];
 
 const SEARCH_KEYS = ['person', 'shipper', 'blNo', 'consignee', 'refNo', 'entryNo'];
 
@@ -52,11 +62,8 @@ function columnsFor(
   sub: 'wait' | 'approve',
   other: boolean,
   signed: Column[] = [],
-  /** ราคา Sale ของแถวในแท็บ Draft — null = ไม่รู้ (ยังไม่ได้รัน migrate:sale) ไม่ล็อก */
-  prices: Map<string, { confirmed: boolean }> | null = null,
 ): Column[] {
-  const priceLocked = (id: string) => Boolean(prices && !prices.get(id)?.confirmed);
-  const lockBadge = <span className="badge rejected" title="Sale ต้องกำหนดและยืนยันราคาเก็บลูกค้าก่อนยิงใบขน">🔒 รอราคาจาก Sale</span>;
+  // ไม่บังคับราคาจาก Sale ที่ขั้น Draft ใบขนแล้ว (ทีมขอ)
   // งาน Other cargo กดแล้วอนุมัติทันที — ใช้คำว่า "ยืนยัน" แทน "ส่งอนุมัติ" ให้ตรงกับที่เกิดขึ้นจริง
   const sendLabel = (type: 'AN' | 'FN', rejected: boolean) =>
     (other ? (type === 'AN' ? 'ยืนยันเข้าตารางหลัก' : 'ยืนยัน Final Invoice') : rejected ? 'ส่งใหม่' : 'ส่งอนุมัติ');
@@ -129,14 +136,10 @@ function columnsFor(
             {draftBadge(r)}
             <ShowReason reason={r.draftStatus === 'HUB_ERROR' ? r.draftRejectReason : null} />
             {r.draftStatus === 'SENT_TO_HUB' && r.draftTaskId ? <DraftLocalLaunch jobId={r.id} taskId={r.draftTaskId} /> : null}
-            {priceLocked(r.id) ? lockBadge : (
-              <>
-                {r.draftStatus !== 'SENT_TO_HUB' && r.currentFiles?.FINAL_INVOICE ? (
-                  <SubmitDraftLocal jobId={r.id} label={r.draftRefNo ? 'สร้าง Draft ใหม่' : 'สร้าง Draft'} />
-                ) : null}
-                <FileCustomsForm jobId={r.id} />
-              </>
-            )}
+            {r.draftStatus !== 'SENT_TO_HUB' && r.currentFiles?.FINAL_INVOICE ? (
+              <SubmitDraftLocal jobId={r.id} label={r.draftRefNo ? 'สร้าง Draft ใหม่' : 'สร้าง Draft'} />
+            ) : null}
+            <FileCustomsForm jobId={r.id} />
           </div>
         ),
       }];
@@ -150,7 +153,7 @@ function columnsFor(
           <div className="row-actions">
             {draftBadge(r)}
             <ShowReason reason={r.draftStatus === 'REJECTED' || r.draftStatus === 'HUB_ERROR' ? r.draftRejectReason : null} />
-            {sub === 'wait' && priceLocked(r.id) ? lockBadge : sub === 'wait' ? (
+            {sub === 'wait' ? (
               <DraftActions
                 jobId={r.id}
                 draftStatus={r.draftStatus}
@@ -242,9 +245,10 @@ function columnsFor(
         </div>
       ),
     },
-    {
-      label: 'สถานะ / จัดการ', kind: 'actions',
-      render: (r) => (
+    ...(other ? [] : draftColumns(sub)),
+    ...(other ? [{
+      label: 'สถานะ / จัดการ', kind: 'actions' as const,
+      render: (r: JobRow) => (
         <div className="row-actions">
           <ApprovalBadge status={r.fnStatus} />
           <ShowReason reason={r.fnStatus === 'REJECTED' ? r.fnReason : null} />
@@ -259,7 +263,45 @@ function columnsFor(
           ) : null}
         </div>
       ),
-    }];
+    }] : []),
+  ];
+}
+
+/**
+ * แท็บ 2 ของ Import Officer — ต่อจากคอลัมน์ Final Invoice
+ *   สร้าง Draft   ปุ่มสร้าง Draft ใบขนบนเครื่องที่กด (ต้องมี Final Invoice)
+ *   Ref No.       เลข Reference No. ของ Draft ใน NETBAY (กดเปิดใบขนได้)
+ *   สถานะ / จัดการ ได้ Ref No. แล้วส่งให้ Senior Officer ตรวจ → งานไปอยู่หน้า Submit import decl.
+ */
+function draftColumns(sub: 'wait' | 'approve'): Column[] {
+  return [
+    {
+      label: 'สร้าง Draft', kind: 'actions',
+      render: (r) => {
+        if (sub !== 'wait') return null;
+        if (r.draftStatus === 'SENT_TO_HUB') {
+          return r.draftTaskId ? <DraftLocalLaunch jobId={r.id} taskId={r.draftTaskId} /> : <span className="badge pending">รอสร้าง Draft</span>;
+        }
+        return r.currentFiles?.FINAL_INVOICE
+          ? <SubmitDraftLocal jobId={r.id} label={r.draftRefNo ? 'สร้าง Draft ใหม่' : 'สร้าง Draft'} />
+          : <span className="badge neutral">ต้องมี Final Invoice ก่อน</span>;
+      },
+    },
+    col.refNo(),
+    {
+      label: 'สถานะ / จัดการ', kind: 'actions',
+      render: (r) => (
+        <div className="row-actions">
+          {draftBadge(r)}
+          <ShowReason reason={r.draftStatus === 'REJECTED' || r.draftStatus === 'HUB_ERROR' ? r.draftRejectReason : null} />
+          {sub === 'wait' && r.draftRefNo && r.draftStatus !== 'SENT_TO_HUB' ? (
+            <SubmitDraftForReview jobId={r.id}
+              label={r.draftStatus === 'REJECTED' ? 'ส่งตรวจอีกครั้ง' : 'ส่งให้ Senior Officer ตรวจ'} />
+          ) : null}
+        </div>
+      ),
+    },
+  ];
 }
 
 export async function PendingView({
@@ -275,7 +317,9 @@ export async function PendingView({
   const tabs = other ? OTHER_TABS : TABS;
   const { one, search, sortBy, sortDir, carry } = readParams(searchParams, SEARCH_KEYS);
 
-  const tab = tabs.some((t) => t.key === one('tab')) ? one('tab') : 'bl';
+  // ลิงก์เดิม ?tab=draft ของ Import Officer — แท็บนั้นรวมเข้าแท็บ 2 แล้ว
+  const wanted = !other && one('tab') === 'draft' ? 'fn' : one('tab');
+  const tab = tabs.some((t) => t.key === wanted) ? wanted : 'bl';
   // Other cargo อนุมัติอัตโนมัติ ไม่มีรายการ "รออนุมัติ" ให้ดู
   const sub: 'wait' | 'approve' = !other && one('sub') === 'approve' ? 'approve' : 'wait';
 
@@ -318,6 +362,9 @@ export async function PendingView({
     : tab === 'signed' ? Q.eofficeSigned('wait')
     : Q.pendingEdoc();
 
+  // แท็บที่มีปุ่มสร้าง Draft — Import Officer: แท็บ 2 · Other cargo: แท็บ 3
+  const hasDraftButtons = tab === 'draft' || (tab === 'fn' && !other);
+
   const where = (ctx: Parameters<typeof queue>[0]) => [
     ...queue(ctx),
     ...(files === 'all' ? [] : [hasArrivalFiles(files === 'yes')]),
@@ -330,16 +377,13 @@ export async function PendingView({
      * แท็บ 1-3 นับรายการที่รอกดส่ง · แท็บ 4 ที่ยังไม่ส่งมอบคนเดินเอกสาร · แท็บ 5 ที่ยังไม่ส่ง Partner
      */
     queueCounts({
-      bl: Q.pendingBl('wait'), fn: Q.pendingFn('wait'), draft: Q.pendingDraft('wait'), edoc: Q.pendingEdoc(),
-      ...(other ? { signed: Q.eofficeSigned('wait') } : {}),
+      bl: Q.pendingBl('wait'), fn: Q.pendingFn('wait'), edoc: Q.pendingEdoc(),
+      ...(other ? { draft: Q.pendingDraft('wait'), signed: Q.eofficeSigned('wait') } : {}),
     } as Record<string, ReturnType<typeof Q.pendingEdoc>>),
     // worker ที่สร้าง Draft ใน NETBAY — บอกว่ากดแล้วจะมีคนรับงานไหม
-    tab === 'draft' ? onlineWorkers({ mode: DRAFT_WORKER_MODE }) : Promise.resolve([]),
+    hasDraftButtons ? onlineWorkers({ mode: DRAFT_WORKER_MODE }) : Promise.resolve([]),
     tab === 'signed' ? signedColumns(false) : Promise.resolve([] as Column[]),
   ]);
-
-  // แท็บ Draft: งานที่ Sale ยังไม่ยืนยันราคา ยิงใบขนไม่ได้ — ซ่อนปุ่มแล้วขึ้นป้าย 🔒 แทน
-  const prices = tab === 'draft' ? await priceStatus(rows.map((r) => r.id)) : null;
 
   const tabsWithCount = tabs.map((t) => ({ ...t, count: counts[t.key] || undefined }));
 
@@ -353,7 +397,7 @@ export async function PendingView({
   const table = (
     <JobTable
       basePath={basePath}
-      columns={columnsFor(tab, sub, other, signed, prices)}
+      columns={columnsFor(tab, sub, other, signed)}
       rows={rows}
       total={total}
       carry={fullCarry}
@@ -427,7 +471,7 @@ export async function PendingView({
       ) : null}
 
       {/* กด "สร้าง Draft" แล้ว worker ตรวจ Final Invoice ออกเลขเครื่อง สร้างใบขนใน NETBAY และ Import CSV ให้ */}
-      {tab === 'draft' ? <DraftWorkerBar initial={draftWorkers} /> : null}
+      {hasDraftButtons ? <DraftWorkerBar initial={draftWorkers} /> : null}
 
       {tab === 'edoc' ? (
         <BulkBar

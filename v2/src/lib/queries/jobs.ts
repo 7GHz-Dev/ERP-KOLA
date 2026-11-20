@@ -636,12 +636,26 @@ export const QUEUE = {
    * และกดยืนยันข้อมูลแล้ว (หน้า Upload cargo Invoice) — ยังไม่ยืนยันไม่ต้องแสดง
    * งานที่ถูกตีกลับ (REJECTED) ก็ใช้เงื่อนไขเดียวกัน · แท็บรออนุมัติไม่กรอง
    */
-  pendingFn: (sub: 'wait' | 'approve') => (ctx: JoinContext) => [
-    ...withoutOther(BASE_QUEUE.pendingFn)(sub)(ctx),
-    sub === 'wait'
-      ? and(isNotNull(jobs.customerConfirmedAt),
-        sql`exists (select 1 from files f where f.job_id = ${jobs.id} and f.category = 'INVOICE_GOODS' and f.is_current = true)`)
-      : undefined,
+  /*
+   * ไม่มีขั้นอนุมัติ Final Invoice แล้ว (ทีมขอ) — แท็บ 2 รวม Final Invoice + Draft ใบขน
+   *   รอทำ          AN ผ่านแล้ว · ยังไม่ได้ส่ง Draft ให้ Senior Officer · ยังไม่ได้เลขใบขน
+   *                 (Head Officer ยืนยันข้อมูล + มี Invoice สินค้าแล้ว — หรือมี Final Invoice อยู่แล้วจากขั้นเดิม)
+   *   รออนุมัติรายการ  ส่ง Draft ให้ Senior Officer ตรวจแล้ว (หน้า Submit import decl.)
+   */
+  pendingFn: (sub: 'wait' | 'approve') => ({ an }: JoinContext) => [
+    otherCargo(false),
+    eq(an.status, 'APPROVED'),
+    sql`coalesce(${jobs.customsStatus}, '') <> 'FILED'`,
+    ...(sub === 'wait'
+      ? [
+          or(isNull(jobs.draftStatus), sql`${jobs.draftStatus} not in ('SUBMITTED','FILED')`),
+          or(
+            and(isNotNull(jobs.customerConfirmedAt),
+              sql`exists (select 1 from files f where f.job_id = ${jobs.id} and f.category = 'INVOICE_GOODS' and f.is_current = true)`),
+            sql`exists (select 1 from files f where f.job_id = ${jobs.id} and f.category = 'FINAL_INVOICE' and f.is_current = true)`,
+          ),
+        ]
+      : [eq(jobs.draftStatus, 'SUBMITTED')]),
   ],
   pendingDraft: withoutOther(BASE_QUEUE.pendingDraft),
   pendingEdoc: withoutOther(BASE_QUEUE.pendingEdoc),

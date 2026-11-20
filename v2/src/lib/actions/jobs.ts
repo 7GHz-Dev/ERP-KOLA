@@ -856,17 +856,16 @@ async function submitDraftForReviewImpl(formData: FormData) {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) throw new Error('ไม่พบงาน');
   if (!job.draftRefNo) throw new Error('ยังไม่มีเลข Ref No. ต้องสร้าง Draft ให้เสร็จก่อน');
-  if (job.draftStatus === 'SUBMITTED') throw new Error('ส่งให้ FAH ตรวจอยู่แล้ว');
+  if (job.draftStatus === 'SUBMITTED') throw new Error('ส่งให้ Senior Officer ตรวจอยู่แล้ว');
   if (job.customsStatus === 'FILED') throw new Error('งานนี้ได้เลขใบขนแล้ว ไม่ต้องส่งตรวจซ้ำ');
-  // ราคาเก็บลูกค้าจาก Sale ต้องยืนยันก่อนยิงใบขน (lib/sale/price-store.ts)
-  await assertSalePrice(jobId);
+  // ไม่บังคับราคาจาก Sale ที่ขั้น Draft แล้ว (ทีมขอ) — ยังบังคับตอน Senior Officer ยื่นใบขน / บันทึกเลขใบขน
 
   await db.update(jobs).set({
     draftStatus: 'SUBMITTED', draftRejectReason: null,
     updatedBy: user.id, updatedAt: new Date(),
   }).where(eq(jobs.id, jobId));
   await recordStatus(jobId, job.draftStatus, 'ENTRY_DRAFTED',
-    job.draftStatus === 'REJECTED' ? 'PAINT แก้แล้วส่ง Draft ให้ FAH ตรวจอีกครั้ง' : 'PAINT ส่ง Draft ให้ FAH ตรวจ',
+    job.draftStatus === 'REJECTED' ? 'PAINT แก้แล้วส่ง Draft ให้ Senior Officer ตรวจอีกครั้ง' : 'PAINT ส่ง Draft ให้ Senior Officer ตรวจ',
     user.id);
   await logActivity(user.id, 'SUBMIT_DRAFT_REVIEW', 'JOB', jobId, { refNo: job.draftRefNo });
 

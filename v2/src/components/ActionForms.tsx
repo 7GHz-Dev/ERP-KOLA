@@ -412,7 +412,8 @@ export function SubmitDraftForReview({ jobId, label }: { jobId: string; label: s
   return (
     <form action={submitDraftForReview} className="inline-form">
       <input type="hidden" name="jobId" value={jobId} />
-      <ConfirmSubmit label={label} tone="primary" confirm={`${label} — ส่ง Draft ให้ FAH ตรวจใช่ไหม`} />
+      <ConfirmSubmit label={label} tone="primary" confirm={`${label} — ส่ง Draft ให้ Senior Officer ตรวจใช่ไหม`}
+        detail="รายการจะไปอยู่หน้า Submit import decl. ของ Senior Officer" />
     </form>
   );
 }
@@ -434,7 +435,7 @@ export function DraftActions({
       : <span className="badge pending">รอ Automation สร้าง Draft</span>;
   }
   if (draftStatus === 'SUBMITTED') {
-    return <span className="badge pending">รอ FAH ตรวจ</span>;
+    return <span className="badge pending">รอ Senior Officer ตรวจ</span>;
   }
 
   // ถูกตีกลับ: แก้ไฟล์แล้วส่งใหม่ได้เลย หรือจะให้ automate สร้าง Draft ใหม่ก็ได้
@@ -443,7 +444,7 @@ export function DraftActions({
       {hasRefNo ? (
         <SubmitDraftForReview
           jobId={jobId}
-          label={draftStatus === 'REJECTED' ? 'ส่งตรวจอีกครั้ง' : 'ส่งให้ FAH ตรวจ'}
+          label={draftStatus === 'REJECTED' ? 'ส่งตรวจอีกครั้ง' : 'ส่งให้ Senior Officer ตรวจ'}
         />
       ) : null}
       {hasInvoice ? (

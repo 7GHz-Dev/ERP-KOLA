@@ -67,7 +67,7 @@ const anyOf = (...qs: Array<(ctx: JoinContext) => (SQL | undefined)[]>) =>
 
 export const SENIOR_QUEUES = {
   do: QUEUE.fahDo('wait'),
-  fn: QUEUE.fahFn(),
+  // ไม่มีขั้นอนุมัติ Final Invoice แล้ว — Senior Officer ตรวจ Final Invoice พร้อม Draft ที่ Submit import decl.
   draft: QUEUE.fahDraftReview(),
   customs: QUEUE.fahDraftWaiting(),
 };
@@ -103,7 +103,7 @@ async function navCountsMain() {
           and ${jobs.customsTaskId} is null
           and ${jobs.customsStatus} <> 'FILED') and ${otherCargo(false)})::int`,
       /*
-       * ต้องเท่ากับผลรวมของแท็บ 1-4 ในหน้างานคงค้าง
+       * ต้องเท่ากับผลรวมของแท็บ 1-3 ในหน้างานคงค้าง (แท็บ 2 รวม Final Invoice + Draft ใบขน — ไม่มีขั้นอนุมัติ FN แล้ว)
        *
        * เดิมนับ "งานที่ยังไม่ปล่อย" ทั้งหมด ซึ่งรวมงานที่ไม่ได้รออะไรจาก PAINT แล้ว
        * เช่นงานที่รวมชุด E-Office ครบและรอฝั่งอื่นทำต่อ ตัวเลขจึงสูงกว่าที่เห็นในแท็บมาก
@@ -112,10 +112,12 @@ async function navCountsMain() {
       openJobs: sql<number>`count(*) filter (
         where ((${an.status} is null or ${an.status} = 'REJECTED')
            or (${an.status} = 'APPROVED'
-               and (${fn.status} is null or ${fn.status} = 'REJECTED'))
-           or (${fn.status} = 'APPROVED'
+               and coalesce(${jobs.customsStatus}, '') <> 'FILED'
                and (${jobs.draftStatus} is null
-                    or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED')))
+                    or ${jobs.draftStatus} not in ('SUBMITTED', 'FILED'))
+               and ((${jobs.customerConfirmedAt} is not null
+                     and exists (select 1 from files f where f.job_id = ${jobs.id} and f.category = 'INVOICE_GOODS' and f.is_current = true))
+                    or exists (select 1 from files f where f.job_id = ${jobs.id} and f.category = 'FINAL_INVOICE' and f.is_current = true)))
            or (${jobs.customsStatus} = 'FILED'
                and ${jobs.eofficeHandoverAt} is null and signed.job_id is null)) and ${otherCargo(false)})::int`,
       // ต้องตรงกับ QUEUE.pendingEdoc — ยังไม่ส่งมอบคนเดินเอกสาร และยังไม่มีชุดปล่อยเซ็นแล้ว

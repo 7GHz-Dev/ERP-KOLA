@@ -60,9 +60,9 @@ export default async function SalePricingPage({
       label: 'ขั้นงาน', kind: 'wrap',
       render: (r) => {
         if (r.customsStatus === 'FILED') return <span className="badge approved">ได้เลขใบขนแล้ว</span>;
-        // ถึงขั้น Draft แล้ว = ทีมรอราคาอยู่ ยิงใบขนไม่ได้จนกว่าจะยืนยัน
-        if (r.fnStatus === 'APPROVED') return <span className="chip-row">{draftBadge(r)}{prices.get(r.id)?.confirmed ? null : <span className="badge rejected">🔒 รอราคาเพื่อยิงใบขน</span>}</span>;
-        return <span className="badge neutral">FN {r.fnStatus === 'PENDING' ? 'รออนุมัติ' : 'ยังไม่ส่ง'}</span>;
+        // ถึงขั้น Draft แล้ว (FN อนุมัติอัตโนมัติตอนสร้าง Draft) — Senior Officer ยื่นใบขนไม่ได้จนกว่าจะยืนยันราคา
+        if (r.fnStatus === 'APPROVED' || r.draftRefNo) return <span className="chip-row">{draftBadge(r)}{prices.get(r.id)?.confirmed ? null : <span className="badge rejected">🔒 รอราคาเพื่อยื่นใบขน</span>}</span>;
+        return <span className="badge neutral">ยังไม่สร้าง Draft</span>;
       },
     },
     {
