@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { saveDoHandoff } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
@@ -55,6 +57,20 @@ export function DoRowForm({
   /** วันนี้ (YYYY-MM-DD เวลาไทย) ใช้บอก Urgent ของ Storage */
   today?: string;
 }) {
+  const router = useRouter();
+  /*
+   * แผงถูกปิด (หรือสลับไปงานอื่น) ไปแล้วหรือยัง ตอนที่การบันทึกเพิ่งเสร็จ
+   *
+   * ตอนปิดแผง DoFillBoard จะลบ ?fill= ออกด้วย history.replaceState ซึ่ง Next นับเป็นการนำทาง
+   * ถ้าการบันทึกยังไม่เสร็จ Next จะทิ้งผลของการบันทึก แล้วโหลดหน้าใหม่ทันทีโดยไม่รอให้บันทึกเสร็จ
+   * ฐานข้อมูลบันทึกแล้ว แต่ตารางกับแผงยังโชว์ค่าเก่า เปิดแผงอีกทีก็เห็นค่าเก่า เลยต้องกรอกแล้วบันทึกซ้ำ
+   * บันทึกเสร็จแล้วแต่แผงไม่อยู่ ให้โหลดข้อมูลใหม่อีกรอบ จอจะได้ตรงกับฐานข้อมูล
+   */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const partnerId =
     partners.find((p) => p.name === partnerName)?.id ?? defaultPartnerId ?? '';
   /*
@@ -128,7 +144,10 @@ export function DoRowForm({
          * ไม่สำเร็จ ระบบแจ้งที่แถบด้านบนและแผงยังเปิดอยู่
          */
         const sending = fd.get('sendToPartner') === '1';
-        void saveDoHandoff(fd).then(() => { if (sending) onSaved?.(); });
+        void saveDoHandoff(fd).then(() => {
+          if (!mounted.current) { router.refresh(); return; }
+          if (sending) onSaved?.();
+        });
       }}
     >
       <input type="hidden" name="jobId" value={jobId} />
