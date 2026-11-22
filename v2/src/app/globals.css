@@ -3028,3 +3028,6 @@ img.cgi-doc-file { overflow: auto; }
 .zoom-img-box.dragging { cursor: grabbing; }
 .zoom-img-box img { display: block; max-width: none; height: auto; margin: 0 auto; user-select: none; }
 .fn-split-file.zoom-img { overflow: hidden; }
+
+/* Upload Invoice of D/O — ผลการบันทึกใต้ปุ่ม (ขึ้นบรรทัดใหม่ เต็มแถวปุ่ม) */
+.do-buttons .do-save-note { flex-basis: 100%; text-align: right; min-height: 1.2em; }

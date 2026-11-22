@@ -10,8 +10,10 @@ import type { Choice } from '@/components/DoRowForm';
  * ตัวที่ต้องจำคือ "กำลังกรอกแถวไหน" ซึ่งเป็นสถานะบนจอล้วน ๆ ไม่ต้องขึ้น URL
  * เก็บไว้ตรงนี้ที่เดียว ตารางกับแผงจึงอ้างค่าเดียวกันเสมอ
  */
+const OPEN_KEY = 'kola-do-fill-open';
+
 export function DoFillBoard({
-  jobs, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, openFor, queue: queueIds, openKey, children,
+  jobs, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, savedAt, openFor, queue: queueIds, openKey, children,
 }: {
   jobs: DoPaneJob[];
   ports: Choice[];
@@ -22,6 +24,8 @@ export function DoFillBoard({
   defaultPartnerId: string | null;
   /** เวลาที่ส่ง Partner ของแต่ละงาน — ใช้บอกว่าแถวนี้ส่งไปแล้วหรือยัง */
   sentAt: Record<string, string>;
+  /** เวลาบันทึกล่าสุดในแผงของแต่ละงาน — แสดงใต้ปุ่มบันทึก */
+  savedAt?: Record<string, string>;
   /**
    * งานที่ให้เปิดแผงให้เลยตั้งแต่โหลดหน้า
    * ใช้ตอนเพิ่งอัปหรือเปลี่ยนไฟล์ Invoice DO เสร็จ จะได้กรอกต่อทันทีโดยไม่ต้องกดอีกที
@@ -48,6 +52,25 @@ export function DoFillBoard({
   useEffect(() => {
     if (openFor) setOpenId(openFor);
   }, [openFor, openKey]);
+
+  /*
+   * จำว่าแผงของงานไหนเปิดอยู่ (ในแท็บนี้) — หน้าโหลดตัวใหม่หลังบันทึกแล้วแผงต้องไม่ปิดเอง
+   * ไม่มี ?fill= บน URL ให้เปิดงานที่จำไว้กลับมา · ปิดแผงเองแล้วลบที่จำไว้
+   */
+  useEffect(() => {
+    if (openFor) return;
+    try {
+      const keep = sessionStorage.getItem(OPEN_KEY);
+      if (keep && jobs.some((j) => j.id === keep)) setOpenId(keep);
+    } catch { /* ไม่มีที่เก็บ */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try {
+      if (openId) sessionStorage.setItem(OPEN_KEY, openId);
+      else sessionStorage.removeItem(OPEN_KEY);
+    } catch { /* ไม่มีที่เก็บ */ }
+  }, [openId]);
 
   /*
    * ทาคลาสให้แถวที่กำลังกรอกโดยตรง เพราะ <tr> มาจากตารางที่เรนเดอร์ฝั่งเซิร์ฟเวอร์
@@ -100,6 +123,7 @@ export function DoFillBoard({
           defaultPortId={defaultPortId}
           defaultPartnerId={defaultPartnerId}
           sentAt={sentAt[job.id] ?? null}
+          savedAt={savedAt?.[job.id] ?? null}
           nav={inQueue ? {
             index: qIndex,
             labels: queue.map((id) => { const j = jobs.find((x) => x.id === id)!; return j.blNo ?? j.jobNo; }),

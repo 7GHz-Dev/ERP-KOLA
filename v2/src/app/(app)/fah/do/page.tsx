@@ -12,7 +12,7 @@ import { isPartnerRelease } from '@/lib/job-types';
 import { isShipmePartner } from '@/lib/partner-message';
 import { fahDoVessels, listJobs, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { listMaster } from '@/lib/queries/master';
-import { doHandoffSentAt } from '@/lib/queries/dashboard';
+import { doHandoffSavedAt, doHandoffSentAt } from '@/lib/queries/dashboard';
 import { formatDate } from '@/lib/format';
 import { freeUrgency, storageLastDate } from '@/lib/free-time';
 import { todayBangkok } from '@/lib/haul-risk';
@@ -72,10 +72,9 @@ export default async function FahDoPage({
     const notify = (r.notifyName ?? '').trim().toUpperCase();
     return partners.find((p) => p.name.trim().toUpperCase() === notify)?.id ?? null;
   };
-  const sentMap = await doHandoffSentAt(rows.map((r) => r.id));
+  const [sentMap, savedMap] = await Promise.all([doHandoffSentAt(rows.map((r) => r.id)), doHandoffSavedAt(rows.map((r) => r.id))]);
   const today = todayBangkok();
-  // Storage ใกล้หมด / เกินแล้ว — แจ้งบนหัวตาราง ให้เห็นงานด่วนก่อนไล่ทีละแถว
-  const urgent = tab === 'sent' ? [] : rows.filter((r) => (freeUrgency(storageLastDate(r.eta, r.storageFreeDays), today)?.level ?? 'ok') !== 'ok');
+  // แถบ Urgent สีแดงบนหัวตารางเอาออกแล้ว (ทีมขอ) — ยังเห็น Urgent ที่คอลัมน์ Last STORAGE date ของแต่ละแถว
   const sent = tab === 'sent';
 
   const columns: Column[] = [
@@ -211,14 +210,6 @@ export default async function FahDoPage({
         <p>อัป Invoice DO แล้วกรอกคู่กับไฟล์: ETA official (ขึ้น OFC) · Port of Loading · Port · Terminal · Partner · DEM / DET (บังคับก่อนส่ง) · Storage free time (ตั้งต้น 3 วัน นับ ETA เป็นวันที่ 1)</p>
       </div>
       <Tabs basePath="/fah/do" items={TABS} active={tab} carry={carry} />
-      {urgent.length ? (
-        <div className="notice urgent-notice">
-          <b>Urgent · Storage free time ใกล้หมด/เกินแล้ว {urgent.length} งาน:</b>{' '}
-          {urgent.map((r, i) => (
-            <span key={r.id}>{i ? ' · ' : ''}{r.blNo ?? r.jobNo} (Last STORAGE date {formatDate(storageLastDate(r.eta, r.storageFreeDays))})</span>
-          ))}
-        </div>
-      ) : null}
 
       {/*
         กรองทั้งตารางด้วยเรือ/เที่ยว — เลือกจากรายการที่ยังมีงานค้างจริง
@@ -260,6 +251,7 @@ export default async function FahDoPage({
           defaultPortId={defaultPortId}
           defaultPartnerId={defaultPartnerId}
           sentAt={Object.fromEntries(sentMap)}
+          savedAt={Object.fromEntries(savedMap)}
           openFor={one('fill') || null}
           queue={one('fq') ? one('fq').split(',') : undefined}
           openKey={one('n')}

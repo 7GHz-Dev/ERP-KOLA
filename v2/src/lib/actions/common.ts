@@ -53,7 +53,7 @@ export async function recordStatus(
 /* ---------- แจ้งข้อผิดพลาดให้ผู้ใช้อ่านออก ---------- */
 
 /** ข้อผิดพลาดของ Next เอง เช่น redirect หรือ notFound ต้องปล่อยผ่าน ไม่ใช่ของผู้ใช้ */
-function isFrameworkError(error: unknown) {
+export function isFrameworkError(error: unknown) {
   const digest = (error as { digest?: unknown } | null)?.digest;
   return typeof digest === 'string'
     && (digest.startsWith('NEXT_REDIRECT')

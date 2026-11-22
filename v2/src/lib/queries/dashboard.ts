@@ -216,6 +216,18 @@ export async function pendingTabCounts() {
 }
 
 /** เวลาที่ส่ง DO ให้ Partner ของแต่ละงาน — ใช้บอกว่าแถวไหนส่งไปแล้ว */
+/** เวลาบันทึกล่าสุดในแผงกรอก Upload Invoice of D/O ของแต่ละงาน (ISO) */
+export async function doHandoffSavedAt(jobIds: string[]) {
+  const map = new Map<string, string>();
+  if (!jobIds.length) return map;
+  const rows = await db
+    .select({ jobId: doHandoffs.jobId, at: doHandoffs.updatedAt })
+    .from(doHandoffs)
+    .where(inArray(doHandoffs.jobId, jobIds));
+  rows.forEach((r) => { if (r.at) map.set(r.jobId, r.at.toISOString()); });
+  return map;
+}
+
 export async function doHandoffSentAt(jobIds: string[]) {
   const map = new Map<string, string>();
   if (!jobIds.length) return map;

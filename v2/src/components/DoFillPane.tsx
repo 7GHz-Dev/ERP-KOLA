@@ -42,7 +42,7 @@ export type DoPaneJob = {
 };
 
 export function DoFillPane({
-  job, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, onClose, onSaved, nav,
+  job, ports, originPorts, terminals, partners, defaultPortId, defaultPartnerId, sentAt, savedAt, onClose, onSaved, nav,
 }: {
   job: DoPaneJob;
   ports: Choice[];
@@ -52,6 +52,8 @@ export function DoFillPane({
   defaultPortId: string | null;
   defaultPartnerId: string | null;
   sentAt: string | null;
+  /** เวลาบันทึกล่าสุดของงานนี้ */
+  savedAt?: string | null;
   onClose: () => void;
   /** ส่ง Partner สำเร็จ — ไม่ใส่ = ปิดแผง (กดบันทึกเฉย ๆ แผงยังเปิดอยู่) */
   onSaved?: () => void;
@@ -122,6 +124,7 @@ export function DoFillPane({
               terminals={terminals}
               partners={partners}
               sentAt={sentAt}
+              savedAt={savedAt ?? null}
               blNo={job.blNo}
               canEditBl={job.canEditBl}
               demDays={job.demDays}
