@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveDoHandoff } from '@/lib/actions/jobs';
+import { saveDoHandoffResult } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
 import { hasBlBrackets } from '@/lib/bl-format';
@@ -23,7 +23,7 @@ export type Choice = { id: string; code: string | null; name: string };
 export function DoRowForm({
   jobId, eta, originPort, portId, terminalId, partnerName,
   ports, originPorts, terminals, partners, sentAt, defaultPartnerId, readOnly,
-  blNo, canEditBl, onSaved, transportDate = null, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, combined = false, today,
+  blNo, canEditBl, onSaved, savedAt = null, transportDate = null, demDays = null, detDays = null, storageFreeDays = STORAGE_DEFAULT_DAYS, combined = false, today,
 }: {
   jobId: string;
   eta: string | null;
@@ -50,6 +50,8 @@ export function DoRowForm({
   storageFreeDays?: number | null;
   /** ส่ง Partner สำเร็จแล้ว — แผงกรอกใช้ปิดตัวเอง (กดบันทึกเฉย ๆ ไม่เรียก) */
   onSaved?: () => void;
+  /** เวลาบันทึกล่าสุด (ISO) จากฐานข้อมูล — แสดงใต้ปุ่มว่าบันทึกแล้ว */
+  savedAt?: string | null;
   /** วันที่ขนย้าย — Last DET date แบบปกตินับจากวันนี้ */
   transportDate?: string | null;
   /** Combine — DEM กับ DET ใช้จำนวนวันเดียวกัน */
@@ -58,19 +60,10 @@ export function DoRowForm({
   today?: string;
 }) {
   const router = useRouter();
-  /*
-   * แผงถูกปิด (หรือสลับไปงานอื่น) ไปแล้วหรือยัง ตอนที่การบันทึกเพิ่งเสร็จ
-   *
-   * ตอนปิดแผง DoFillBoard จะลบ ?fill= ออกด้วย history.replaceState ซึ่ง Next นับเป็นการนำทาง
-   * ถ้าการบันทึกยังไม่เสร็จ Next จะทิ้งผลของการบันทึก แล้วโหลดหน้าใหม่ทันทีโดยไม่รอให้บันทึกเสร็จ
-   * ฐานข้อมูลบันทึกแล้ว แต่ตารางกับแผงยังโชว์ค่าเก่า เปิดแผงอีกทีก็เห็นค่าเก่า เลยต้องกรอกแล้วบันทึกซ้ำ
-   * บันทึกเสร็จแล้วแต่แผงไม่อยู่ ให้โหลดข้อมูลใหม่อีกรอบ จอจะได้ตรงกับฐานข้อมูล
-   */
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
+  /** กำลังบันทึก / ส่งอยู่ — กันกดซ้ำ (เดิมกดซ้ำแล้วส่ง LINE ซ้ำ) */
+  const [busy, setBusy] = useState<'' | 'save' | 'send'>('');
+  /** ผลการกดล่าสุดในแผงนี้ */
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const partnerId =
     partners.find((p) => p.name === partnerName)?.id ?? defaultPartnerId ?? '';
   /*
@@ -137,17 +130,36 @@ export function DoRowForm({
   return (
     <form
       className="do-row"
-      action={(fd) => {
+      onSubmit={async (e) => {
         /*
-         * กด "บันทึก" แล้วแผงยังเปิดอยู่ (ทีมขอ) — ดูไฟล์ทวนค่าต่อได้ และปุ่มส่ง Partner ขึ้นทันทีเมื่อข้อมูลครบ
-         * กด "ส่ง Partner" แล้วงานย้ายไปแท็บส่งแล้ว จึงเรียก onSaved ให้แผงปิด
-         * ไม่สำเร็จ ระบบแจ้งที่แถบด้านบนและแผงยังเปิดอยู่
+         * บันทึกเองแล้วรอผลจากเซิร์ฟเวอร์ — ไม่ใช้ form action ของ React
+         * form action ล้างฟอร์มกลับเป็นค่าเดิมทันทีที่กด (ก่อนเซิร์ฟเวอร์บันทึกเสร็จ) ดูเหมือนไม่ได้บันทึก
+         * และไม่มีสถานะกำลังทำ หน้าต่างยืนยันค้าง ผู้ใช้กดซ้ำ = ส่ง Partner / LINE ซ้ำ
+         *
+         * กด "บันทึก" แผงยังเปิดอยู่ (ทีมขอ) ค่าที่กรอกยังอยู่ และบอกใต้ปุ่มว่าบันทึกแล้ว
+         * กด "ส่ง Partner" สำเร็จ งานย้ายไปแท็บส่งแล้ว จึงเรียก onSaved ให้แผงปิด
          */
+        e.preventDefault();
+        if (busy) return;
+        const form = e.currentTarget;
+        const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
+        const fd = new FormData(form, submitter);
         const sending = fd.get('sendToPartner') === '1';
-        void saveDoHandoff(fd).then(() => {
-          if (!mounted.current) { router.refresh(); return; }
+        form.querySelectorAll('dialog[open]').forEach((d) => (d as HTMLDialogElement).close());
+        setBusy(sending ? 'send' : 'save');
+        setResult(null);
+        try {
+          const res = await saveDoHandoffResult(fd);
+          if (!res.ok) { setResult({ ok: false, text: res.error }); return; }
+          const at = new Date(res.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setResult({ ok: true, text: sending ? `✓ ส่ง Partner แล้ว ${at}` : `✓ บันทึกแล้ว ${at}` });
+          router.refresh();
           if (sending) onSaved?.();
-        });
+        } catch (err) {
+          setResult({ ok: false, text: err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ — ลองอีกครั้ง' });
+        } finally {
+          setBusy('');
+        }
       }}
     >
       <input type="hidden" name="jobId" value={jobId} />
@@ -207,10 +219,12 @@ export function DoRowForm({
       <DemDetFields key={`dd-${demDays ?? ''}-${detDays ?? ''}-${combined}`} eta={eta} transportDate={transportDate} demDays={demDays} detDays={detDays} combined={combined} />
 
       <div className="do-buttons">
-        <button className="button tiny primary" type="submit" name="sendToPartner" value="0">
-          บันทึก
+        <button className="button tiny primary" type="submit" name="sendToPartner" value="0" disabled={Boolean(busy)}>
+          {busy === 'save' ? 'กำลังบันทึก…' : 'บันทึก'}
         </button>
-        {sentAt ? (
+        {busy === 'send' ? (
+          <span className="badge pending">กำลังส่ง Partner…</span>
+        ) : sentAt ? (
           <span className="badge approved">ส่งแล้ว</span>
         ) : ready ? (
           <ConfirmSubmit
@@ -228,6 +242,12 @@ export function DoRowForm({
                 : 'บันทึก ETA · Port of Loading · Partner ก่อน'}
           </span>
         )}
+        {/* ผลการกดใต้ปุ่ม — บันทึกแล้ว / ติดอะไร · ไม่มีผลในรอบนี้แสดงเวลาบันทึกล่าสุดจากฐานข้อมูล */}
+        <div className="do-save-note" role="status" aria-live="polite">
+          {result
+            ? <small className={result.ok ? 'cgi-ok' : 'cgi-bad'}>{result.text}</small>
+            : savedAt ? <small className="muted">บันทึกล่าสุด {new Date(savedAt).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</small> : null}
+        </div>
       </div>
     </form>
   );

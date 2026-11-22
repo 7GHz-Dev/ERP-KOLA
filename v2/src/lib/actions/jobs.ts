@@ -12,7 +12,7 @@ import { formatDate } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { hasBlBrackets } from '@/lib/bl-format';
 import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
-import { backWithOk, day, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
+import { backWithOk, day, isFrameworkError, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 import { jobIsOtherCargo, requireJobActor, requireBlEditor } from '@/lib/job-actor';
 import { assertSalePrice } from '@/lib/sale/price-store';
 import { readDays } from '@/lib/free-time';
@@ -311,6 +311,13 @@ async function saveDoHandoffImpl(formData: FormData) {
   }
 
   const [existing] = await db.select().from(doHandoffs).where(eq(doHandoffs.jobId, jobId)).limit(1);
+  /*
+   * กันส่ง Partner ซ้ำ — เดิมกดยืนยันแล้วหน้าจอไม่เปลี่ยนทันที ผู้ใช้กดซ้ำ ระบบส่ง LINE ซ้ำทุกครั้ง (2 ข้อความต่อ 1 งาน)
+   * ส่งไปแล้วไม่ส่งอีก (ขอแก้ไขหลังส่ง Partner เป็นอีกเส้นทางหนึ่ง)
+   */
+  if (sendToPartner && existing?.sentAt) {
+    throw new Error('งานนี้ส่ง Partner ไปแล้ว — ไม่ได้ส่งซ้ำ');
+  }
   const values = {
     jobId, etaOfficial: eta, transportDate, partnerName, note,
     portId, terminalId,
@@ -932,6 +939,20 @@ export async function decideApproval(formData: FormData) {
 
 export async function saveDoHandoff(formData: FormData) {
   return runAction(() => saveDoHandoffImpl(formData));
+}
+
+/**
+ * แผงกรอก Upload Invoice of D/O — บันทึก / ส่ง Partner แล้วคืนผลให้หน้าจอแสดงใต้ปุ่ม
+ * ไม่ redirect แบบ runAction เพราะแผงต้องเปิดค้างไว้และบอกได้ทันทีว่าบันทึกแล้วหรือติดอะไร
+ */
+export async function saveDoHandoffResult(formData: FormData): Promise<{ ok: true; at: string } | { ok: false; error: string }> {
+  try {
+    await saveDoHandoffImpl(formData);
+    return { ok: true, at: new Date().toISOString() };
+  } catch (error) {
+    if (isFrameworkError(error)) throw error;
+    return { ok: false, error: error instanceof Error && error.message ? error.message : 'บันทึกไม่สำเร็จ' };
+  }
 }
 
 /**
