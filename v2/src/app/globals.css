@@ -2584,14 +2584,15 @@ table.data td.col-lib { min-width: 300px; }
 
 /* ---------- Create Cargo Invoice ---------- */
 .cgi { display: grid; gap: 12px; }
-.cgi-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+/* แถบขั้นตอน — กลางจอ ตัวใหญ่ขึ้น (ทีมขอ) */
+.cgi-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .cgi-steps li {
-  display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px;
-  background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 13px;
+  display: flex; align-items: center; gap: 10px; padding: 8px 18px 8px 8px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: 16px;
 }
 .cgi-steps li b {
-  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--canvas); color: var(--muted); font-size: 12px;
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--canvas); color: var(--muted); font-size: 15px;
 }
 .cgi-steps li.now { border-color: var(--blue); color: var(--ink); font-weight: 600; }
 .cgi-steps li.now b { background: var(--blue); color: #fff; }
@@ -2665,6 +2666,8 @@ table.data td.col-lib { min-width: 300px; }
 .cgi-table td.cgi-edited { background: var(--amber-soft); }
 .cgi-table tr.cgi-subrow td { font-size: 12px; color: var(--muted); padding-top: 0; }
 .cgi-save-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* บันทึก Draft · บันทึก Final Invoice ชิดขวาของแถว */
+.cgi-save-right { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 /* AICHI: เลข INVOICE NO. รันของระบบ แก้ได้ */
 .cgi-invno { display: inline-flex; align-items: center; gap: 6px; }
 .cgi-invno input { width: 96px; padding: 4px 8px; font: inherit; font-weight: 600; border: 1px solid var(--line); border-radius: 6px; }
@@ -2962,13 +2965,12 @@ img.cgi-doc-file { overflow: auto; }
 .cgi-chassis-chk.warn { color: var(--red); font-weight: 600; }
 .cgi-chassis-chk.unknown { color: var(--muted); }
 .section-title .cgi-chassis-chk { display: inline; margin: 0 0 0 10px; font-size: 12px; }
-.section-title .cgi-roll { margin-left: 10px; }
 .cgi-draft-at { color: #1f5fa8; }
 /* รหัสเครื่องแนะนำ (OG Invoice ไม่มี ENGINE NO.) — กดเลือกใส่ช่อง */
 .cgi-engine-hints { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 3px; }
 .cgi-engine-hints small { font-size: 11px; }
 .cgi-hint { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px; border: 1px solid #9ab8dc; border-radius: 10px; background: #eef4fb; color: #1f5fa8; font-size: 11px; font-weight: 600; line-height: 1.5; cursor: pointer; }
-.cgi-hint:hover { background: #1f5fa8; color: #fff; border-color: #1f5fa8; }
+.cgi-hint:hover, .cgi-hint.on { background: #1f5fa8; color: #fff; border-color: #1f5fa8; }
 .cgi-hint i { font-style: normal; font-weight: 400; opacity: .7; font-size: 10px; }
 .cgi-normal-problem td { padding: 0 6px 6px !important; font-size: 12px; color: var(--red); background: #fff4f4; }
 .cgi-row-act { display: inline-flex; gap: 2px; }

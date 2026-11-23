@@ -90,7 +90,7 @@ const COLS: Array<{ k: CarKey; label: string; num?: boolean; cls?: string }> = [
 ];
 
 export function CargoInvoiceNormal({
-  file, shippers, prefill, onReset, side,
+  file, shippers, prefill, onReset, side, onStep,
 }: {
   file: File;
   shippers: ShipperChoice[];
@@ -102,6 +102,8 @@ export function CargoInvoiceNormal({
   onReset: () => void;
   /** popup Create FN Invoice — เอกสารซ้าย ข้อมูลขวา (ไม่ใส่ = เอกสารบน ข้อมูลล่าง) */
   side?: boolean;
+  /** ขั้นปัจจุบันของแถบขั้นตอนด้านบน — 1 ตรวจข้อมูล · 2 สุ่ม Engine · 3 ดึงพิกัด · 4 บันทึก Final Invoice */
+  onStep?: (step: 1 | 2 | 3 | 4) => void;
 }) {
   const router = useRouter();
   const [jobs, setJobs] = useState<JobMatch[]>(prefill.jobs);
@@ -248,8 +250,34 @@ export function CargoInvoiceNormal({
     }, 600);
     return () => window.clearTimeout(timer);
   }, [needKey]);
+
+  /*
+   * ไม่พบ ENGINE NO. ในไฟล์ → เติมรหัสที่พบมากที่สุดให้เลย (ทีมขอ) · ทำสีฟ้า = ระบบเติม ยังไม่ได้ตรวจ
+   * เติมครั้งเดียวต่อแถว/ตัวถัง — คนลบออกเองแล้วไม่เติมซ้ำ (ยังกดเลือกจากรายการแนะนำใต้ช่องได้)
+   */
+  const autoFilled = useRef(new Set<string>());
+  useEffect(() => {
+    if (saved) return;
+    const fills = values.flatMap((v, i) => {
+      const k = hintKey(v);
+      const top = hints[k]?.[0];
+      return !v.engine && v.chassis && top && !autoFilled.current.has(`${i}|${k}`) ? [{ i, k, code: top.code }] : [];
+    });
+    if (!fills.length) return;
+    fills.forEach((f) => autoFilled.current.add(`${f.i}|${f.k}`));
+    setCars((prev) => prev.map((c, i) => {
+      const f = fills.find((x) => x.i === i);
+      return f && !c.engine.trim() ? { ...c, engine: f.code } : c;
+    }));
+    setAuto((prev) => new Set([...prev, ...fills.map((f) => `${f.i}:engine`)]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hints, cars]);
   const key = JSON.stringify(values.map((v) => [v.brand, v.model, v.fuel, v.cc, v.weight]));
   const tariffStale = Boolean(tariffs && tariffFor !== key);
+  // แถบขั้นตอน: ทุกคันมีเลขเครื่อง 7 หลัก (ในช่อง หรือจากปุ่มสุ่ม) = ผ่านขั้นสุ่ม Engine
+  const rolled = cars.length > 0 && values.every((v, i) => existingEngineNumber(v.engine) || /^\d{7}$/.test(cars[i].engineNo));
+  const step: 1 | 2 | 3 | 4 = saved ? 4 : tariffs && !tariffStale ? 3 : rolled ? 2 : 1;
+  useEffect(() => { onStep?.(step); }, [step, onStep]);
   const sum = (k: 'weight' | 'price') => values.reduce((s, v) => s + (v[k] ?? 0), 0);
   const boxMissing = cars.some((c) => !c.container || (job?.containers.length && !job.containers.includes(c.container)));
   const missing = [
@@ -503,12 +531,6 @@ export function CargoInvoiceNormal({
           รายการรถ {cars.length} คัน · น้ำหนักรวม {fmt(sum('weight'))} KG · ยอดรวม {fmt(sum('price'))} {currency}
           {auto.size ? <span className="cgi-auto-key"><i /> ระบบเติม — ยังไม่ได้ตรวจ ({auto.size} ช่อง)</span> : null}
           {chassisWarn ? <span className="cgi-chassis-chk warn">⚠ BRAND/MODEL ไม่ตรงกับ CHASSIS {chassisWarn} คัน</span> : null}
-          {!locked ? (
-            <button type="button" className="button tiny cgi-roll" onClick={() => void randomEngines()}
-              title="สุ่มเลขเครื่อง 7 หลักที่ไม่ซ้ำกับที่เคยออก ให้ทุกคันที่ยังไม่มีเลข — แสดงใต้ช่อง ENGINE NO. (กดซ้ำ = สุ่มใหม่)">
-              🎲 สุ่ม Engine
-            </button>
-          ) : null}
         </div>
         <div className="table-wrap cgi-normal-tablewrap">
           <table className="data cgi-normal-table">
@@ -553,14 +575,16 @@ export function CargoInvoiceNormal({
                               → {v.engine ? enginePrefix(v.engine) : '(รหัสเครื่อง)'}-{given ?? (c.engineNo || 'xxxxxxx')}
                             </small>
                           ) : null}
-                          {col.k === 'engine' && !v.engine && v.chassis && !locked ? (
+                          {/* รหัสแนะนำ: ช่องว่าง หรือระบบเติมรหัสแนะนำไว้ (ยังไม่ได้ตรวจ) — กดเปลี่ยนเป็นตัวอื่นได้ */}
+                          {col.k === 'engine' && v.chassis && !locked && (!v.engine
+                            || (auto.has(`${i}:engine`) && hints[hintKey(v)]?.some((h) => h.code === v.engine))) ? (
                             <span className="cgi-engine-hints">
                               {!(hintKey(v) in hints) ? <small className="muted">กำลังหารหัสเครื่อง…</small>
                                 : hints[hintKey(v)].length ? (
                                   <>
-                                    <small className="muted">แนะนำ:</small>
+                                    <small className="muted">{v.engine ? 'ระบบเติมตัวที่พบมากสุด · เปลี่ยนได้:' : 'แนะนำ:'}</small>
                                     {hints[hintKey(v)].map((h) => (
-                                      <button key={h.code} type="button" className="cgi-hint"
+                                      <button key={h.code} type="button" className={`cgi-hint${h.code === v.engine ? ' on' : ''}`}
                                         title={h.by === 'chassis' ? `ใช้กับ CHASSIS รหัสเดียวกัน ${h.count.toLocaleString('en-US')} คัน` : `ใช้กับ ${v.brand} ${v.model} ${h.count} คัน`}
                                         onClick={() => setCar(i, { engine: h.code })}>
                                         {h.code}<i>{h.count.toLocaleString('en-US')}</i>
@@ -669,17 +693,24 @@ export function CargoInvoiceNormal({
             <small>{missing.length ? `ยังขาด: ${missing.join(' · ')}` : `พร้อมบันทึกเป็น Final Invoice ของงาน ${job?.jobNo}`}{auto.size ? ` · มีช่องที่ระบบเติมยังไม่ได้แก้ ${auto.size} ช่อง (ตรวจแล้วบันทึกได้เลย)` : ''}
               {chassisWarn ? ` · BRAND/MODEL ไม่ตรงกับ CHASSIS ${chassisWarn} คัน (ตรวจก่อนบันทึก)` : ''}
               {draftAt ? <span className="cgi-draft-at"> · Draft บันทึกล่าสุด {new Date(draftAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span> : null}</small>
+            {/* ลำดับตามแถบขั้นตอนด้านบน: สุ่ม Engine → ดึงพิกัด … · บันทึก Draft / Final Invoice ชิดขวา */}
             <div className="cgi-save-actions">
-              <button type="button" className="button" disabled={Boolean(busy) || reading || !jobId} onClick={() => void saveDraft()}
-                title={jobId ? 'เก็บค่าที่กรอกไว้กับงานนี้ — ยังไม่ต้องครบ เปิด Create FN Invoice ของงานนี้อีกครั้งระบบโหลดให้' : 'เลือกงานก่อน — Draft เก็บไว้กับงาน'}>
-                💾 บันทึก Draft
+              <button type="button" className="button" disabled={Boolean(busy) || reading || !cars.length} onClick={() => void randomEngines()}
+                title="สุ่มเลขเครื่อง 7 หลักที่ไม่ซ้ำกับที่เคยออก ให้ทุกคันที่ยังไม่มีเลข — แสดงใต้ช่อง ENGINE NO. (กดซ้ำ = สุ่มใหม่)">
+                🎲 สุ่ม Engine
               </button>
               <button type="button" className="button" disabled={Boolean(busy) || reading || !cars.length} onClick={() => void fetchTariffs()}>
                 {tariffs ? '↻ ดึงพิกัดใหม่' : 'ดึงพิกัด'}
               </button>
               <button type="button" className="button" disabled={Boolean(busy) || reading} onClick={() => void post('preview')}>👁 Preview FN Invoice</button>
               <button type="button" className="button" disabled={Boolean(busy) || reading} onClick={() => void post('csv')}>📄 CSV Draft ใบขน</button>
-              <button type="button" className="button primary" disabled={Boolean(busy) || reading || missing.length > 0} onClick={() => void post('save')}>บันทึก Final Invoice</button>
+              <span className="cgi-save-right">
+                <button type="button" className="button" disabled={Boolean(busy) || reading || !jobId} onClick={() => void saveDraft()}
+                  title={jobId ? 'เก็บค่าที่กรอกไว้กับงานนี้ — ยังไม่ต้องครบ เปิด Create FN Invoice ของงานนี้อีกครั้งระบบโหลดให้' : 'เลือกงานก่อน — Draft เก็บไว้กับงาน'}>
+                  💾 บันทึก Draft
+                </button>
+                <button type="button" className="button primary" disabled={Boolean(busy) || reading || missing.length > 0} onClick={() => void post('save')}>บันทึก Final Invoice</button>
+              </span>
             </div>
           </>
         )}

@@ -33,7 +33,8 @@ const fmt = (n: number | null) => (n === null ? '-' : n.toLocaleString('en-US'))
 /** ค่าที่มีผลต่อพิกัด — เปลี่ยนแล้วต้องดึงพิกัดใหม่ */
 const tariffKey = (cars: CargoCar[]) => JSON.stringify(cars.map(({ brand, model, fuel, cc, weight }) => [brand, model, fuel, cc, weight]));
 const editsOf = (cars: CargoCar[]) => cars.map((c) => Object.fromEntries(EDIT_FIELDS.map((f) => [f, c[f]])));
-const STEPS = ['อัปโหลด Invoice', 'ตรวจข้อมูล', 'ดึงพิกัด (Tariff)', 'บันทึก Final Invoice'];
+/** ขั้นตอนหลัก (ทีมขอ) — หน้าที่อัปไฟล์เองมีขั้น "อัปโหลด Invoice" นำหน้า · JAN / AICHI ออกเลขเครื่องตอนบันทึก จึงข้ามขั้นสุ่ม Engine */
+const STEPS = ['ตรวจข้อมูล', 'สุ่มEngine', 'ดึงพิกัด (Tariff)', 'บันทึก Final Invoice'];
 
 
 /** รูปแบบที่ระบบอ่านไฟล์แล้วจัดหน้า Final Invoice ให้เอง — ที่เหลือเป็น NORMAL (คีย์เองข้างไฟล์) */
@@ -100,6 +101,8 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
   const [rulesVersion, setRulesVersion] = useState(0);
   /** NORMAL — ผู้ขายรายอื่น: ฟอร์มคีย์เองข้างไฟล์ (รูป · PDF · Excel) */
   const [normal, setNormal] = useState<NormalPrefill | null>(null);
+  /** ขั้นของแถบขั้นตอนที่ฟอร์ม NORMAL รายงานมา */
+  const [normalStep, setNormalStep] = useState<1 | 2 | 3 | 4>(1);
   const [csv, setCsv] = useState<DraftCsv | null>(null);
 
   const job = jobs.find((j) => j.id === jobId) ?? null;
@@ -109,7 +112,7 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
 
   const reset = () => {
     setFile(null); setInv(null); setCars([]); setTariffFor(''); setSuggest(null); setInvoiceNum(''); setJobs([]); setJobId(''); setMatchedBy('bl'); setJobQuery(''); setTariffs(null); setChosen([]);
-    setAdding(null); setSaved(null); setError(''); setNormal(null); setCsv(null);
+    setAdding(null); setSaved(null); setError(''); setNormal(null); setCsv(null); setNormalStep(1);
     if (input.current) input.current.value = '';
   };
 
@@ -346,10 +349,11 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
   const tariffStale = Boolean(tariffs && tariffFor !== tariffKey(cars));
   const readyToSave = Boolean(inv && !inv.errors.length && job && tariffs && !tariffStale && chosen.length === cars.length
     && chosen.every(Boolean) && cars.every((c) => !c.problems.length));
-  const step = saved ? 4 : tariffs ? 3 : inv ? 2 : 1;
+  // ขั้นหลัก 1–4 (0 = ยังไม่มีไฟล์) — NORMAL บอกขั้นมาเองจากฟอร์ม
+  const core = normal ? normalStep : saved ? 4 : tariffs ? 3 : inv ? 1 : 0;
   // ใช้ Invoice สินค้าของงาน: ไม่มีขั้นอัปโหลด ขั้นเริ่มที่ "ตรวจข้อมูล"
-  const steps = presetFile ? STEPS.slice(1) : STEPS;
-  const stepNow = presetFile ? Math.max(1, step - 1) : step;
+  const steps = presetFile ? STEPS : ['อัปโหลด Invoice', ...STEPS];
+  const stepNow = presetFile ? Math.max(1, core) : core + 1;
   const loaded = useRef(false);
   useEffect(() => {
     if (!presetFile || loaded.current) return;
@@ -400,7 +404,7 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
         {error ? <p className="cgi-error">⚠️ {error}</p> : null}
       </section>
 
-      {normal && file ? <CargoInvoiceNormal key={`${file.name}-${file.lastModified}`} file={file} shippers={shippers} prefill={normal} onReset={reset} side={Boolean(presetFile)} /> : null}
+      {normal && file ? <CargoInvoiceNormal key={`${file.name}-${file.lastModified}`} file={file} shippers={shippers} prefill={normal} onReset={reset} side={Boolean(presetFile)} onStep={setNormalStep} /> : null}
 
       {inv ? (
         <>
