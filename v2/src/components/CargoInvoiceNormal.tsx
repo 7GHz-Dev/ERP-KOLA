@@ -11,6 +11,7 @@ import { cleanEdit, fieldProblems } from '@/lib/cargo-invoice/edit';
 import { enginePrefix, existingEngineNumber } from '@/lib/cargo-invoice/engine-format';
 import { checkChassis } from '@/lib/cargo-invoice/chassis-check';
 import type { FnDraftInfo } from '@/lib/cargo-invoice/fn-draft';
+import type { EngineHint } from '@/lib/cargo-invoice/engine-suggest';
 import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { CsvDrawer } from './CargoDocDrawers';
@@ -226,6 +227,27 @@ export function CargoInvoiceNormal({
   // BRAND · MODEL ↔ รหัสหน้า CHASSIS NO. (DATA_BRAND MODEL CHASSIS) — เตือนอย่างเดียว
   const chassisChecks = values.map((v) => checkChassis(v.brand, v.model, v.chassis));
   const chassisWarn = chassisChecks.filter((c) => c?.level === 'warn').length;
+
+  /*
+   * OG Invoice ไม่มี ENGINE NO. — แนะนำรหัสเครื่องส่วนหน้าขีดจากข้อมูลที่มี (รหัสหน้า CHASSIS เดียวกัน · ยี่ห้อ+รุ่นเดียวกัน)
+   * ดึงเฉพาะคันที่ช่องว่างและมี CHASSIS แล้ว · รอพิมพ์เสร็จครู่หนึ่งก่อนถาม · จำผลไว้ไม่ถามซ้ำ
+   */
+  const hintKey = (v: { brand: string; model: string; chassis: string }) => `${v.chassis}|${v.brand}|${v.model}`;
+  const [hints, setHints] = useState<Record<string, EngineHint[]>>({});
+  const needHints = [...new Set(values.filter((v) => !v.engine && v.chassis).map(hintKey))].filter((k) => !(k in hints));
+  const needKey = needHints.join('\n');
+  useEffect(() => {
+    if (!needKey) return;
+    const list = needKey.split('\n');
+    const timer = window.setTimeout(() => {
+      void call<{ hints: EngineHint[][] }>('/api/cargo-invoice/engine-suggest', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cars: list.map((k) => { const [chassis, brand, model] = k.split('|'); return { chassis, brand, model }; }) }),
+      }).then((data) => setHints((prev) => ({ ...prev, ...Object.fromEntries(list.map((k, i) => [k, data.hints[i] ?? []])) })))
+        .catch(() => setHints((prev) => ({ ...prev, ...Object.fromEntries(list.map((k) => [k, []])) })));
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [needKey]);
   const key = JSON.stringify(values.map((v) => [v.brand, v.model, v.fuel, v.cc, v.weight]));
   const tariffStale = Boolean(tariffs && tariffFor !== key);
   const sum = (k: 'weight' | 'price') => values.reduce((s, v) => s + (v[k] ?? 0), 0);
@@ -530,6 +552,23 @@ export function CargoInvoiceNormal({
                               title={given ? 'เลขเครื่องที่อยู่ในช่องแล้ว' : c.engineNo ? 'เลขจากปุ่มสุ่ม Engine — ไม่ซ้ำกับที่เคยออก (ตรวจอีกครั้งตอนบันทึก)' : 'ENGINE NO. ที่จะพิมพ์ในใบ (เลขจริงออกตอนบันทึก หรือกด 🎲 สุ่ม Engine)'}>
                               → {v.engine ? enginePrefix(v.engine) : '(รหัสเครื่อง)'}-{given ?? (c.engineNo || 'xxxxxxx')}
                             </small>
+                          ) : null}
+                          {col.k === 'engine' && !v.engine && v.chassis && !locked ? (
+                            <span className="cgi-engine-hints">
+                              {!(hintKey(v) in hints) ? <small className="muted">กำลังหารหัสเครื่อง…</small>
+                                : hints[hintKey(v)].length ? (
+                                  <>
+                                    <small className="muted">แนะนำ:</small>
+                                    {hints[hintKey(v)].map((h) => (
+                                      <button key={h.code} type="button" className="cgi-hint"
+                                        title={h.by === 'chassis' ? `ใช้กับ CHASSIS รหัสเดียวกัน ${h.count.toLocaleString('en-US')} คัน` : `ใช้กับ ${v.brand} ${v.model} ${h.count} คัน`}
+                                        onClick={() => setCar(i, { engine: h.code })}>
+                                        {h.code}<i>{h.count.toLocaleString('en-US')}</i>
+                                      </button>
+                                    ))}
+                                  </>
+                                ) : <small className="muted">ไม่มีข้อมูลรหัสเครื่องของ CHASSIS นี้ — คีย์เอง</small>}
+                            </span>
                           ) : null}
                         </td>
                       );

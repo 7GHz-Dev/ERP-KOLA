@@ -2961,6 +2961,12 @@ img.cgi-doc-file { overflow: auto; }
 .section-title .cgi-chassis-chk { display: inline; margin: 0 0 0 10px; font-size: 12px; }
 .section-title .cgi-roll { margin-left: 10px; }
 .cgi-draft-at { color: #1f5fa8; }
+/* รหัสเครื่องแนะนำ (OG Invoice ไม่มี ENGINE NO.) — กดเลือกใส่ช่อง */
+.cgi-engine-hints { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 3px; }
+.cgi-engine-hints small { font-size: 11px; }
+.cgi-hint { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 6px; border: 1px solid #9ab8dc; border-radius: 10px; background: #eef4fb; color: #1f5fa8; font-size: 11px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.cgi-hint:hover { background: #1f5fa8; color: #fff; border-color: #1f5fa8; }
+.cgi-hint i { font-style: normal; font-weight: 400; opacity: .7; font-size: 10px; }
 .cgi-normal-problem td { padding: 0 6px 6px !important; font-size: 12px; color: var(--red); background: #fff4f4; }
 .cgi-row-act { display: inline-flex; gap: 2px; }
 .cgi-normal-actions { position: sticky; bottom: 0; z-index: 5; display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px; background: var(--canvas); border-top: 1px solid var(--line); }
