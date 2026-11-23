@@ -10,6 +10,8 @@ import { requestApprovalMany } from '@/lib/actions/jobs';
 import { handoverEoffice } from '@/lib/actions/eoffice-handover';
 import { deleteJobs } from '@/lib/actions/job-delete';
 import Link from 'next/link';
+import { sql } from 'drizzle-orm';
+import { jobs } from '@/db/schema';
 import { hasArrivalFiles, listJobs, otherQueue, QUEUE, type JobRow } from '@/lib/queries/jobs';
 import { queueCounts } from '@/lib/queries/dashboard';
 import { DRAFT_WORKER_MODE, onlineWorkers } from '@/lib/worker-status';
@@ -56,6 +58,30 @@ const FILE_FILTERS = [
   { key: 'no', label: 'ไม่มีไฟล์' },
   { key: 'yes', label: 'มีไฟล์' },
 ] as const;
+
+/*
+ * แท็บ 2 Final Invoice & Draft ใบขน (Import Officer) — กรองว่าแต่ละงานทำถึงไหนแล้ว
+ *   FN Invoice  Complete = มีไฟล์ Final Invoice (ฉบับปัจจุบัน)
+ *   Draft ใบขน  Complete = สร้าง Draft ใน NETBAY ได้ Ref No. แล้ว
+ *               (กำลังสร้าง · สร้างไม่สำเร็จ · Senior Officer ตีกลับ = Not Complete เพราะยังต้องทำต่อ)
+ * สองตัวกรองใช้ร่วมกันได้ เช่น FN Complete + Draft Not Complete = งานที่พร้อมกดสร้าง Draft
+ */
+const DONE_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'done', label: 'Complete' },
+  { key: 'todo', label: 'Not Complete' },
+] as const;
+type DoneFilter = (typeof DONE_FILTERS)[number]['key'];
+
+const fnDone = (done: boolean) =>
+  sql`${done ? sql`exists` : sql`not exists`} (select 1 from files f
+        where f.job_id = ${jobs.id} and f.category = 'FINAL_INVOICE' and f.is_current = true)`;
+const draftDone = (done: boolean) => {
+  const ok = sql`(coalesce(${jobs.draftRefNo}, '') <> '' and coalesce(${jobs.draftStatus}, '') in ('CREATED', 'SUBMITTED', 'FILED'))`;
+  return done ? ok : sql`not ${ok}`;
+};
+const doneWhere = (filter: DoneFilter, cond: (done: boolean) => ReturnType<typeof sql>) =>
+  (filter === 'all' ? [] : [cond(filter === 'done')]);
 
 function columnsFor(
   tab: string,
@@ -360,6 +386,12 @@ export async function PendingView({
   const files = canFilterFiles
     ? (FILE_FILTERS.find((f) => f.key === one('files')) ?? FILE_FILTERS[0]).key
     : 'all';
+  // ตัวกรอง FN Invoice / Draft ใบขน — มีเฉพาะแท็บ 2 ของ Import Officer (บังคับ all ที่อื่นแบบเดียวกับตัวกรองไฟล์)
+  const canFilterDone = tab === 'fn' && !other;
+  const pickDone = (v: string | undefined): DoneFilter =>
+    (canFilterDone ? (DONE_FILTERS.find((f) => f.key === v) ?? DONE_FILTERS[0]).key : 'all');
+  const fnFilter = pickDone(one('fnInv'));
+  const draftFilter = pickDone(one('draftDoc'));
 
   /*
    * ไม่ได้สั่งเรียง = เรียงตามวันที่สร้างงาน ใหม่สุดอยู่บนสุด
@@ -384,7 +416,21 @@ export async function PendingView({
   const where = (ctx: Parameters<typeof queue>[0]) => [
     ...queue(ctx),
     ...(files === 'all' ? [] : [hasArrivalFiles(files === 'yes')]),
+    ...doneWhere(fnFilter, fnDone),
+    ...doneWhere(draftFilter, draftDone),
   ];
+  /*
+   * ตัวเลขบนปุ่มกรอง — นับในคิวเดียวกับตาราง (แท็บ · รอส่ง/รออนุมัติ) รวมกับตัวกรองอีกฝั่งที่เลือกอยู่
+   * ตัวเลขบนปุ่มที่กำลังเลือกจึงเท่ากับจำนวนแถวในตาราง (ก่อนค้นหา)
+   */
+  const doneCounts = canFilterDone ? {
+    fnInv_all: (c: Parameters<typeof queue>[0]) => [...queue(c), ...doneWhere(draftFilter, draftDone)],
+    fnInv_done: (c: Parameters<typeof queue>[0]) => [...queue(c), ...doneWhere(draftFilter, draftDone), fnDone(true)],
+    fnInv_todo: (c: Parameters<typeof queue>[0]) => [...queue(c), ...doneWhere(draftFilter, draftDone), fnDone(false)],
+    draftDoc_all: (c: Parameters<typeof queue>[0]) => [...queue(c), ...doneWhere(fnFilter, fnDone)],
+    draftDoc_done: (c: Parameters<typeof queue>[0]) => [...queue(c), ...doneWhere(fnFilter, fnDone), draftDone(true)],
+    draftDoc_todo: (c: Parameters<typeof queue>[0]) => [...queue(c), ...doneWhere(fnFilter, fnDone), draftDone(false)],
+  } : {};
 
   const [{ rows, total }, counts, draftWorkers, signed] = await Promise.all([
     listJobs({ where, search, sortBy: sortKey, sortDir: sortWay }),
@@ -395,6 +441,7 @@ export async function PendingView({
     queueCounts({
       bl: Q.pendingBl('wait'), fn: Q.pendingFn('wait'), edoc: Q.pendingEdoc(),
       ...(other ? { draft: Q.pendingDraft('wait'), signed: Q.eofficeSigned('wait') } : {}),
+      ...doneCounts,
     } as Record<string, ReturnType<typeof Q.pendingEdoc>>),
     // worker ที่สร้าง Draft ใน NETBAY — บอกว่ากดแล้วจะมีคนรับงานไหม
     hasDraftButtons ? onlineWorkers({ mode: DRAFT_WORKER_MODE }) : Promise.resolve([]),
@@ -408,7 +455,12 @@ export async function PendingView({
    * ไม่งั้นกดอะไรก็ตามแล้วตัวกรองหลุด ซึ่งงงกว่าไม่มีตัวกรองเลย
    */
   const filterCarry = { ...carry, ...(files === 'all' ? {} : { files }) };
-  const fullCarry = { ...filterCarry, tab, sub };
+  // ตัวกรอง FN / Draft เป็นของแท็บ 2 เท่านั้น — ติดไปกับการเรียง · ค้นหา · สลับรอส่ง/รออนุมัติ แต่ไม่ติดไปแท็บอื่น
+  const doneCarry = {
+    ...(fnFilter === 'all' ? {} : { fnInv: fnFilter }),
+    ...(draftFilter === 'all' ? {} : { draftDoc: draftFilter }),
+  };
+  const fullCarry = { ...filterCarry, ...doneCarry, tab, sub };
 
   const table = (
     <JobTable
@@ -438,7 +490,7 @@ export async function PendingView({
       {!other && tab !== 'edoc' ? (
         <div className="tabs">
           {(['wait', 'approve'] as const).map((value) => {
-            const params = new URLSearchParams({ ...carry, tab, sub: value });
+            const params = new URLSearchParams({ ...carry, ...doneCarry, tab, sub: value });
             return (
               <a
                 key={value}
@@ -484,6 +536,33 @@ export async function PendingView({
           </span>
         ) : null}
       </div>
+      ) : null}
+
+      {canFilterDone ? (
+        <div className="filter-bar">
+          {([['fnInv', 'FN Invoice', fnFilter], ['draftDoc', 'Draft ใบขน', draftFilter]] as const).map(([param, label, current]) => (
+            <span key={param} className="filter-pair">
+              <span className="filter-label">{label}</span>
+              <span className="chip-group">
+                {DONE_FILTERS.map((f) => {
+                  const next = new URLSearchParams({ ...carry, ...doneCarry, tab, sub });
+                  // All เป็นค่าตั้งต้น ไม่ต้องใส่ลง URL
+                  if (f.key === 'all') next.delete(param); else next.set(param, f.key);
+                  return (
+                    <a
+                      key={f.key}
+                      className={`chip-toggle${f.key === current ? ' on' : ''}`}
+                      href={`${basePath}?${next.toString()}`}
+                      aria-current={f.key === current ? 'true' : undefined}
+                    >
+                      {f.label} <small>{counts[`${param}_${f.key}`] ?? 0}</small>
+                    </a>
+                  );
+                })}
+              </span>
+            </span>
+          ))}
+        </div>
       ) : null}
 
       {/* กด "สร้าง Draft" แล้ว worker ตรวจ Final Invoice ออกเลขเครื่อง สร้างใบขนใน NETBAY และ Import CSV ให้ */}

@@ -14,7 +14,7 @@ const SEARCH_KEYS = ['shipper', 'blNo', 'consignee', 'vessel'];
 export default async function NamApprovePage({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireUserReady(['NAMKANG']);
+  await requireUserReady(['NAMKANG', 'FAH']);
   const { search, sortBy, sortDir, carry } = readParams(await searchParams, SEARCH_KEYS);
   const { rows, total } = await listJobs({ where: QUEUE.namApprove(), search, sortBy, sortDir });
 

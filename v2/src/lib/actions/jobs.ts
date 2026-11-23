@@ -3,12 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
-import { approvals, bls, containers, customsEntries, doHandoffs, files, jobs, masterRecords } from '@/db/schema';
+import { approvals, bls, containers, customsEntries, doHandoffs, files, jobs, masterRecords, users } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { notifyDoQueue } from '@/lib/line-accounts';
 import { isPartnerRelease } from '@/lib/job-types';
 import { describeResults, partnerByName, sendToPartner } from '@/lib/partner-notify';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { hasBlBrackets } from '@/lib/bl-format';
 import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
@@ -147,7 +147,7 @@ async function requestApprovalManyImpl(formData: FormData) {
  * และกันกรณีที่รายการถูกตัดสินไปแล้วระหว่างที่หน้าจอยังค้างอยู่
  */
 async function decideApprovalManyImpl(formData: FormData) {
-  const ids = String(formData.get('approvalIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+  const ids = [...new Set(String(formData.get('approvalIds') ?? '').split(',').map((v) => v.trim()).filter(Boolean))];
   if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
 
   /*
@@ -168,6 +168,8 @@ async function decideApprovalManyImpl(formData: FormData) {
 
   let done = 0;
   const failed: string[] = [];
+  // คนอื่นตัดสินไปก่อนระหว่างที่หน้าจอยังค้าง — ไม่ใช่ข้อผิดพลาด แค่ข้ามไป แล้วบอกว่าใครทำ
+  const skipped: string[] = [];
   for (const approvalId of ids) {
     const one = new FormData();
     one.set('approvalId', approvalId);
@@ -177,14 +179,32 @@ async function decideApprovalManyImpl(formData: FormData) {
       await decideApprovalImpl(one);
       done += 1;
     } catch (error) {
-      failed.push(error instanceof Error ? error.message : String(error));
+      if (error instanceof AlreadyDecided) skipped.push(error.message);
+      else failed.push(error instanceof Error ? error.message : String(error));
     }
   }
 
-  if (!done) throw new Error(failed[0] ?? 'ดำเนินการไม่สำเร็จ');
+  const skipNote = skipped.length ? `ข้าม ${skipped.length} รายการที่มีคนตัดสินไปแล้ว (${skipped[0]}${skipped.length > 1 ? ' …' : ''})` : '';
+  if (!done) throw new Error(failed[0] ?? (skipNote || 'ดำเนินการไม่สำเร็จ'));
   if (failed.length) {
-    throw new Error(`ทำแล้ว ${done} รายการ · ไม่สำเร็จ ${failed.length} รายการ: ${failed[0]}`);
+    throw new Error(`ทำแล้ว ${done} รายการ · ไม่สำเร็จ ${failed.length} รายการ: ${failed[0]}${skipNote ? ` · ${skipNote}` : ''}`);
   }
+  if (skipNote) await backWithOk(`${decision === 'APPROVED' ? 'อนุมัติ' : 'ตีกลับ'}แล้ว ${done} รายการ · ${skipNote}`);
+}
+
+/** รายการถูกตัดสินไปแล้ว (มักเป็นอีกคนกดชุดเดียวกันพร้อมกัน) — ชุดใหญ่ข้ามไป ไม่นับเป็นข้อผิดพลาด */
+class AlreadyDecided extends Error {}
+
+/** "BL XXX — สมชาย อนุมัติไปแล้ว 23/11/2026 10:15" */
+async function alreadyDecided(approvalId: string) {
+  const [r] = await db.select({
+    status: approvals.status, at: approvals.decidedAt, who: users.displayName, bl: jobs.blNo, jobNo: jobs.jobNo,
+  }).from(approvals)
+    .leftJoin(users, eq(users.id, approvals.decidedBy))
+    .leftJoin(jobs, eq(jobs.id, approvals.jobId))
+    .where(eq(approvals.id, approvalId)).limit(1);
+  const what = r?.status === 'APPROVED' ? 'อนุมัติไปแล้ว' : r?.status === 'REJECTED' ? 'ตีกลับไปแล้ว' : 'ตัดสินไปแล้ว';
+  return new AlreadyDecided(`${r?.bl || r?.jobNo || 'รายการนี้'} — ${r?.who ?? 'มีคน'}${what}${r?.at ? ` ${formatDateTime(r.at)}` : ''}`);
 }
 
 /** อนุมัติหรือตีกลับ — AN เป็นสิทธิ์ NAMKANG ส่วน FN เป็นของ FAH */
@@ -196,15 +216,23 @@ async function decideApprovalImpl(formData: FormData) {
 
   const [approval] = await db.select().from(approvals).where(eq(approvals.id, approvalId)).limit(1);
   if (!approval) throw new Error('ไม่พบรายการอนุมัติ');
-  if (approval.status !== 'PENDING') throw new Error('รายการนี้ถูกตัดสินไปแล้ว');
+  if (approval.status !== 'PENDING') throw await alreadyDecided(approvalId);
 
+  // Approve B/L — Head Officer และ Senior Officer อนุมัติได้ทั้งคู่
   const user = await requireActiveSession(
-    approval.approvalType === 'AN' ? ['NAMKANG'] : ['FAH'],
+    approval.approvalType === 'AN' ? ['NAMKANG', 'FAH'] : ['FAH'],
   );
 
-  await db.update(approvals)
+  /*
+   * ตัดสินได้ครั้งเดียว — สองคนกดชุดเดียวกันพร้อมกัน ผ่านการเช็กข้างบนได้ทั้งคู่
+   * จึงให้ฐานข้อมูลตัดสินอีกชั้น: อัปเดตเฉพาะแถวที่ยัง PENDING อยู่ คนที่มาทีหลังได้ 0 แถว
+   * แล้วหยุดตรงนี้ ไม่ไปเปลี่ยนสถานะงาน / บันทึกประวัติซ้ำ
+   */
+  const won = await db.update(approvals)
     .set({ status: decision, reason, decidedBy: user.id, decidedAt: new Date() })
-    .where(eq(approvals.id, approvalId));
+    .where(and(eq(approvals.id, approvalId), eq(approvals.status, 'PENDING')))
+    .returning({ id: approvals.id });
+  if (!won.length) throw await alreadyDecided(approvalId);
 
   const next =
     decision === 'REJECTED'

@@ -11,7 +11,7 @@ export default async function BlReviewPage({ params, searchParams }: {
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUserReady(['NAMKANG']);
+  await requireUserReady(['NAMKANG', 'FAH']);
   const { id } = await params;
   // ?aq= ชุดที่ติ๊กตรวจต่อกัน · id ใบแรกเป็น id รายการอนุมัติได้
   const { jobId, queue } = await reviewQueue(id, (await searchParams).aq);

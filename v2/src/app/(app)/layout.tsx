@@ -61,6 +61,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/waiting-list', label: 'Waiting list', count: 'waitingList' },
       { href: '/fah/pending', label: 'Pending Jobs', count: 'seniorPending' },
+      { href: '/nam/approve', label: 'Approve B/L', count: 'pendingAn' },
       { href: '/fah/do', label: 'Upload Invoice of D/O', count: 'fahDoWait' },
       { href: '/fah/draft', label: 'Submit import decl.', count: 'draftReview' },
       // BL ที่ลูกค้าแจ้งมาทางอื่น (กรอกคร่าว ๆ) — รายการเดียวกับของ Head Officer
