@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { FileDrawerShell } from '@/components/FileDrawerShell';
 import { MergedFileView } from '@/components/MergedFileView';
+import { isXlsx } from '@/components/FilePreview';
 import { requireUserReady, roleAllows } from '@/lib/auth';
 import { REORDERABLE_CATEGORIES } from '@/lib/do-bundle-options';
 import { loadFileOne } from '@/lib/queries/file-one';
@@ -25,7 +26,8 @@ export default async function FileDrawer({ params }: { params: Promise<{ id: str
       title={file.categoryLabel}
       fileName={file.fileName}
       meta={`งาน ${file.jobNo}`}
-      viewHref={`/files/${file.id}`}
+      // Excel เปิดแท็บใหม่เป็น PDF ที่แปลงแล้ว (ไม่โหลดลงเครื่อง) — ไฟล์ต้นฉบับโหลดได้จากลิงก์ใต้ตัวดู
+      viewHref={isXlsx(file) ? `/files/${file.id}/pdf` : `/files/${file.id}`}
       wide
     >
       {file.note?.includes('ยังขาด:') ? <p className="drawer-note warn">{file.note}</p> : null}

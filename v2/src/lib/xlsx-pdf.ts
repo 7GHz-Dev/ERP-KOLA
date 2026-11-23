@@ -211,13 +211,44 @@ const INVOICE_LAST_COL = 14;
  *   ไม่เข้าเงื่อนไขทั้งสองแบบ → ไม่พิมพ์ (คืน [] ให้ผู้เรียกแจ้งว่าแปลงไม่ได้ แทนการพิมพ์ทั้งชีตมั่ว ๆ)
  * ชีตซ่อนและชีต datatariff ไม่พิมพ์
  */
-export function invoicePages<T extends SheetLike>(sheets: T[]): Array<{ sheet: T; area: Area }> {
+export function invoicePages<T extends SheetLike>(sheets: T[], opts: { anySheet?: boolean } = {}): Array<{ sheet: T; area: Area }> {
   const shown = sheets.filter((ws) => (ws.state ?? 'visible') === 'visible' && ws.name !== 'datatariff');
   const set = shown.flatMap((ws) => {
     const area = ws.pageSetup?.printArea ? parsePrintArea(String(ws.pageSetup.printArea)) : null;
     return area ? [{ sheet: ws, area }] : [];
   });
   if (set.length) return set;
+  const guessed = invoiceGuess(shown);
+  if (guessed.length || !opts.anySheet) return guessed;
+  return usedPages(shown);
+}
+
+/** ส่วนที่ใช้ของชีต (ช่องสุดท้ายที่มีข้อความ) — จำกัดขนาด ชีตข้อมูลใหญ่ ๆ จะได้ไม่กลายเป็น PDF หลายร้อยหน้า */
+const USED_MAX = { rows: 400, cols: 30 };
+function usedPages<T extends SheetLike>(shown: T[]): Array<{ sheet: T; area: Area }> {
+  return shown.flatMap((ws) => {
+    let toRow = 0; let toCol = 0;
+    for (let r = 1; r <= Math.min(ws.rowCount, USED_MAX.rows); r++) {
+      for (let c = 1; c <= USED_MAX.cols; c++) {
+        if (sheetText(ws, r, c).trim()) { toRow = r; toCol = Math.max(toCol, c); }
+      }
+    }
+    return toRow ? [{ sheet: ws, area: { fromRow: 1, fromCol: 1, toRow, toCol } }] : [];
+  });
+}
+
+function sheetText(ws: SheetLike, r: number, c: number) {
+  const v = ws.getCell(r, c).value as unknown;
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') {
+    const o = v as { richText?: Array<{ text: string }>; result?: unknown; text?: string };
+    return o.richText ? o.richText.map((t) => t.text).join('') : String(o.result ?? o.text ?? '');
+  }
+  return String(v);
+}
+
+/** ไม่ได้ตั้งขอบเขตการพิมพ์ — เดาจากชีตที่เป็นหน้า invoice (มีคำว่า INVOICE ในหัวใบ) */
+function invoiceGuess<T extends SheetLike>(shown: T[]): Array<{ sheet: T; area: Area }> {
   return shown.flatMap((ws) => {
     const text = (r: number, c: number) => {
       const v = ws.getCell(r, c).value as unknown;
@@ -319,8 +350,11 @@ function paginate(sheet: any, area: Area): Area[] {
 /**
  * แปลงไฟล์ Excel เป็น PDF
  * คืน null เมื่อไม่มีชีตไหนตั้งขอบเขตการพิมพ์ไว้ — จะได้ไม่พิมพ์ทั้งชีตออกมามั่ว ๆ
+ *
+ * anySheet — ใช้กับการ "เปิดดู" ไฟล์ที่ผู้ใช้อัป (Invoice สินค้า ฯลฯ): ไม่มีขอบเขตการพิมพ์และไม่เจอหัว INVOICE
+ * ก็พิมพ์ส่วนที่มีข้อมูลของทุกชีตที่มองเห็น (ใบผู้ขายหลายรายไม่มีคำว่า INVOICE ในหัวใบ)
  */
-export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
+export async function xlsxToPdf(body: Buffer, opts: { anySheet?: boolean } = {}): Promise<Buffer | null> {
   const ExcelJS = (await import('exceljs')).default;
   const { PDFDocument, rgb } = await import('@cantoo/pdf-lib');
   const fontkit = (await import('@pdf-lib/fontkit')).default;
@@ -328,7 +362,7 @@ export async function xlsxToPdf(body: Buffer): Promise<Buffer | null> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(body as unknown as ArrayBuffer);
 
-  const pages = invoicePages(workbook.worksheets);
+  const pages = invoicePages(workbook.worksheets, opts);
   if (!pages.length) return null;
 
   // Final Invoice ใช้ Cambria ตามที่ต้นฉบับ Excel ตั้งไว้ ถ้าไม่มีค่อยถอยไปใช้ Sarabun

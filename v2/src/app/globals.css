@@ -1301,6 +1301,9 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
   margin-bottom: 8px; font-size: 12px; color: var(--muted);
 }
 .job-drawer .drawer-content > .file-order-bar ~ .file-preview-view { flex: 1; height: auto; }
+/* Excel ที่แปลงเป็น PDF ให้ดู — บรรทัดลิงก์ไฟล์ต้นฉบับใต้ตัวดู ตัวดูยืดเท่าที่เหลือ */
+.file-preview-alt { flex: none; margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.job-drawer .drawer-content:has(> .file-preview-alt) > .file-preview-view { flex: 1; height: auto; }
 
 /* ตัวเรียงหน้า — ใช้คลาสของตัวดูไฟล์เพื่อให้ยืดเต็มแผงเหมือนกัน แต่เลื่อนดูรูปย่อได้ */
 .page-order {

@@ -1,3 +1,5 @@
+import { XlsxPdfView } from '@/components/XlsxPdfView';
+
 /**
  * เนื้อในของแผงดูไฟล์ — ตัวไฟล์อย่างเดียว ส่วนหัวอยู่ที่กรอบแผง
  *
@@ -14,9 +16,16 @@ export type FileInfo = {
 
 const VIEWABLE = /^(image\/|application\/pdf$|text\/)/;
 
+/** Excel ที่แปลงเป็น PDF ให้ดูในหน้าได้ (.xls รุ่นเก่าอ่านไม่ได้ ยังต้องโหลด) */
+export const isXlsx = (file: Pick<FileInfo, 'fileName' | 'mimeType'>) =>
+  /\.xlsx$/i.test(file.fileName) || file.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
 export function FilePreview({ file }: { file: FileInfo }) {
   const src = `/files/${file.id}`;
   const mime = file.mimeType ?? '';
+
+  // Excel (Invoice สินค้า ฯลฯ) — ดูเป็น PDF ในหน้า ไม่ต้องโหลดลงเครื่อง
+  if (isXlsx(file)) return <XlsxPdfView fileId={file.id} fileName={file.fileName} />;
 
   if (mime.startsWith('image/')) {
     return <img className="file-preview-view" src={src} alt={file.fileName} />;
