@@ -33,7 +33,7 @@ export const col = {
     render: (r) => r.shipperName ?? '-',
   }),
   blNo: (): Column => ({
-    label: 'BL No.', searchKey: 'blNo', sortKey: 'blNo',
+    label: 'BL No.', searchKey: 'blNo', sortKey: 'blNo', className: 'col-bl',
     render: (r) => r.blNo ?? '-',
   }),
   consignee: (): Column => ({
@@ -167,7 +167,7 @@ export function sheetColumns(): Column[] {
     label,
     ...SHEET_SEARCH[label],
     kind: label === 'SHIPPER' ? 'wrap' : undefined,
-    className: `sheet-${label === 'CONTAINER NO.' ? 'containers' : label === 'SHIPPER' ? 'shipper' : 'cell'}`,
+    className: `sheet-${label === 'CONTAINER NO.' ? 'containers' : label === 'SHIPPER' ? 'shipper' : 'cell'}${label === 'BILL OF LADING' ? ' col-bl' : ''}`,
     align: ['CON', 'UNIT', 'WEIGHT', 'DEM', 'DET', 'INV.', 'SUR'].includes(label) ? 'center' : undefined,
     render: label === 'REF NO'
       ? (r) => (r.draftRefNo ? col.refNo().render(r) : '-')

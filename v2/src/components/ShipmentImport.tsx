@@ -158,7 +158,7 @@ export function ShipmentImport({
               <thead>
                 <tr>
                   <th className="col-no">บรรทัด</th>
-                  <th>BL No.</th>
+                  <th className="col-bl">BL No.</th>
                   <th>เรือ / เที่ยว</th>
                   <th>ETA</th>
                   <th>ตู้</th>
@@ -170,7 +170,7 @@ export function ShipmentImport({
                 {rows.map((r) => (
                   <tr key={r.lineNo} className={r.duplicateOf ? 'batch-saved' : undefined}>
                     <td className="col-no">{r.lineNo}</td>
-                    <td className="batch-name">{r.blNo || '-'}</td>
+                    <td className="batch-name col-bl">{r.blNo || '-'}</td>
                     <td>{r.vessel || '-'}</td>
                     <td>{r.eta ?? '-'}</td>
                     <td>{r.containers || '-'}</td>

@@ -521,6 +521,9 @@ table.data th, table.data td { padding: 8px 11px; vertical-align: middle; }
 table.data td { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 table.data td.col-actions, table.data td.col-wrap { max-width: none; overflow: visible; }
 table.data td.col-wrap { white-space: normal; min-width: 220px; }
+/* BL No. ทุกตาราง — กว้างพอให้เห็นเลขเต็ม ไม่ตัดด้วย ... */
+table.data th.col-bl, table.data td.col-bl { min-width: 200px; }
+table.data td.col-bl { max-width: none; white-space: nowrap; overflow: visible; }
 
 table.data thead th {
   position: sticky; top: 0; z-index: 3;
@@ -1703,7 +1706,7 @@ table.data td textarea.batch-input { min-width: 170px; resize: vertical; line-he
 table.data th.batch-col-wide { min-width: 270px; }
 .batch-pair { display: flex; gap: 4px; align-items: flex-start; }
 .batch-sub { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
-table.data th.batch-col-bl { min-width: 160px; }
+table.data th.batch-col-bl { min-width: 200px; }
 table.data th.batch-col-shipper { min-width: 230px; }
 .batch-shipper { display: flex; flex-direction: column; gap: 5px; min-width: 220px; }
 /* แถวที่บันทึกแล้วจางลง บอกว่าไม่ต้องทำอะไรต่อ */

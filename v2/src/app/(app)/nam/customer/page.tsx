@@ -50,7 +50,7 @@ export default async function NamCustomerPage({
       ),
     },
     { label: 'Shipper', searchKey: 'shipper', render: (r) => r.shipperName ?? '-' },
-    { label: 'BL No.', searchKey: 'blNo', sortKey: 'blNo', render: (r) => r.blNo ?? '-' },
+    { label: 'BL No.', searchKey: 'blNo', sortKey: 'blNo', className: 'col-bl', render: (r) => r.blNo ?? '-' },
     { label: 'Consignee', searchKey: 'consignee', render: (r) => r.consigneeName ?? '-' },
     {
       // รับได้ทั้ง PDF · รูป · Excel · Word

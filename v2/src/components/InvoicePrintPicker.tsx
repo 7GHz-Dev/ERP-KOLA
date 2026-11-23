@@ -62,7 +62,7 @@ export function InvoicePrintPicker({ rows }: { rows: InvoiceRow[] }) {
                 />
               </th>
               <FilterTh label="ลำดับพิมพ์" filter={false} />
-              <FilterTh label="BL No." />
+              <FilterTh label="BL No." className="col-bl" />
               <FilterTh label="Consignee" />
               <FilterTh label="SHIPLINE" />
               <FilterTh label="ETA" />
@@ -86,7 +86,7 @@ export function InvoicePrintPicker({ rows }: { rows: InvoiceRow[] }) {
                   </td>
                   {/* บอกลำดับที่จะพิมพ์ เพราะเรียงตามที่ติ๊ก ไม่ใช่ตามที่ตารางแสดง */}
                   <td>{at >= 0 ? at + 1 : ''}</td>
-                  <td><b>{r.blNo ?? '-'}</b></td>
+                  <td className="col-bl"><b>{r.blNo ?? '-'}</b></td>
                   <td>{r.consigneeName ?? '-'}</td>
                   <td>{r.shipline ?? '-'}</td>
                   <td>{formatDate(r.eta)}</td>
