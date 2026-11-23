@@ -88,7 +88,42 @@ export async function issueEngineNumbers(input: IssueInput): Promise<{ number: s
   });
 }
 
-export const ENGINE_FILTERS = ['number', 'full', 'chassis', 'bl', 'invoice', 'date', 'file'] as const;
+/**
+ * ปุ่ม "สุ่ม Engine" ในหน้า Create FN Invoice — สุ่มเลข 7 หลักที่ไม่ซ้ำกับเลขที่เคยออกทั้งตาราง และไม่ซ้ำกันเอง
+ *
+ * ยังไม่บันทึกลงตาราง (แค่แสดงใต้ช่อง ENGINE NO.) — ตอนบันทึก Final Invoice ระบบส่งเลขนี้เข้า issueEngineNumbers
+ * ซึ่งล็อกตารางแล้วตรวจซ้ำอีกครั้ง ถ้าระหว่างนั้นมีคนใช้เลขนี้ไปแล้ว การบันทึกจะแจ้งให้กดสุ่มใหม่
+ *
+ * ตัวถังที่เคยออกเลขกับ BL นี้แล้ว (บันทึกซ้ำ) ใช้เลขเดิม — แบบเดียวกับ assignEngineNumbers
+ */
+export async function randomEngineNumbers(chassis: string[], blNo: string): Promise<Array<{ number: string; reused: boolean }>> {
+  const history = blNo ? await engineLookup([], chassis.filter(Boolean)) : [];
+  const out: Array<{ number: string; reused: boolean } | null> = chassis.map((c) => {
+    const hit = history
+      .filter((r) => c && r.chassis === c && blKey(r.bl) === blKey(blNo))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+    return hit ? { number: hit.number, reused: true } : null;
+  });
+  const taken = new Set(out.flatMap((o) => (o ? [o.number] : [])));
+  for (let round = 0; out.some((o) => !o); round++) {
+    if (round > 50) throw new Error('สุ่มเลขเครื่องไม่ซ้ำไม่ได้ — ลองใหม่อีกครั้ง');
+    const want = out.filter((o) => !o).length;
+    const candidates = Array.from({ length: want * 2 }, () => String(randomInt(1_000_000, 10_000_000)))
+      .filter((n, i, all) => !taken.has(n) && all.indexOf(n) === i);
+    const used = new Set((await db.select({ n: engineNumbers.number }).from(engineNumbers)
+      .where(inArray(engineNumbers.number, candidates))).map((r) => r.n));
+    for (const n of candidates) {
+      const slot = out.findIndex((o) => !o);
+      if (slot < 0) break;
+      if (used.has(n)) continue;
+      out[slot] = { number: n, reused: false };
+      taken.add(n);
+    }
+  }
+  return out as Array<{ number: string; reused: boolean }>;
+}
+
+export const ENGINE_FILTERS =['number', 'full', 'chassis', 'bl', 'invoice', 'date', 'file'] as const;
 export type EngineFilter = Partial<Record<(typeof ENGINE_FILTERS)[number], string>>;
 export type EngineListRow = EngineRow & { id: string; invoice: string; file: string; jobId: string | null };
 

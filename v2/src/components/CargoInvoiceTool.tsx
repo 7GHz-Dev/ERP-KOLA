@@ -13,6 +13,7 @@ import { CargoInvoiceNormal, type ShipperChoice } from './CargoInvoiceNormal';
 import { CsvDrawer, PdfDrawer } from './CargoDocDrawers';
 import { ZoomImage } from './ZoomImage';
 import type { DraftCsv } from '@/lib/cargo-invoice/draft-csv';
+import type { FnDraftInfo } from '@/lib/cargo-invoice/fn-draft';
 
 /**
  * Create Cargo Invoice — อัปโหลด Invoice Excel → ระบบจัดเรียงให้ตรวจ → ดึงพิกัด (เพิ่มรุ่นใหม่ได้) → บันทึก Final Invoice
@@ -115,6 +116,18 @@ export function CargoInvoiceTool({ shippers, presetJob, presetFile }: {
   async function read(f: File) {
     reset();
     setFile(f);
+    /*
+     * งานนี้มี Draft FN Invoice ที่บันทึกไว้ — กรอกจาก Draft เลย ไม่ต้องอ่านไฟล์ / ให้ AI อ่านใหม่
+     * (Draft มีแต่แบบ NORMAL · โหลดไม่ได้ก็อ่านไฟล์ตามปกติ)
+     */
+    if (presetJob) {
+      const saved = await call<{ draft: FnDraftInfo | null }>(`/api/cargo-invoice/draft?jobId=${encodeURIComponent(presetJob.id)}`, { method: 'GET' })
+        .catch(() => ({ draft: null }));
+      if (saved.draft) {
+        setNormal({ cars: [], invoiceNo: '', invoiceDate: '', supplier: '', jobs: [presetJob], note: '', draft: saved.draft });
+        return;
+      }
+    }
     // รูป / PDF — ไปฟอร์ม NORMAL เลย (ฟอร์มให้ AI อ่านแล้วเติมให้)
     if (!/\.xlsx$/i.test(f.name)) {
       setNormal({ cars: [], invoiceNo: '', invoiceDate: '', supplier: '', jobs: presetJob ? [presetJob] : [], note: '' });

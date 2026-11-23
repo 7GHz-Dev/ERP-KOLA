@@ -215,8 +215,13 @@ function readTable(ws: Sheet, inv: CargoInvoice) {
 
   let totalRow = 0;
   const boxIndex: number[] = [];
+  /** ตู้จากแถวหัวตู้ "CONTAINER NO : TCNU2495509" ที่อยู่เหนือรถ (MSFZ · NORMAL แบบใหม่) */
+  const boxHead: string[] = [];
+  let head = '';
   for (let r = h.row + 1; r <= ws.maxRow; r++) {
     if (label(ws.value(r, 1)) === 'TOTAL') { totalRow = r; break; }
+    const boxLine = /^CONTAINERNO\.?:?([A-Z]{4}\d{7})$/.exec(label(ws.value(r, 1)).replace(/-/g, ''));
+    if (boxLine) { head = boxLine[1]; continue; }
     const chassis = clean(ws.value(r, h.chassis));
     if (!chassis) continue;
     const brand = clean(ws.value(r, h.make));
@@ -241,6 +246,7 @@ function readTable(ws: Sheet, inv: CargoInvoice) {
       ],
     });
     boxIndex.push(num(ws.value(r, h.box)) ?? 0);
+    boxHead.push(head);
   }
 
   if (totalRow) {
@@ -259,7 +265,8 @@ function readTable(ws: Sheet, inv: CargoInvoice) {
   inv.containers = [...boxes.values()];
   inv.cars.forEach((car, i) => {
     // ไม่มีคอลัมน์ลำดับตู้ (NORMAL) แต่มีตู้เดียว — รถทุกคันอยู่ตู้นั้น
-    car.container = boxes.get(boxIndex[i]) ?? (boxes.size === 1 ? [...boxes.values()][0] : '');
+    // หรือมีแถวหัวตู้เหนือรถ (CONTAINER NO : …) ใช้ตู้นั้น
+    car.container = boxes.get(boxIndex[i]) ?? (boxHead[i] || (boxes.size === 1 ? [...boxes.values()][0] : ''));
     if (!car.container) car.layoutProblems.push(`ไม่พบเลขตู้ลำดับ ${boxIndex[i] || '-'} ในรายการตู้ใต้ TOTAL`);
   });
 }

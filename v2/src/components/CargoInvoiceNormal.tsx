@@ -9,6 +9,8 @@ import type { DraftCsv } from '@/lib/cargo-invoice/draft-csv';
 import type { AiInvoice } from '@/lib/cargo-invoice/ai-read';
 import { cleanEdit, fieldProblems } from '@/lib/cargo-invoice/edit';
 import { enginePrefix, existingEngineNumber } from '@/lib/cargo-invoice/engine-format';
+import { checkChassis } from '@/lib/cargo-invoice/chassis-check';
+import type { FnDraftInfo } from '@/lib/cargo-invoice/fn-draft';
 import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { CsvDrawer } from './CargoDocDrawers';
@@ -32,15 +34,25 @@ export type ShipperChoice = { id: string; code: string | null; name: string; add
 type FormCar = {
   brand: string; model: string; chassis: string; weight: string; year: string; engine: string;
   cc: string; fuel: string; amount: string; container: string;
+  /** เลข 7 หลักจากปุ่มสุ่ม Engine — ใช้เมื่อช่อง ENGINE NO. ยังไม่มีเลขในตัว (ระบบตรวจซ้ำอีกครั้งตอนบันทึก) */
+  engineNo: string;
 };
-type CarKey = keyof FormCar;
+type CarKey = Exclude<keyof FormCar, 'engineNo'>;
 type Saved = { jobId: string; jobNo: string; version: number; pdf: boolean; invoiceNo: string; engines: { issued: number; reused: number } | null };
 type View = 'file' | 'fn' | 'both';
 
 const CURRENCIES = ['JPY', 'USD', 'EUR', 'GBP', 'CNY', 'AED', 'SGD', 'HKD', 'AUD', 'KRW', 'THB'];
 const FUELS = ['GASOLINE', 'DIESEL', 'PETROL'];
-const blank = (container = ''): FormCar => ({ brand: '', model: '', chassis: '', weight: '', year: '', engine: '', cc: '', fuel: 'GASOLINE', amount: '', container });
+const blank = (container = ''): FormCar => ({ brand: '', model: '', chassis: '', weight: '', year: '', engine: '', cc: '', fuel: 'GASOLINE', amount: '', container, engineNo: '' });
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+/** ช่องตัวเลขที่แสดงลูกน้ำ (ทีมขอ) — ระหว่างพิมพ์แสดงตามที่พิมพ์ ออกจากช่องแล้วใส่ลูกน้ำ */
+const COMMA_KEYS = new Set<CarKey>(['weight', 'amount']);
+/** "75000.5" → "75,000.5" · ค่าที่ไม่ใช่ตัวเลขคืนตามเดิม (ให้เห็นว่าพิมพ์ผิด) */
+const withCommas = (raw: string) => {
+  const s = raw.replace(/,/g, '').trim();
+  const m = /^(-?)(\d+)(\.\d*)?$/.exec(s);
+  return m ? `${m[1]}${m[2].replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${m[3] ?? ''}` : raw;
+};
 const today = () => new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
 /** dd/mm/yyyy → yyyy-mm-dd (ช่องวันที่ของเบราว์เซอร์) */
 const dmyToYmd = (s: string) => {
@@ -59,11 +71,12 @@ const valueOf = (c: FormCar) => ({
 });
 const fromParsed = (c: Pick<CargoCar, 'brand' | 'model' | 'chassis' | 'engine' | 'fuel' | 'cc' | 'year' | 'weight' | 'price' | 'container'>): FormCar => ({
   brand: c.brand, model: c.model, chassis: c.chassis, weight: text(c.weight), year: text(c.year), engine: c.engine,
-  cc: text(c.cc), fuel: c.fuel || 'GASOLINE', amount: text(c.price), container: c.container,
+  cc: text(c.cc), fuel: c.fuel || 'GASOLINE', amount: text(c.price), container: c.container, engineNo: '',
 });
 /** ช่องที่ระบบเติมให้ (มีค่า) — ทำสีไว้ให้คนตรวจ */
 const filledKeys = (list: FormCar[]) => new Set(list.flatMap((c, i) =>
-  (Object.keys(c) as CarKey[]).filter((k) => c[k] && !(k === 'fuel' && c[k] === 'GASOLINE' && !c.brand)).map((k) => `${i}:${k}`)));
+  (Object.keys(c) as Array<keyof FormCar>).filter((k): k is CarKey => k !== 'engineNo')
+    .filter((k) => c[k] && !(k === 'fuel' && c[k] === 'GASOLINE' && !c.brand)).map((k) => `${i}:${k}`)));
 
 const COLS: Array<{ k: CarKey; label: string; num?: boolean; cls?: string }> = [
   { k: 'brand', label: 'BRAND', cls: 'w-brand' },
@@ -80,7 +93,11 @@ export function CargoInvoiceNormal({
 }: {
   file: File;
   shippers: ShipperChoice[];
-  prefill: { cars: CargoCar[]; invoiceNo: string; invoiceDate: string; supplier: string; jobs: JobMatch[]; note: string };
+  prefill: {
+    cars: CargoCar[]; invoiceNo: string; invoiceDate: string; supplier: string; jobs: JobMatch[]; note: string;
+    /** Draft FN Invoice ที่บันทึกไว้ของงานนี้ — มีแล้วกรอกจาก Draft แทนการอ่านไฟล์ */
+    draft?: FnDraftInfo | null;
+  };
   onReset: () => void;
   /** popup Create FN Invoice — เอกสารซ้าย ข้อมูลขวา (ไม่ใส่ = เอกสารบน ข้อมูลล่าง) */
   side?: boolean;
@@ -93,18 +110,28 @@ export function CargoInvoiceNormal({
   const [added, setAdded] = useState<ShipperChoice[]>([]);
   const allShippers = useMemo(() => [...shippers, ...added], [shippers, added]);
   const matchShipper = (name: string) => allShippers.find((s) => name && norm(s.name) === norm(name))?.id ?? '';
-  const [shipperId, setShipperId] = useState(() => matchShipper(prefill.supplier));
+  const draft = prefill.draft ?? null;
+  const [shipperId, setShipperId] = useState(() => draft?.shipperId || matchShipper(prefill.supplier));
   // สกุลเงินตั้งต้น JPY (ทีมขอ) — AI อ่านเจอสกุลอื่นในใบจะเปลี่ยนให้เอง แก้ได้ที่ช่อง CURRENCY
-  const [currency, setCurrency] = useState('JPY');
-  const [invoiceDate, setInvoiceDate] = useState(dmyToYmd(prefill.invoiceDate) || today());
-  const [invoiceNo, setInvoiceNo] = useState(prefill.invoiceNo);
-  const [cars, setCars] = useState<FormCar[]>(() => (prefill.cars.length ? prefill.cars.map(fromParsed) : [blank()]));
+  const [currency, setCurrency] = useState(draft?.currency || 'JPY');
+  const [invoiceDate, setInvoiceDate] = useState(draft?.invoiceDate || dmyToYmd(prefill.invoiceDate) || today());
+  const [invoiceNo, setInvoiceNo] = useState(draft ? draft.invoiceNo : prefill.invoiceNo);
+  const [cars, setCars] = useState<FormCar[]>(() => (draft?.cars.length ? draft.cars.map((c) => ({ ...blank(), ...c }))
+    : prefill.cars.length ? prefill.cars.map(fromParsed) : [blank()]));
   /** ช่องที่ระบบเติม ยังไม่มีคนแก้ ("แถว:ช่อง") */
-  const [auto, setAuto] = useState<Set<string>>(() => (prefill.cars.length ? filledKeys(prefill.cars.map(fromParsed)) : new Set()));
-  const [note, setNote] = useState(prefill.note);
+  const [auto, setAuto] = useState<Set<string>>(() => (draft ? new Set(draft.auto)
+    : prefill.cars.length ? filledKeys(prefill.cars.map(fromParsed)) : new Set()));
+  const [note, setNote] = useState(draft
+    ? `โหลด Draft ที่บันทึกไว้ ${new Date(draft.savedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}${draft.savedBy ? ` โดย ${draft.savedBy}` : ''}`
+      + `${draft.fileName && draft.fileName !== file.name ? ` (กรอกจากไฟล์ ${draft.fileName})` : ''} — แก้ต่อแล้วบันทึก Final Invoice ได้เลย`
+    : prefill.note);
   const [tariffs, setTariffs] = useState<Tariff[] | null>(null);
   const [tariffFor, setTariffFor] = useState('');
-  const [chosen, setChosen] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<string[]>(() => draft?.tariffs ?? []);
+  /** Draft FN Invoice — เวลาบันทึกล่าสุดในรอบนี้ / ที่โหลดมา */
+  const [draftAt, setDraftAt] = useState<string | null>(draft?.savedAt ?? null);
+  /** ช่องตัวเลขที่กำลังพิมพ์ ("แถว:ช่อง") — แสดงตามที่พิมพ์ ไม่ใส่ลูกน้ำระหว่างพิมพ์ */
+  const [typing, setTyping] = useState('');
   const [adding, setAdding] = useState<number | null>(null);
   const [busy, setBusy] = useState('');
   const [reading, setReading] = useState(false);
@@ -178,7 +205,7 @@ export function CargoInvoiceNormal({
   }
   const tried = useRef(false);
   useEffect(() => {
-    if (tried.current || prefill.cars.length) return;
+    if (tried.current || prefill.cars.length || draft) return;
     tried.current = true;
     void aiRead();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -196,6 +223,9 @@ export function CargoInvoiceNormal({
   const shipper = allShippers.find((s) => s.id === shipperId) ?? null;
   const values = cars.map(valueOf);
   const problems = fieldProblems(values);
+  // BRAND · MODEL ↔ รหัสหน้า CHASSIS NO. (DATA_BRAND MODEL CHASSIS) — เตือนอย่างเดียว
+  const chassisChecks = values.map((v) => checkChassis(v.brand, v.model, v.chassis));
+  const chassisWarn = chassisChecks.filter((c) => c?.level === 'warn').length;
   const key = JSON.stringify(values.map((v) => [v.brand, v.model, v.fuel, v.cc, v.weight]));
   const tariffStale = Boolean(tariffs && tariffFor !== key);
   const sum = (k: 'weight' | 'price') => values.reduce((s, v) => s + (v[k] ?? 0), 0);
@@ -276,6 +306,55 @@ export function CargoInvoiceNormal({
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(''); }
   }
 
+  /** ปุ่มสุ่ม Engine — เลข 7 หลักไม่ซ้ำกับที่เคยออก ให้ทุกคันที่ช่อง ENGINE NO. ยังไม่มีเลขในตัว (กดซ้ำ = สุ่มใหม่) */
+  async function randomEngines() {
+    const want = cars.map((c, i) => ({ c, i })).filter(({ c }) => !existingEngineNumber(String(cleanEdit('engine', c.engine) ?? '')));
+    if (!want.length) { setError('ทุกคันมีเลขเครื่อง 7 หลักในช่อง ENGINE NO. อยู่แล้ว'); return; }
+    setBusy('กำลังสุ่มเลขเครื่อง…');
+    setError('');
+    try {
+      const data = await call<{ numbers: Array<{ number: string; reused: boolean }> }>('/api/cargo-invoice/engine-random', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jobId, chassis: want.map(({ c }) => String(cleanEdit('chassis', c.chassis) ?? '')) }),
+      });
+      setCars((prev) => prev.map((c, i) => {
+        const k = want.findIndex((w) => w.i === i);
+        return k < 0 ? c : { ...c, engineNo: data.numbers[k].number };
+      }));
+      const reused = data.numbers.filter((n) => n.reused).length;
+      if (reused) setNote(`สุ่มเลขเครื่อง ${want.length - reused} คัน · ${reused} คันเคยออกเลขกับ BL นี้แล้ว ใช้เลขเดิม`);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(''); }
+  }
+
+  /** บันทึก Draft FN Invoice — เก็บค่าที่กรอกไว้กับงาน ยังไม่ต้องครบ ยังไม่ออกเลขเครื่อง */
+  async function saveDraft() {
+    if (!jobId) { setError('เลือกงานก่อน — Draft เก็บไว้กับงาน'); return; }
+    setBusy('กำลังบันทึก Draft…');
+    setError('');
+    try {
+      const data = await call<{ savedAt: string }>('/api/cargo-invoice/draft', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jobId, draft: { shipperId, currency, invoiceDate, invoiceNo, cars, auto: [...auto], tariffs: chosen, fileName: file.name } }),
+      });
+      setDraftAt(data.savedAt);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(''); }
+  }
+
+  /** ทิ้ง Draft ที่โหลดมา แล้วให้ระบบอ่านไฟล์ใหม่ */
+  async function discardDraft() {
+    if (!jobId || !window.confirm('ทิ้ง Draft นี้ แล้วให้ระบบอ่านไฟล์ใหม่?')) return;
+    setBusy('กำลังทิ้ง Draft…');
+    try {
+      await call('/api/cargo-invoice/draft?jobId=' + encodeURIComponent(jobId), { method: 'DELETE' });
+      setDraftAt(null);
+      setCars([blank(job?.containers.length === 1 ? job.containers[0] : '')]);
+      setAuto(new Set());
+      setChosen([]);
+      setTariffs(null);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(''); }
+    void aiRead();
+  }
+
   async function savedCsv() {
     if (!saved) return;
     setBusy('กำลังสร้าง CSV…');
@@ -334,7 +413,9 @@ export function CargoInvoiceNormal({
       {note && !reading ? (
         <p className="batch-note cgi-normal-note">
           {note}
-          {!saved && /\.(pdf|png|jpe?g|webp|gif|xlsx)$/i.test(file.name) ? (
+          {!saved && draft && draftAt ? (
+            <button type="button" className="button tiny" disabled={locked} onClick={() => void discardDraft()}>ทิ้ง Draft · อ่านไฟล์ใหม่</button>
+          ) : !saved && /\.(pdf|png|jpe?g|webp|gif|xlsx)$/i.test(file.name) ? (
             <button type="button" className="button tiny" disabled={locked} onClick={() => void aiRead()}>🤖 ให้ AI อ่านอีกครั้ง</button>
           ) : null}
         </p>
@@ -399,6 +480,13 @@ export function CargoInvoiceNormal({
         <div className="section-title">
           รายการรถ {cars.length} คัน · น้ำหนักรวม {fmt(sum('weight'))} KG · ยอดรวม {fmt(sum('price'))} {currency}
           {auto.size ? <span className="cgi-auto-key"><i /> ระบบเติม — ยังไม่ได้ตรวจ ({auto.size} ช่อง)</span> : null}
+          {chassisWarn ? <span className="cgi-chassis-chk warn">⚠ BRAND/MODEL ไม่ตรงกับ CHASSIS {chassisWarn} คัน</span> : null}
+          {!locked ? (
+            <button type="button" className="button tiny cgi-roll" onClick={() => void randomEngines()}
+              title="สุ่มเลขเครื่อง 7 หลักที่ไม่ซ้ำกับที่เคยออก ให้ทุกคันที่ยังไม่มีเลข — แสดงใต้ช่อง ENGINE NO. (กดซ้ำ = สุ่มใหม่)">
+              🎲 สุ่ม Engine
+            </button>
+          ) : null}
         </div>
         <div className="table-wrap cgi-normal-tablewrap">
           <table className="data cgi-normal-table">
@@ -420,26 +508,42 @@ export function CargoInvoiceNormal({
                 return [
                   <tr key={`r${i}`} className={problems[i].length ? 'bad' : ''}>
                     <td className="w-no">{i + 1}</td>
-                    {COLS.map((col) => (
-                      <td key={col.k} className={col.cls}>
-                        <input className={cellCls(i, col.k)} value={c[col.k]} inputMode={col.num ? 'decimal' : undefined} disabled={locked}
-                          aria-label={`คันที่ ${i + 1} ${col.label}`}
-                          onChange={(e) => setCar(i, { [col.k]: col.num ? e.target.value : e.target.value.toUpperCase() })} />
-                        {col.k === 'engine' && v.engine ? (
-                          <small className="cgi-engine-out" title="ENGINE NO. ที่จะพิมพ์ในใบ (เลขจริงออกตอนบันทึก)">
-                            → {enginePrefix(v.engine)}-{existingEngineNumber(v.engine) ?? 'xxxxxxx'}
-                          </small>
-                        ) : null}
-                      </td>
-                    ))}
+                    {COLS.map((col) => {
+                      const comma = COMMA_KEYS.has(col.k) && typing !== `${i}:${col.k}`;
+                      const chk = col.k === 'chassis' ? chassisChecks[i] : null;
+                      const given = col.k === 'engine' ? existingEngineNumber(v.engine) : null;
+                      return (
+                        <td key={col.k} className={col.cls}>
+                          <input className={cellCls(i, col.k)} value={comma ? withCommas(c[col.k]) : c[col.k]}
+                            inputMode={col.num ? 'decimal' : undefined} disabled={locked}
+                            aria-label={`คันที่ ${i + 1} ${col.label}`}
+                            onFocus={() => setTyping(`${i}:${col.k}`)} onBlur={() => setTyping('')}
+                            onChange={(e) => setCar(i, { [col.k]: COMMA_KEYS.has(col.k) ? e.target.value.replace(/,/g, '')
+                              : col.num ? e.target.value : e.target.value.toUpperCase() })} />
+                          {chk ? (
+                            <small className={`cgi-chassis-chk ${chk.level}`} title={chk.text}>
+                              {chk.level === 'ok' ? `✓ ${chk.key}` : chk.level === 'warn' ? `⚠ ${chk.text}` : `? ${chk.text}`}
+                            </small>
+                          ) : null}
+                          {col.k === 'engine' && (v.engine || c.engineNo) ? (
+                            <small className={`cgi-engine-out${!given && c.engineNo ? ' rolled' : ''}`}
+                              title={given ? 'เลขเครื่องที่อยู่ในช่องแล้ว' : c.engineNo ? 'เลขจากปุ่มสุ่ม Engine — ไม่ซ้ำกับที่เคยออก (ตรวจอีกครั้งตอนบันทึก)' : 'ENGINE NO. ที่จะพิมพ์ในใบ (เลขจริงออกตอนบันทึก หรือกด 🎲 สุ่ม Engine)'}>
+                              → {v.engine ? enginePrefix(v.engine) : '(รหัสเครื่อง)'}-{given ?? (c.engineNo || 'xxxxxxx')}
+                            </small>
+                          ) : null}
+                        </td>
+                      );
+                    })}
                     <td className="w-fuel">
                       <select className={cellCls(i, 'fuel')} value={c.fuel} onChange={(e) => setCar(i, { fuel: e.target.value })} disabled={locked} aria-label={`คันที่ ${i + 1} FUEL`}>
                         {[...new Set([...FUELS, c.fuel].filter(Boolean))].map((f) => <option key={f}>{f}</option>)}
                       </select>
                     </td>
                     <td className="w-num w-amount">
-                      <input className={cellCls(i, 'amount')} value={c.amount} inputMode="decimal" disabled={locked} aria-label={`คันที่ ${i + 1} AMOUNT`}
-                        onChange={(e) => setCar(i, { amount: e.target.value })} />
+                      <input className={cellCls(i, 'amount')} value={typing === `${i}:amount` ? c.amount : withCommas(c.amount)}
+                        inputMode="decimal" disabled={locked} aria-label={`คันที่ ${i + 1} AMOUNT`}
+                        onFocus={() => setTyping(`${i}:amount`)} onBlur={() => setTyping('')}
+                        onChange={(e) => setCar(i, { amount: e.target.value.replace(/,/g, '') })} />
                     </td>
                     <td className="w-box">
                       {job?.containers.length ? (
@@ -466,7 +570,7 @@ export function CargoInvoiceNormal({
                       {!locked ? (
                         <span className="cgi-row-act">
                           <button type="button" className="icon-button" title="เพิ่มคันใหม่ค่าเหมือนคันนี้ (ยกเว้น Chassis)"
-                            onClick={() => { shiftAuto(i, 1); setCars((prev) => [...prev.slice(0, i + 1), { ...c, chassis: '' }, ...prev.slice(i + 1)]); }}>⧉</button>
+                            onClick={() => { shiftAuto(i, 1); setCars((prev) => [...prev.slice(0, i + 1), { ...c, chassis: '', engineNo: '' }, ...prev.slice(i + 1)]); }}>⧉</button>
                           {cars.length > 1 ? (
                             <button type="button" className="icon-button" title="ลบคันนี้"
                               onClick={() => { shiftAuto(i, -1); setCars((prev) => prev.filter((_, k) => k !== i)); }}>×</button>
@@ -523,8 +627,14 @@ export function CargoInvoiceNormal({
           </div>
         ) : (
           <>
-            <small>{missing.length ? `ยังขาด: ${missing.join(' · ')}` : `พร้อมบันทึกเป็น Final Invoice ของงาน ${job?.jobNo}`}{auto.size ? ` · มีช่องที่ระบบเติมยังไม่ได้แก้ ${auto.size} ช่อง (ตรวจแล้วบันทึกได้เลย)` : ''}</small>
+            <small>{missing.length ? `ยังขาด: ${missing.join(' · ')}` : `พร้อมบันทึกเป็น Final Invoice ของงาน ${job?.jobNo}`}{auto.size ? ` · มีช่องที่ระบบเติมยังไม่ได้แก้ ${auto.size} ช่อง (ตรวจแล้วบันทึกได้เลย)` : ''}
+              {chassisWarn ? ` · BRAND/MODEL ไม่ตรงกับ CHASSIS ${chassisWarn} คัน (ตรวจก่อนบันทึก)` : ''}
+              {draftAt ? <span className="cgi-draft-at"> · Draft บันทึกล่าสุด {new Date(draftAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span> : null}</small>
             <div className="cgi-save-actions">
+              <button type="button" className="button" disabled={Boolean(busy) || reading || !jobId} onClick={() => void saveDraft()}
+                title={jobId ? 'เก็บค่าที่กรอกไว้กับงานนี้ — ยังไม่ต้องครบ เปิด Create FN Invoice ของงานนี้อีกครั้งระบบโหลดให้' : 'เลือกงานก่อน — Draft เก็บไว้กับงาน'}>
+                💾 บันทึก Draft
+              </button>
               <button type="button" className="button" disabled={Boolean(busy) || reading || !cars.length} onClick={() => void fetchTariffs()}>
                 {tariffs ? '↻ ดึงพิกัดใหม่' : 'ดึงพิกัด'}
               </button>

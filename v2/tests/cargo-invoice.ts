@@ -386,8 +386,10 @@ async function normalFinal() {
   const v = (ref: string) => String((ws.getCell(ref).value as { result?: unknown } | null)?.result ?? ws.getCell(ref).value ?? '');
   assert.deepEqual([v('A1'), v('A2'), v('A3'), v('M5'), v('M6')], ['LEGEND MOTORS FZCP', 'PO BOX 41391 DUCAMZ DUBAI, UAE', 'TEL: 04-1234567', '13/08/2026', 'YKMA1289']);
   assert.deepEqual(['J8', 'J9', 'J10', 'J11', 'J12', 'J14', 'J15'].map(v), ['IRENES RAINBOW', '037S', 'KHOR FAKKEN, UNITED ARAB EMIRATES', 'LAEM CHABANG', '14/08/2026', 'EMIVAEESAD270818', 'CNC']);
-  assert.deepEqual([v('B20'), v('E20'), v('J20'), v('M19'), v('A23'), v('B23'), v('H23'), v('M23'), v('B25')],
-    ['TOYOTA', 'JTMAA7BJ4S4118676', 'F33A-1555956', 'AMOUNT (USD)', 'TOTAL', '2 UNITS', '5140', '153000', 'ESDU6077465']);
+  // แบบใหม่: แถวหัวตู้ "CONTAINER NO : …" ก่อนรถของตู้นั้น (example Normal Final Invoice.xlsx)
+  assert.deepEqual([v('A20'), v('B21'), v('E21'), v('J21'), v('M19'), v('A24'), v('B24'), v('H24'), v('M24'), v('B26')],
+    ['CONTAINER NO : ESDU6077465', 'TOYOTA', 'JTMAA7BJ4S4118676', 'F33A-1555956', 'AMOUNT (USD)', 'TOTAL', '2 UNITS', '5140', '153000', 'ESDU6077465']);
+  assert.equal((ws.getCell('H24').value as { formula?: string }).formula, 'SUM(H21:H22)');
   const back = await parseCargoInvoice(out);
   assert.deepEqual([back.pattern, back.currency, back.errors, back.cars.length, back.cars[1].container, back.cars[1].problems], ['NORMAL', 'USD', [], 2, 'ESDU6077465', []]);
   const draft = await readInvoice(out);
@@ -402,6 +404,30 @@ async function normalFinal() {
   assert.equal(csv.rows[1][col('invoiceAmountForeign')], '78000');
   assert.equal(csv.fileName, 'EMIVAEESAD270818.csv');
   assert.ok(csv.base64, 'ดาวน์โหลดได้ (TIS-620)');
+
+  // หลายตู้: หัวตู้ขึ้นใหม่ทุกครั้งที่ตู้เปลี่ยน · อ่านกลับได้ตู้ถูกคัน · worker / CSV อ่านครบทุกคัน
+  const two: NormalDoc = {
+    ...doc, containers: ['ESDU6077465', 'TCNU2495509'],
+    cars: [
+      { ...doc.cars[0], container: 'ESDU6077465' },
+      { ...doc.cars[1], container: 'TCNU2495509' },
+      { ...doc.cars[1], chassis: 'JTMAA7BJ1S4119999', engine: 'F33A-1234567', container: 'TCNU2495509' },
+    ],
+  };
+  const out2 = await writeSummary(await buildNormalWorkbook(two), normalInvoice(two), ['87033371', '87033371', '87033371']);
+  const wb2 = new ExcelJS.Workbook();
+  await wb2.xlsx.load(out2 as unknown as ArrayBuffer);
+  const v2 = (ref: string) => String((wb2.worksheets[0].getCell(ref).value as { result?: unknown } | null)?.result ?? wb2.worksheets[0].getCell(ref).value ?? '');
+  assert.deepEqual(['A20', 'A21', 'E21', 'A22', 'A23', 'E23', 'A24', 'E24', 'A26', 'B26', 'H26', 'B28', 'B29'].map(v2),
+    ['CONTAINER NO : ESDU6077465', '1', 'JTMAA7BJ4S4118676', 'CONTAINER NO : TCNU2495509', '2', 'JTMAA7BJ9S4118124', '3', 'JTMAA7BJ1S4119999',
+      'TOTAL', '3 UNITS', '7670', 'ESDU6077465', 'TCNU2495509']);
+  assert.deepEqual(normalInvoice(two).cars.map((c) => c.row), [21, 23, 24]);
+  const back2 = await parseCargoInvoice(out2);
+  assert.deepEqual([back2.errors, back2.cars.map((c) => c.container), back2.cars.flatMap((c) => c.problems)],
+    [[], ['ESDU6077465', 'TCNU2495509', 'TCNU2495509'], []]);
+  const draft2 = await readInvoice(out2);
+  assert.deepEqual([draft2.errors, draft2.cars.length, draft2.engines.filter((e) => e.existing).length], [[], 3, 3]);
+  assert.equal((await draftCsv(out2)).rows.length, 3);
 
   // CSV ของ JAN TRADING ก่อนบันทึก: เลขเครื่อง 0000000 · สกุลเงิน JPY
   const src = readFileSync(`${DIR}example JAN TRADING cargo invoice Original.xlsx`);

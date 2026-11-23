@@ -5,6 +5,7 @@
   "description": "KOLA Import ERP — Next.js + Postgres (Supabase)",
   "scripts": {
     "dev": "next dev --turbo",
+    "prebuild": "tsx scripts/build-chassis-rules.ts",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -64,7 +65,8 @@
     "migrate:total-cost": "tsx scripts/migrate-total-cost.ts",
     "test:total-cost": "tsx --tsconfig tsconfig.json tests/total-cost.ts",
     "test:haul": "tsx --tsconfig tsconfig.json tests/haul-risk.ts",
-    "test:free-time": "tsx --tsconfig tsconfig.json tests/free-time.ts"
+    "test:free-time": "tsx --tsconfig tsconfig.json tests/free-time.ts",
+    "chassis:rules": "tsx scripts/build-chassis-rules.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

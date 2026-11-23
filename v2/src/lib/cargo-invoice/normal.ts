@@ -7,6 +7,8 @@
  *   หัวใบ      ชื่อ Shipper + ที่อยู่ (ตั้งที่ Master Data) · Invoice DATE · Invoice NO.
  *   ข้อมูลเรือ  VESSEL · VOYAGE · PORT OF SHIPMENT · PORT OF DESTINATION · DATE OF SHIP · BL · CARRIER — จากงาน (ตารางหลัก)
  *   ตาราง      NO · BRAND · MODEL · CHASSIS NO. · WEIGHT · YEAR · ENGINE NO · CC · FUEL · AMOUNT (สกุลเงิน)
+ *              แต่ละตู้ขึ้นด้วยแถว "CONTAINER NO : เลขตู้" แล้วตามด้วยรถในตู้นั้น (ตามไฟล์ตัวอย่างล่าสุด)
+ *              ผู้เรียกเรียงรถตามตู้มาแล้ว — ตู้เปลี่ยนเมื่อไหร่ขึ้นแถวตู้ใหม่ · ยังไม่มีตู้ (Preview ก่อนเลือกงาน) ไม่มีแถวตู้
  *   ท้ายตาราง   TOTAL n UNITS · น้ำหนักรวม · ยอดรวม แล้วรายการตู้ (ลำดับ · เลขตู้)
  *
  * หัวตารางอยู่แถว 19 · CHASSIS คอลัมน์ E · ENGINE คอลัมน์ J — แบบเดียวกับ MSFZ ที่ worker Draft ใบขนอ่านอยู่แล้ว (LAYOUTS NORMAL)
@@ -41,6 +43,25 @@ export type NormalDoc = {
 
 type Style = Partial<ExcelJS.Style>;
 const copy = (s: Style): Style => JSON.parse(JSON.stringify(s ?? {}));
+
+export const containerLabel = (box: string) => `CONTAINER NO : ${box}`;
+
+/**
+ * แถวของรถแต่ละคัน และแถวหัวตู้ — ใช้ร่วมกันทั้งตอนเขียนไฟล์และตอนบอกตำแหน่งรถ (normalInvoice)
+ * ขึ้นแถวหัวตู้เมื่อเลขตู้เปลี่ยนจากคันก่อน (รถไม่มีตู้ไม่ขึ้นหัว)
+ */
+export function normalRows(cars: Pick<NormalCar, 'container'>[]) {
+  const carRows: number[] = [];
+  const boxRows: Array<{ row: number; box: string }> = [];
+  let r = FIRST_ROW;
+  let prev = '';
+  for (const car of cars) {
+    if (car.container && car.container !== prev) boxRows.push({ row: r++, box: car.container });
+    prev = car.container;
+    carRows.push(r++);
+  }
+  return { carRows, boxRows, last: r - 1 };
+}
 
 /** ไฟล์ Final Invoice (ยังไม่มีตารางสรุป — ผู้เรียกเขียนต่อด้วย writeSummary) */
 export async function buildNormalWorkbook(doc: NormalDoc): Promise<Buffer> {
@@ -87,20 +108,24 @@ export async function buildNormalWorkbook(doc: NormalDoc): Promise<Buffer> {
     if (height) r.height = height;
   };
   const money = '#,##0.00';
+  const { carRows, boxRows, last } = normalRows(doc.cars);
+  // แถวหัวตู้: แบบแถวรถ แต่ข้อความชิดซ้าย (ไม่จัดกลางแบบเลขลำดับ) และสูงเท่าแถว TOTAL ตามไฟล์ตัวอย่าง
+  const boxLabelStyle = carStyle.map((s, i) => (i === 0 ? { ...copy(s), alignment: { vertical: 'middle' } } as Style : copy(s)));
+  for (const b of boxRows) put(b.row, boxLabelStyle, { 1: containerLabel(b.box) }, heights.total);
   doc.cars.forEach((car, i) => {
-    put(FIRST_ROW + i, carStyle, {
+    put(carRows[i], carStyle, {
       1: i + 1, 2: car.brand, 3: car.model, 5: car.chassis, 8: car.weight, 9: car.year,
       10: car.engine, 11: car.cc, 12: car.fuel, 13: car.amount,
     }, heights.car);
-    ws.getCell(FIRST_ROW + i, 13).numFmt = money;
+    ws.getCell(carRows[i], 13).numFmt = money;
   });
-  const last = FIRST_ROW + doc.cars.length - 1;
+  const first = carRows[0] ?? FIRST_ROW;
   const totalRow = last + 2;
   const sum = (k: 'weight' | 'amount') => doc.cars.reduce((s, c) => s + (c[k] ?? 0), 0);
   put(totalRow, totalStyle, {
     1: 'TOTAL', 2: `${doc.cars.length} UNITS`,
-    8: { formula: `SUM(H${FIRST_ROW}:H${last})`, result: sum('weight') },
-    13: { formula: `SUM(M${FIRST_ROW}:M${last})`, result: sum('amount') },
+    8: { formula: `SUM(H${first}:H${last})`, result: sum('weight') },
+    13: { formula: `SUM(M${first}:M${last})`, result: sum('amount') },
   }, heights.total);
   ws.getCell(totalRow, 13).numFmt = money;
   doc.containers.forEach((box, i) => put(totalRow + 2 + i, boxStyle, { 1: i + 1, 2: box }, heights.box));
@@ -112,6 +137,7 @@ export async function buildNormalWorkbook(doc: NormalDoc): Promise<Buffer> {
 
 /** ข้อมูลใบสำหรับเขียนตารางสรุป (writeSummary) — โครงเดียวกับที่ parse.ts อ่านจากใบผู้ขาย */
 export function normalInvoice(doc: NormalDoc): CargoInvoice {
+  const { carRows } = normalRows(doc.cars);
   return {
     pattern: 'NORMAL', supplier: doc.shipper.name, invoiceNo: doc.invoiceNo, invoiceDate: doc.invoiceDate,
     blNo: doc.blNo, bookingNo: '', vessel: [doc.vessel, doc.voyage].filter(Boolean).join(' V.'), currency: doc.currency,
@@ -121,7 +147,7 @@ export function normalInvoice(doc: NormalDoc): CargoInvoice {
       no: i + 1, container: c.container, brand: c.brand, model: c.model, chassis: c.chassis, engine: c.engine,
       fuel: c.fuel, cc: c.cc, year: c.year, weight: c.weight, price: c.amount,
       desc1: `USED ${c.brand} ${c.model},`, desc2: engineDesc(c.engine, c.fuel, c.cc, c.year),
-      sheet: 'invoice', row: FIRST_ROW + i, cells: [], layoutProblems: [], problems: [],
+      sheet: 'invoice', row: carRows[i], cells: [], layoutProblems: [], problems: [],
     })),
   };
 }

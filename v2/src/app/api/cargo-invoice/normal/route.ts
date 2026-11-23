@@ -10,6 +10,7 @@ import { xlsxToPdf } from '@/lib/xlsx-pdf';
 import { cleanEdit, fieldProblems } from '@/lib/cargo-invoice/edit';
 import { enginePrefix, existingEngineNumber } from '@/lib/cargo-invoice/engine-format';
 import { draftCsv } from '@/lib/cargo-invoice/draft-csv';
+import { deleteFnDraft } from '@/lib/cargo-invoice/fn-draft';
 import { cargoReader, cargoUser, json } from '@/lib/cargo-invoice/http';
 import { jobById } from '@/lib/cargo-invoice/jobs';
 import { buildNormalWorkbook, normalInvoice, type NormalCar, type NormalDoc } from '@/lib/cargo-invoice/normal';
@@ -72,7 +73,10 @@ export async function POST(request: Request) {
     year: cleanEdit('year', c.year) as number | null, weight: cleanEdit('weight', c.weight) as number | null,
     price: cleanEdit('price', c.amount) as number | null,
     container: String(c.container ?? '').replace(/[\s-]/g, '').toUpperCase(),
+    // เลข 7 หลักจากปุ่มสุ่ม Engine — ใช้เมื่อช่อง ENGINE NO. ยังไม่มีเลขในตัว
+    engineNo: /^\d{7}$/.test(String(c.engineNo ?? '')) ? String(c.engineNo) : null,
   }));
+  const givenNumber = (c: (typeof cars)[number]) => existingEngineNumber(c.engine) ?? c.engineNo;
 
   if (mode === 'save') {
     const problems = fieldProblems(cars);
@@ -98,16 +102,29 @@ export async function POST(request: Request) {
   }
 
   // เลขเครื่อง: ส่วนหน้าขีดแรก + เลข 7 หลัก (เหมือน JAN TRADING / AICHI) — มีเลข 7 หลักอยู่แล้วใช้ตามนั้น
-  let numbers = cars.map((c) => existingEngineNumber(c.engine) ?? (mode === 'csv' ? '0000000' : 'xxxxxxx'));
+  let numbers = cars.map((c) => givenNumber(c) ?? (mode === 'csv' ? '0000000' : 'xxxxxxx'));
   let engines: { issued: number; reused: number } | null = null;
   if (mode === 'save') {
-    const assigned = await assignEngineNumbers({
-      jobId: job.id, blNo: (job.blNo ?? '').replace(/\s/g, '').toUpperCase(), invoiceNo, sourceFile: `${job.jobNo} NORMAL`,
-      cars: cars.map((c) => ({ chassis: c.chassis, prefix: enginePrefix(c.engine), existing: existingEngineNumber(c.engine) })),
-    });
-    numbers = assigned.numbers;
-    engines = { issued: assigned.issued, reused: assigned.reused };
+    try {
+      const assigned = await assignEngineNumbers({
+        jobId: job.id, blNo: (job.blNo ?? '').replace(/\s/g, '').toUpperCase(), invoiceNo, sourceFile: `${job.jobNo} NORMAL`,
+        cars: cars.map((c) => ({ chassis: c.chassis, prefix: enginePrefix(c.engine), existing: givenNumber(c) })),
+      });
+      numbers = assigned.numbers;
+      engines = { issued: assigned.issued, reused: assigned.reused };
+    } catch (e) {
+      // เลขจากปุ่มสุ่มถูกใช้ไปก่อนบันทึก (หรือซ้ำกันเอง) — ให้กดสุ่มใหม่
+      return json({ error: `${e instanceof Error ? e.message : String(e)} — กด 🎲 สุ่ม Engine ใหม่แล้วบันทึกอีกครั้ง` }, 409);
+    }
   }
+
+  /*
+   * ใบแบบใหม่ขึ้นแถว "CONTAINER NO : …" แล้วตามด้วยรถในตู้นั้น — เรียงรถตามลำดับตู้ของงาน (คงลำดับเดิมในตู้เดียวกัน)
+   * ตรวจ/แจ้งปัญหาด้านบนใช้ลำดับในหน้าเว็บ (คันที่ n) ส่วนลำดับในใบใช้ลำดับหลังเรียง
+   */
+  const boxOrder = [...boxes, ...cars.map((c) => c.container).filter((b) => b && !boxes.includes(b))];
+  const rank = (b: string) => (b ? boxOrder.indexOf(b) : boxOrder.length);
+  const order = cars.map((_, i) => i).sort((a, b) => rank(cars[a].container) - rank(cars[b].container) || a - b);
 
   const doc: NormalDoc = {
     shipper: { name: shipper?.name ?? '(เลือก Shipper)', address: shipper?.address ?? '' },
@@ -116,14 +133,17 @@ export async function POST(request: Request) {
     portOfDestination: job.ship.portOfDestination, dateOfShip: ymdToDmy(job.ship.etd),
     blNo: (job.blNo ?? '').trim(), carrier: job.ship.carrier,
     containers: boxes.length ? boxes : [...new Set(cars.map((c) => c.container).filter(Boolean))],
-    cars: cars.map((c, i): NormalCar => ({
-      brand: c.brand, model: c.model, chassis: c.chassis, weight: c.weight, year: c.year, cc: c.cc, fuel: c.fuel,
-      amount: c.price, container: c.container, engine: c.engine ? `${enginePrefix(c.engine)}-${numbers[i]}` : '',
-    })),
+    cars: order.map((i): NormalCar => {
+      const c = cars[i];
+      return {
+        brand: c.brand, model: c.model, chassis: c.chassis, weight: c.weight, year: c.year, cc: c.cc, fuel: c.fuel,
+        amount: c.price, container: c.container, engine: c.engine ? `${enginePrefix(c.engine)}-${numbers[i]}` : '',
+      };
+    }),
   };
   let bytes: Buffer;
   try {
-    bytes = await writeSummary(await buildNormalWorkbook(doc), normalInvoice(doc), tariffs);
+    bytes = await writeSummary(await buildNormalWorkbook(doc), normalInvoice(doc), order.map((i) => tariffs[i]));
   } catch (e) {
     return json({ error: `สร้าง Final Invoice ไม่ได้: ${e instanceof Error ? e.message : String(e)}` }, 400);
   }
@@ -145,6 +165,8 @@ export async function POST(request: Request) {
   });
   let pdf = true;
   try { pdf = Boolean(await storeInvoicePdf(job.id, user.id, bytes)); } catch { pdf = false; }
+  // เป็น Final Invoice แล้ว ไม่ต้องเก็บ Draft
+  await deleteFnDraft(job.id).catch(() => undefined);
   await logActivity(user.id, stored.current ? 'REPLACE_FILE' : 'UPLOAD_FILE', 'FILE', stored.id,
     { jobId: job.id, category: 'FINAL_INVOICE', version: stored.version, source: 'CARGO_INVOICE_NORMAL', cars: cars.length, engines });
   revalidatePath('/pending');
