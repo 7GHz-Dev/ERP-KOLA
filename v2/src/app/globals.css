@@ -2935,6 +2935,13 @@ img.cgi-doc-file { overflow: auto; }
   width: 100%; font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface);
 }
 .cgi-normal-table input.auto, .cgi-normal-table select.auto { background: var(--blue-soft, #e8f1fb); border-color: #9cc1ea; }
+/* JAN TRADING / AICHI: ช่องที่แก้จากค่าในไฟล์ (ชี้ดูค่าเดิม) · ช่องที่อ่านอย่างเดียว */
+.cgi-normal-table input.edited, .cgi-normal-table select.edited { background: var(--amber-soft); border-color: #e3c27a; }
+.cgi-normal-table td.cgi-box-ro { padding-top: 8px; font-size: 12px; white-space: nowrap; }
+.cgi-normal-sec > .cgi-checks, .cgi-normal-sec > .cgi-charges { margin-top: 10px; }
+.cgi-ro { display: block; padding: 5px 0; font-weight: 600; overflow-wrap: anywhere; }
+.cgi-edit-key { display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; font-size: 12px; font-weight: 400; color: #7a5200; }
+.cgi-edit-key i { width: 12px; height: 12px; border-radius: 3px; background: var(--amber-soft); border: 1px solid #e3c27a; }
 .cgi-normal-table tr.bad > td { background: #fff4f4; }
 .cgi-normal-table .w-no { width: 34px; text-align: center; color: var(--muted); padding-top: 8px; }
 .cgi-normal-table .w-brand { min-width: 17.16ch; width: 17.16ch; }

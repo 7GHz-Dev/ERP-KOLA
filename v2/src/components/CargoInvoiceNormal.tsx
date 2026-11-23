@@ -16,7 +16,7 @@ import { SearchSelect } from '@/components/SearchSelect';
 import { QuickAddMaster } from '@/components/QuickAddMaster';
 import { CsvDrawer } from './CargoDocDrawers';
 import { AddRule, call, type Tariff } from './CargoShared';
-import { ZoomImage } from './ZoomImage';
+import { CargoDocPane, type DocView } from './CargoDocPane';
 
 /**
  * Create Cargo Invoice แบบ NORMAL — ผู้ขายที่ไม่ใช่ JAN TRADING / AICHI
@@ -40,7 +40,6 @@ type FormCar = {
 };
 type CarKey = Exclude<keyof FormCar, 'engineNo'>;
 type Saved = { jobId: string; jobNo: string; version: number; pdf: boolean; invoiceNo: string; engines: { issued: number; reused: number } | null };
-type View = 'file' | 'fn' | 'both';
 
 const CURRENCIES = ['JPY', 'USD', 'EUR', 'GBP', 'CNY', 'AED', 'SGD', 'HKD', 'AUD', 'KRW', 'THB'];
 const FUELS = ['GASOLINE', 'DIESEL', 'PETROL'];
@@ -141,37 +140,9 @@ export function CargoInvoiceNormal({
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
   const [previewFor, setPreviewFor] = useState('');
-  const [view, setView] = useState<View>('file');
+  const [view, setView] = useState<DocView>('file');
   const [csv, setCsv] = useState<DraftCsv | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
-
-  /* ---------- ไฟล์ผู้ขาย: รูป / PDF เปิดตรง · Excel แปลงเป็น PDF ที่เซิร์ฟเวอร์ ---------- */
-  const [fileView, setFileView] = useState<{ url: string; kind: 'img' | 'pdf' } | null>(null);
-  const [fileNote, setFileNote] = useState('');
-  useEffect(() => {
-    let url = '';
-    let gone = false;
-    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name);
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-    if (isImage || isPdf) {
-      url = URL.createObjectURL(file);
-      setFileView({ url, kind: isImage ? 'img' : 'pdf' });
-    } else if (/\.xlsx$/i.test(file.name)) {
-      setFileNote('กำลังแปลง Excel เป็น PDF…');
-      const fd = new FormData();
-      fd.set('file', file);
-      void fetch('/api/cargo-invoice/file-preview', { method: 'POST', body: fd }).then(async (res) => {
-        if (gone) return;
-        if (!res.ok) { setFileNote((await res.json().catch(() => ({}))).error ?? 'แปลงไฟล์ไม่ได้'); return; }
-        url = URL.createObjectURL(await res.blob());
-        setFileView({ url, kind: 'pdf' });
-        setFileNote('');
-      });
-    } else {
-      setFileNote('ไฟล์ชนิดนี้แสดงในหน้าไม่ได้ — เปิดดูจากเครื่องแทน');
-    }
-    return () => { gone = true; if (url) URL.revokeObjectURL(url); };
-  }, [file]);
 
   /* ---------- ระบบอ่านไฟล์ไม่ได้เอง → ให้ AI อ่านแล้วเติมฟอร์ม (ครั้งเดียวตอนเปิด · กดอ่านซ้ำได้) ---------- */
   async function aiRead() {
@@ -419,43 +390,14 @@ export function CargoInvoiceNormal({
     ['CARRIER', job.ship.carrier], ['ตู้', job.containers.join(', ')],
   ] : [];
 
-  const vendorPane = fileView?.kind === 'img' ? <ZoomImage className="cgi-doc-file" src={fileView.url} alt={file.name} />
-    : fileView ? <object className="cgi-doc-file" data={fileView.url} type="application/pdf"><p>{file.name}</p></object>
-      : <p className="batch-note">{fileNote}</p>;
-  const fnPane = preview
-    ? <object className="cgi-doc-file" data={preview} type="application/pdf"><p><a href={preview} target="_blank" rel="noreferrer">เปิด Preview FN Invoice</a></p></object>
-    : (
-      <div className="cgi-doc-empty">
-        <p>ยังไม่ได้สร้าง Preview FN Invoice</p>
-        <button type="button" className="button primary" disabled={Boolean(busy) || reading} onClick={() => void post('preview')}>👁 Preview FN Invoice</button>
-      </div>
-    );
   const cellCls = (i: number, k: CarKey) => (auto.has(`${i}:${k}`) ? 'auto' : '');
 
   return (
     <div className={`cgi-normal${side ? ' side' : ''}`}>
       {/* ---------- บน: เอกสาร ---------- */}
-      <section className="cgi-doc">
-        <div className="cgi-doc-bar">
-          <span className="badge neutral">NORMAL</span>
-          <b className="cgi-doc-name" title={file.name}>{file.name}</b>
-          <div className="cgi-doc-tabs" role="tablist" aria-label="เอกสารที่แสดง">
-            {([['file', 'OG Invoice'], ['fn', `FN Invoice${previewStale ? ' •' : ''}`], ['both', 'ดูคู่กัน']] as Array<[View, string]>).map(([v, label]) => (
-              <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} onClick={() => setView(v)}>{label}</button>
-            ))}
-          </div>
-          <button type="button" className="button tiny" disabled={Boolean(busy) || reading} onClick={() => void post('preview')}>
-            {preview ? '↻ Preview FN Invoice' : '👁 Preview FN Invoice'}
-          </button>
-          {preview ? <a className="button tiny" href={preview} target="_blank" rel="noreferrer">เปิดแท็บใหม่</a> : null}
-          <button type="button" className="button tiny" onClick={onReset} disabled={Boolean(busy)}>เริ่มใหม่</button>
-        </div>
-        {previewStale && view !== 'file' ? <p className="cgi-doc-stale">ข้อมูลด้านล่างเปลี่ยนหลัง Preview — กด ↻ Preview FN Invoice เพื่อดูฉบับล่าสุด</p> : null}
-        <div className={`cgi-doc-body ${view}`}>
-          {view !== 'fn' ? <div className="cgi-doc-pane">{view === 'both' ? <small>OG Invoice</small> : null}{vendorPane}</div> : null}
-          {view !== 'file' ? <div className="cgi-doc-pane">{view === 'both' ? <small>FN Invoice{preview ? ' (ยังไม่บันทึก · เลขเครื่อง xxxxxxx)' : ''}</small> : null}{fnPane}</div> : null}
-        </div>
-      </section>
+      <CargoDocPane file={file} badge="NORMAL" view={view} onView={setView} preview={preview} previewStale={previewStale}
+        disabled={Boolean(busy) || reading} onPreview={() => void post('preview')} onReset={onReset}
+        fnNote="ยังไม่บันทึก · เลขเครื่อง xxxxxxx" />
 
       {/* ---------- ล่าง (popup: ขวา): ข้อมูล ---------- */}
       <div className="cgi-normal-data">
