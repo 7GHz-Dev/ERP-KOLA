@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRef, useState } from 'react';
 import { saveDoHandoffResult } from '@/lib/actions/jobs';
 import { ConfirmSubmit } from '@/components/Interactions';
 import { OriginPortField } from '@/components/SearchSelect';
@@ -59,7 +58,8 @@ export function DoRowForm({
   /** วันนี้ (YYYY-MM-DD เวลาไทย) ใช้บอก Urgent ของ Storage */
   today?: string;
 }) {
-  const router = useRouter();
+  /** กันส่งซ้ำแบบทันที — state ยังไม่ทันเปลี่ยนถ้ากดติดกันเร็ว ๆ */
+  const inFlight = useRef(false);
   /** กำลังบันทึก / ส่งอยู่ — กันกดซ้ำ (เดิมกดซ้ำแล้วส่ง LINE ซ้ำ) */
   const [busy, setBusy] = useState<'' | 'save' | 'send'>('');
   /** ผลการกดล่าสุดในแผงนี้ */
@@ -140,7 +140,8 @@ export function DoRowForm({
          * กด "ส่ง Partner" สำเร็จ งานย้ายไปแท็บส่งแล้ว จึงเรียก onSaved ให้แผงปิด
          */
         e.preventDefault();
-        if (busy) return;
+        if (busy || inFlight.current) return;
+        inFlight.current = true;
         const form = e.currentTarget;
         const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLElement | null;
         const fd = new FormData(form, submitter);
@@ -153,13 +154,22 @@ export function DoRowForm({
           if (!res.ok) { setResult({ ok: false, text: res.error }); return; }
           const at = new Date(res.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           setResult({ ok: true, text: sending ? `✓ ส่ง Partner แล้ว ${at}` : `✓ บันทึกแล้ว ${at}` });
-          router.refresh();
+          // ไม่ต้อง router.refresh() — action เรียก revalidatePath แล้ว หน้าอัปเดตมากับผลบันทึกเลย
+          // (เดิมเรียกซ้ำ = โหลดหน้าเต็ม 2 รอบต่อการกดหนึ่งครั้ง)
           if (sending) onSaved?.();
         } catch (err) {
           setResult({ ok: false, text: err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ — ลองอีกครั้ง' });
         } finally {
+          inFlight.current = false;
           setBusy('');
         }
+      }}
+      onKeyDown={(e) => {
+        /*
+         * Enter ในช่องกรอกไม่สั่งบันทึก — ต้องกดปุ่มเท่านั้น
+         * 23 พ.ย. 69 มีการบันทึกงานเดียวซ้ำทุก ~200ms (Enter ค้าง) ทำให้ระบบทั้งระบบค้าง
+         */
+        if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault();
       }}
     >
       <input type="hidden" name="jobId" value={jobId} />
