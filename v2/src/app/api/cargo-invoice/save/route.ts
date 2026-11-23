@@ -13,6 +13,7 @@ import { assignEngineNumbers } from '@/lib/engine-numbers';
 import { allRules, lookup, TARIFF_CODE } from '@/lib/cargo-invoice/tariff';
 import { cargoUser, invoiceFile, json } from '@/lib/cargo-invoice/http';
 import { learnCarCodes } from '@/lib/cargo-invoice/car-codes';
+import { finalInvoiceName } from '@/lib/file-names';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -98,7 +99,8 @@ export async function POST(request: Request) {
   const bytes = await buildFinalInvoice(file.bytes, inv, original, { tariffs, engineNumbers: numbers });
   await recordInvoiceNo(inv.pattern, inv.invoiceNo);
   const stored = await storeJobFileVersion({
-    jobId: job.id, category: 'FINAL_INVOICE', bytes, fileName: file.name,
+    // ชื่อ BL_FNInv_HH.MM (ทีมขอ) แทนชื่อไฟล์ผู้ขาย — ชื่อเดิมยังอยู่ใน activity log (sourceFile)
+    jobId: job.id, category: 'FINAL_INVOICE', bytes, fileName: finalInvoiceName(inv.blNo || job.blNo, job.jobNo),
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     userId: user.id, note: `สร้างจาก Create Cargo Invoice · ${inv.pattern} · ${inv.cars.length} คัน${engines ? ` · เลขเครื่องใหม่ ${engines.issued}` : ''}`,
     changeReason: 'บันทึกใหม่จาก Create Cargo Invoice',

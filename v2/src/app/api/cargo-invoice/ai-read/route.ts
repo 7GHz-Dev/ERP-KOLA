@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (ext === 'pdf') kind = 'pdf';
   else if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) kind = ext as typeof kind;
   else if (ext === 'xlsx') {
-    const pdf = await xlsxToPdf(bytes);
+    const pdf = await xlsxToPdf(bytes, { anySheet: true });
     if (!pdf) return json({ error: 'แปลง Excel ให้ AI อ่านไม่ได้ — คีย์เองจากไฟล์ด้านบน' }, 400);
     bytes = Buffer.from(pdf);
     kind = 'pdf';

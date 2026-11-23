@@ -7,6 +7,7 @@ import { renderEofficeRequestPdf } from '@/lib/eoffice-pdf';
 import { xlsxToPdf } from '@/lib/xlsx-pdf';
 import { storeDoLetterPdf } from '@/lib/do-letter-store';
 import { doBundleFileName } from '@/lib/do-bundle-options';
+import { eofficeMergedName, finalInvoiceName } from '@/lib/file-names';
 import { DO_DOC_TYPES, DO_SLIP_TYPES } from '@/lib/do-attachments';
 
 /**
@@ -178,7 +179,8 @@ export async function buildBundle(
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job || job.isArchived) throw new Error('ไม่พบงานหรือถูกปิดการใช้งาน');
   if (kind !== 'eoffice' && job.doExchangedAt) throw new Error('งานนี้ส่งแลก DO แล้ว');
-  const outputName = kind === 'eoffice' ? `${job.jobNo} [รวม${cfg.title}].pdf` : doBundleFileName(job.blNo ?? '', kind);
+  // ชุด E-Office: BL_รวมชุดE.pdf (ทีมขอ)
+  const outputName = kind === 'eoffice' ? eofficeMergedName(job.blNo, job.jobNo) : doBundleFileName(job.blNo ?? '', kind);
   if (kind === 'do' || kind === 'doPlain') {
     await onStep?.({ index: 0, total: cfg.parts.length + 1, label: 'ออกจดหมายแลก DO', status: 'reading' });
     await storeDoLetterPdf(jobId, userId, kind === 'do');
@@ -422,7 +424,16 @@ export async function storeInvoicePdf(jobId: string, userId: string, source: Buf
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
   if (!job) return null;
 
-  const fileName = `${job.jobNo} [Final Invoice].pdf`;
+  /*
+   * ชื่อเดียวกับไฟล์ Excel ตัวปัจจุบัน (BL_FNInv_HH.MM) แค่เปลี่ยนนามสกุล — จะได้รู้ว่าเป็นคู่กัน
+   * ยังไม่มีไฟล์ Excel (ไม่น่าเกิด) ตั้งชื่อใหม่ตามเวลาตอนแปลง
+   */
+  const [xlsx] = await db.select({ fileName: files.fileName }).from(files).where(and(
+    eq(files.jobId, jobId), eq(files.category, 'FINAL_INVOICE'), eq(files.isCurrent, true),
+  )).limit(1);
+  const fileName = xlsx?.fileName && /\.xlsx?$/i.test(xlsx.fileName)
+    ? xlsx.fileName.replace(/\.xlsx?$/i, '.pdf')
+    : finalInvoiceName(job.blNo, job.jobNo, 'pdf');
   const id = newId('FIL');
   const key = buildKey(jobId, 'FINAL_INVOICE_PDF', id, fileName);
 

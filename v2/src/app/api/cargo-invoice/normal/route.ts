@@ -11,6 +11,7 @@ import { cleanEdit, fieldProblems } from '@/lib/cargo-invoice/edit';
 import { enginePrefix, existingEngineNumber } from '@/lib/cargo-invoice/engine-format';
 import { draftCsv } from '@/lib/cargo-invoice/draft-csv';
 import { deleteFnDraft } from '@/lib/cargo-invoice/fn-draft';
+import { finalInvoiceName } from '@/lib/file-names';
 import { cargoReader, cargoUser, json } from '@/lib/cargo-invoice/http';
 import { jobById } from '@/lib/cargo-invoice/jobs';
 import { buildNormalWorkbook, normalInvoice, type NormalCar, type NormalDoc } from '@/lib/cargo-invoice/normal';
@@ -158,7 +159,7 @@ export async function POST(request: Request) {
   }
 
   const stored = await storeJobFileVersion({
-    jobId: job.id, category: 'FINAL_INVOICE', bytes, fileName: `${job.jobNo} Final Invoice.xlsx`,
+    jobId: job.id, category: 'FINAL_INVOICE', bytes, fileName: finalInvoiceName(job.blNo, job.jobNo),
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     userId: user.id, note: `สร้างจาก Create Cargo Invoice · NORMAL · ${cars.length} คัน · ${invoiceNo}`,
     changeReason: 'บันทึกใหม่จาก Create Cargo Invoice',

@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const file = await invoiceFile(await request.formData());
   if (typeof file === 'string') return json({ error: file }, 400);
   try {
-    const pdf = await xlsxToPdf(file.bytes);
+    const pdf = await xlsxToPdf(file.bytes, { anySheet: true });
     if (!pdf) return json({ error: 'แปลงไฟล์นี้เป็น PDF ไม่ได้ — ไฟล์ไม่ได้ตั้งขอบเขตการพิมพ์และไม่มีคำว่า INVOICE ในหัวใบ เปิดไฟล์ใน Excel ดูแทน' }, 400);
     return new Response(new Uint8Array(pdf), { headers: { 'content-type': 'application/pdf', 'cache-control': 'no-store' } });
   } catch (e) {
