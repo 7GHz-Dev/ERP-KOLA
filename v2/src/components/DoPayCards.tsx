@@ -2,7 +2,7 @@ import { freeLastDate } from '@/lib/free-time';
 import Link from 'next/link';
 import { DoAttachments } from '@/components/DoAttachments';
 import type { DoAttachment } from '@/lib/do-attachments';
-import { claimAmounts } from '@/lib/do-claim';
+import { claimSummary, type DoCharge } from '@/lib/do-charges';
 import { addDays, formatDate, formatDateTime } from '@/lib/format';
 import type { JobRow } from '@/lib/queries/jobs';
 import { DoPayCheckbox } from '@/components/DoPaySelection';
@@ -15,12 +15,14 @@ import { DoPayCheckbox } from '@/components/DoPaySelection';
  * ตัวตารางยังอยู่ครบสำหรับจอใหญ่ สองแบบใช้ข้อมูลชุดเดียวกัน สลับด้วย CSS อย่างเดียว
  */
 export function DoPayCards({
-  rows, claimed, slips,
+  rows, claimed, slips, charges = {},
 }: {
   rows: JobRow[];
   claimed: boolean;
   /** Slip ทุกใบของแต่ละงาน — มีได้หลายใบ ใบละหัวข้อ */
   slips: Record<string, DoAttachment[]>;
+  /** หัวข้อค่าใช้จ่ายของแต่ละงาน */
+  charges?: Record<string, DoCharge[]>;
 }) {
   if (!rows.length) return null;
   return (
@@ -33,7 +35,7 @@ export function DoPayCards({
               <b>{r.blNo ?? '-'}</b>
               <small>{r.consigneeName ?? '-'}</small>
             </div>
-            {r.doPayAmount ? <span className="do-card-amount">{claimAmounts(r.doPayAmount, r.doDepositAmount, r.doOtherAmount, r.doOtherLabel)}</span> : null}
+            {r.doPayAmount ? <span className="do-card-amount">{claimSummary(r.doPayAmount, charges[r.id] ?? [])}</span> : null}
           </div>
 
           <dl className="do-card-kv">
@@ -66,9 +68,12 @@ export function DoPayCards({
             </span>
           </div>
 
+          {claimed && (charges[r.id] ?? []).some((c) => !c.claimedAt) ? (
+            <span className="badge pending">มีค่าใช้จ่ายเพิ่มเติม รอตั้งเบิก</span>
+          ) : null}
           {/* ปุ่มเต็มความกว้าง นิ้วโป้งกดพลาดยาก */}
           <Link className="button primary do-card-open" href={`/may/do-pay/${r.id}`}>
-            {claimed ? 'ดูรายละเอียด' : 'เปิดดู Invoice DO'}
+            {claimed ? 'ดูรายละเอียด · เพิ่มค่าใช้จ่าย' : 'เปิดดู Invoice DO'}
           </Link>
         </article>
       ))}

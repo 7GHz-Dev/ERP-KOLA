@@ -311,6 +311,8 @@ export const files = pgTable('files', {
   mimeType: text('mime_type'),
   sizeBytes: integer('size_bytes'),
   note: text('note'),
+  /** Invoice / Slip ของหัวข้อค่าใช้จ่ายแลก DO (do_charges) — หมวด DO_CHARGE_INV · DO_CHARGE_SLIP */
+  doChargeId: text('do_charge_id'),
   changeReason: text('change_reason'),
   isCurrent: boolean('is_current').default(true).notNull(),
   isAcknowledged: boolean('is_acknowledged').default(true).notNull(),
@@ -366,6 +368,29 @@ export const jobSequences = pgTable('job_sequences', {
   lastNumber: integer('last_number').default(0).notNull(),
   updatedAt: updatedAt(),
 }, (t) => ({ key: uniqueIndex('job_sequences_key').on(t.year, t.prefix) }));
+
+/**
+ * ค่าใช้จ่ายแลก DO ของงาน — หลายหัวข้อต่อ BL (ค่ามัดจำตู้ · ค่าแลก DO ล่าช้า · ค่า Demurrage · ค่า Detention …)
+ *
+ * MAY เพิ่มที่แผงยอดชำระ หัวข้อเลือกจาก Master Data (type = doCharges)
+ * เก็บชื่อหัวข้อไว้ในแถวด้วย เปลี่ยนชื่อที่ Master Data ภายหลังข้อความเบิก/รายงานเก่ายังอ่านเหมือนเดิม
+ * claimedAt ว่าง = ยังไม่ตั้งเบิก — งานที่ตั้งเบิกแล้วเพิ่มค่าใช้จ่ายภายหลังได้ แล้วกดตั้งเบิกเพิ่มเติม
+ */
+export const doCharges = pgTable('do_charges', {
+  id: id(),
+  jobId: text('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+  topicId: text('topic_id'),
+  topicName: text('topic_name').notNull(),
+  amount: numeric('amount', { precision: 18, scale: 2 }).notNull(),
+  note: text('note'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  claimedBy: text('claimed_by'),
+  createdBy: text('created_by'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => ({
+  jobIdx: index('do_charges_job_idx').on(t.jobId, t.createdAt),
+}));
 
 export const doHandoffs = pgTable('do_handoffs', {
   id: id(),

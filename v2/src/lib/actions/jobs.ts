@@ -1,9 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '@/db';
-import { approvals, bls, containers, customsEntries, doHandoffs, files, jobs, masterRecords, users } from '@/db/schema';
+import { approvals, bls, containers, customsEntries, doCharges, doHandoffs, files, jobs, masterRecords, users } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { notifyDoQueue } from '@/lib/line-accounts';
 import { isPartnerRelease } from '@/lib/job-types';
@@ -11,7 +11,6 @@ import { describeResults, partnerByName, sendToPartner } from '@/lib/partner-not
 import { formatDate, formatDateTime } from '@/lib/format';
 import { canEditBlAtDo } from '@/lib/do-letter';
 import { hasBlBrackets } from '@/lib/bl-format';
-import { depositInput, OTHER_ERROR, otherInput } from '@/lib/do-claim-batch';
 import { backWithOk, day, isFrameworkError, logActivity, newId, number, recordStatus, required, runAction, text } from './common';
 import { jobIsOtherCargo, requireJobActor, requireBlEditor } from '@/lib/job-actor';
 import { assertSalePrice } from '@/lib/sale/price-store';
@@ -599,30 +598,6 @@ async function markDoExchangedImpl(formData: FormData) {
  * ก็ยังได้ข้อความเบิกชุดเดิม ไม่ต้องเปิดไฟล์อ่านซ้ำทุกรอบ
  * ล้างช่องให้ว่างได้ เผื่อกรอกผิดแล้วอยากลบทิ้งก่อนกรอกใหม่
  */
-/**
- * ค่ามัดจำตู้จากฟอร์ม — ไม่มีช่องนี้ส่งมาเลยคืน undefined แปลว่าไม่แตะค่าเดิม
- *
- * ฟอร์มที่ไม่รู้จักมัดจำ (เช่นแท็บที่เปิดค้างไว้ก่อนอัปเดต) จะได้ไม่ลบค่าที่เคยกรอกทิ้ง
- * ส่วนช่องที่ส่งมาแต่ว่าง แปลว่าผู้ใช้ลบมัดจำออกเอง จึงเก็บเป็น null
- */
-function readDeposit(formData: FormData): string | null | undefined {
-  if (!formData.has('deposit')) return undefined;
-  const value = depositInput(text(formData.get('deposit'), 30));
-  if (value === undefined) throw new Error('ค่ามัดจำตู้ต้องเป็นตัวเลขไม่ติดลบ หรือเว้นว่างถ้าไม่มี');
-  return value;
-}
-
-/**
- * ค่าอื่น ๆ จากฟอร์ม — ใช้กติกาเดียวกับมัดจำ ไม่มีช่องส่งมาคือไม่แตะค่าเดิม
- * ส่งมาแล้วยอดกับหัวข้อต้องครบคู่ หรือว่างทั้งคู่ (ลบออก)
- */
-function readOther(formData: FormData): { doOtherAmount: string | null; doOtherLabel: string | null } | undefined {
-  if (!formData.has('other')) return undefined;
-  const value = otherInput(text(formData.get('other'), 30), text(formData.get('otherLabel'), 200));
-  if (value === undefined) throw new Error(OTHER_ERROR);
-  return { doOtherAmount: value.amount, doOtherLabel: value.label };
-}
-
 async function saveDoPayAmountImpl(formData: FormData) {
   const user = await requireActiveSession(['MAY']);
   const jobId = required(formData.get('jobId'), 'งาน', 80);
@@ -637,18 +612,14 @@ async function saveDoPayAmountImpl(formData: FormData) {
     if (!Number.isFinite(n) || n < 0) throw new Error('ยอดชำระต้องเป็นตัวเลขไม่ติดลบ');
     amount = n.toFixed(2);
   }
-  const deposit = readDeposit(formData);
-  const other = readOther(formData);
-
+  // หัวข้อค่าใช้จ่าย (มัดจำ · DEM · DET …) บันทึกแยกทีละหัวข้อที่ actions/do-charges.ts
   await db.update(jobs).set({
     doPayAmount: amount,
     doPayAmountBy: amount ? user.id : null,
     doPayAmountAt: amount ? new Date() : null,
-    ...(deposit === undefined ? {} : { doDepositAmount: deposit }),
-    ...other,
     updatedBy: user.id, updatedAt: new Date(),
   }).where(eq(jobs.id, jobId));
-  await logActivity(user.id, 'SAVE_DO_PAY_AMOUNT', 'JOB', jobId, { amount, deposit, ...other });
+  await logActivity(user.id, 'SAVE_DO_PAY_AMOUNT', 'JOB', jobId, { amount });
 
   revalidatePath('/may/do-pay');
 }
@@ -678,23 +649,20 @@ async function markDoClaimedImpl(formData: FormData) {
     amount = n.toFixed(2);
   }
   if (!amount) throw new Error('กรุณากรอกยอดชำระก่อนกดตั้งเบิก');
-  const deposit = readDeposit(formData);
-  const other = readOther(formData);
 
   const now = new Date();
   await db.update(jobs).set({
     doPayAmount: amount,
     doPayAmountBy: job.doPayAmountBy ?? user.id,
     doPayAmountAt: job.doPayAmountAt ?? now,
-    ...(deposit === undefined ? {} : { doDepositAmount: deposit }),
-    ...other,
     doClaimedAt: now, doClaimedBy: user.id,
     updatedBy: user.id, updatedAt: now,
   }).where(eq(jobs.id, jobId));
-  await logActivity(user.id, 'MARK_DO_CLAIMED', 'JOB', jobId, {
-    amount, deposit: deposit ?? job.doDepositAmount,
-    other: other?.doOtherAmount ?? job.doOtherAmount, otherLabel: other?.doOtherLabel ?? job.doOtherLabel,
-  });
+  // หัวข้อค่าใช้จ่ายที่บันทึกไว้ตั้งเบิกไปพร้อมค่า DO — ข้อความเบิกที่คัดลอกไปมีครบทุกหัวข้อแล้ว
+  const charges = await db.update(doCharges).set({ claimedAt: now, claimedBy: user.id, updatedAt: now })
+    .where(and(eq(doCharges.jobId, jobId), isNull(doCharges.claimedAt)))
+    .returning({ topicName: doCharges.topicName, amount: doCharges.amount });
+  await logActivity(user.id, 'MARK_DO_CLAIMED', 'JOB', jobId, { amount, charges });
 
   revalidatePath('/may/do-pay');
 }

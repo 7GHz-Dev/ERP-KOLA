@@ -37,6 +37,8 @@ export const FILE_LABELS: Record<string, string> = {
   DO_INV_DET: 'Invoice DET',
   DO_INV_LATE: 'Invoice DO ล่าช้า',
   DO_OTHER: 'เอกสารแลก DO อื่น ๆ',
+  DO_CHARGE_INV: 'Invoice ค่าใช้จ่ายแลก DO',
+  DO_CHARGE_SLIP: 'Slip ค่าใช้จ่ายแลก DO',
   DO_MERGED: 'ชุดแลก DO รวม',
   DO_REQUEST_PROOF: 'หลักฐานยื่นขอ D/O เว็บ CMA',
   WEB_PROOF: 'หลักฐานส่งผ่านเว็บ (Template)',
@@ -54,6 +56,6 @@ export const FILE_ORDER = [
   'DRAFT_ENTRY', 'CUSTOMS_ENTRY_DOC', 'EOFFICE', 'EOFFICE_REQUEST', 'EOFFICE_MERGED', 'EOFFICE_SIGNED',
   'DO_LETTER', 'DO_LETTER_SIGNED', 'DO_LETTER_UPLOADED',
   'DO_SLIP', 'DO_SLIP_DEPOSIT', 'DO_SLIP_DEM', 'DO_SLIP_DET', 'DO_SLIP_LATE',
-  'DO_INV_DEPOSIT', 'DO_INV_DEM', 'DO_INV_DET', 'DO_INV_LATE', 'DO_OTHER',
+  'DO_INV_DEPOSIT', 'DO_INV_DEM', 'DO_INV_DET', 'DO_INV_LATE', 'DO_OTHER', 'DO_CHARGE_INV', 'DO_CHARGE_SLIP',
   'DO_MERGED', 'DO_REQUEST_PROOF', 'WEB_PROOF', 'DO_BATCH_MERGED', 'OTHER',
 ];

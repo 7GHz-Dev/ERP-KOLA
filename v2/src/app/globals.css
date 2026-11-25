@@ -1454,7 +1454,8 @@ body.has-fill-pane .main { padding-right: calc(var(--doc-drawer-w) + 16px); }
  * ช่องปุ่มดูกับยอดที่บันทึกแล้ว — คอลัมน์แรกของตาราง MAY
  * ปุ่มอยู่บน ยอดอยู่ล่าง กวาดตาลงมาเห็นได้ทีเดียวว่าใบไหนกรอกยอดแล้ว
  */
-table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 96px; min-width: 96px; }
+table.data td.col-wrap.col-do-pay, table.data th.col-do-pay { width: 180px; min-width: 120px; }
+table.data td.col-do-pay .do-pay-cell b { font-size: 12px; overflow-wrap: anywhere; }
 .do-pay-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .do-pay-cell b { font-size: 13px; font-variant-numeric: tabular-nums; }
 
@@ -2001,6 +2002,37 @@ label.mini:has(.search-select) { overflow: visible; }
   color: var(--red); cursor: pointer; text-decoration: underline;
 }
 .do-pay-add-deposit { align-self: flex-start; }
+/*
+ * หัวข้อค่าใช้จ่ายแลก DO (DoChargeList) — หนึ่งกล่องต่อหัวข้อ: dropdown · ยอด · หมายเหตุ · Invoice · Slip
+ * ตั้งเบิกแล้วเป็นบรรทัดอ่านอย่างเดียวพื้นเขียวอ่อน ยังแนบไฟล์เพิ่มได้
+ */
+.do-charges {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.do-charges-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; }
+.do-charges-head small { color: var(--muted); }
+.do-charge {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fafcfd;
+}
+.do-charge.locked { background: var(--green-soft); border-color: transparent; }
+.do-charge.do-charge-new { border-style: dashed; background: var(--surface); }
+.do-charge select, .do-charge input { width: 100%; font-size: 13px; }
+.do-charge input[inputmode="decimal"] { font-size: 16px; font-variant-numeric: tabular-nums; }
+.do-charge-locked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.do-charge-locked b { flex: 1; min-width: 0; }
+.do-charge-amount { font-weight: 700; font-variant-numeric: tabular-nums; }
+.do-charge-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.do-charge-files { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; }
+.do-charge-files > small { min-width: 52px; color: var(--muted); font-weight: 600; }
+.do-charge-files .file-link { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.do-charge-files label.button { cursor: pointer; }
+.do-charge-files label.button.disabled { opacity: .6; pointer-events: none; }
+.do-charge-add { align-self: flex-start; }
+.do-pay-note.bad { color: var(--red); white-space: pre-line; }
+.do-charge-extra-claim { border-color: var(--blue); }
+
 /* บรรทัดยอดเพิ่มเติม — dropdown หัวข้ออยู่บน ช่องหัวข้อ (ค่าอื่นๆ) กับช่องยอดเรียงลงมา */
 .do-pay-extra { display: flex; flex-direction: column; gap: 6px; }
 .do-pay-extra select { width: auto; flex: 1; font-size: 13px; font-weight: 600; }

@@ -205,7 +205,7 @@ export async function getJob(ref: string) {
       do_letter_at: when(row.doLetterAt),
       do_exchanged_at: when(row.doExchangedAt),
       do_claimed_at: when(row.doClaimedAt),
-      do_pay: { amount: row.doPayAmount, deposit: row.doDepositAmount, other: row.doOtherAmount, other_label: row.doOtherLabel },
+      do_pay: { amount: row.doPayAmount },
       release_partner: row.releasePartner,
     },
     containers: (detail?.containers ?? []).map((c) => ({

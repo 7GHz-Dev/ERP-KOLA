@@ -32,8 +32,17 @@ export const DO_DOC_TYPES: DoAttachType[] = [
   { category: 'DO_OTHER', label: 'เอกสารอื่น ๆ' },
 ];
 
-export const DO_SLIP_CATEGORIES = DO_SLIP_TYPES.map((t) => t.category);
-export const DO_DOC_CATEGORIES = DO_DOC_TYPES.map((t) => t.category);
+/**
+ * Invoice / Slip ของหัวข้อค่าใช้จ่ายแลก DO (do_charges) — หัวข้อมาจาก Master Data จึงไม่มีหมวดต่อหัวข้อ
+ * ใช้หมวดกลางสองหมวด ผูกกับหัวข้อด้วย files.do_charge_id และเก็บชื่อหัวข้อไว้ใน note
+ * ไม่อยู่ใน dropdown ของกล่องอัปทั่วไป อัปจากบรรทัดของหัวข้อในแผงยอดชำระเท่านั้น
+ */
+export const DO_CHARGE_SLIP = 'DO_CHARGE_SLIP';
+export const DO_CHARGE_INV = 'DO_CHARGE_INV';
+export const DO_CHARGE_CATEGORIES = [DO_CHARGE_INV, DO_CHARGE_SLIP];
+
+export const DO_SLIP_CATEGORIES = [...DO_SLIP_TYPES.map((t) => t.category), DO_CHARGE_SLIP];
+export const DO_DOC_CATEGORIES = [...DO_DOC_TYPES.map((t) => t.category), DO_CHARGE_INV];
 
 /**
  * หมวดที่งานหนึ่งมีได้หลายไฟล์พร้อมกัน
@@ -48,7 +57,10 @@ export function isDoMultiCategory(category: string) {
   return MULTI.has(category);
 }
 
-const LABELS = new Map([...DO_SLIP_TYPES, ...DO_DOC_TYPES].map((t) => [t.category, t.label]));
+const LABELS = new Map([
+  ...[...DO_SLIP_TYPES, ...DO_DOC_TYPES].map((t): [string, string] => [t.category, t.label]),
+  [DO_CHARGE_SLIP, 'Slip ค่าใช้จ่าย'], [DO_CHARGE_INV, 'Invoice ค่าใช้จ่าย'],
+]);
 const ORDER = new Map([...DO_SLIP_CATEGORIES, ...DO_DOC_CATEGORIES].map((c, i) => [c, i]));
 
 /** ชื่อหัวข้อสั้น ๆ ไว้แปะหน้าชื่อไฟล์ เช่น "ค่า DEM" */

@@ -60,6 +60,9 @@ const DO_BUNDLE_REST: BundlePart[] = [
   ...DO_DOC_TYPES.map((t) => ({
     label: t.label, categories: [t.category], multi: true, optional: true,
   })),
+  // Invoice / Slip ของหัวข้อค่าใช้จ่าย (ค่าแลก DO ล่าช้า · DEM · DET …) ที่ MAY แนบรายหัวข้อ
+  { label: 'Invoice ค่าใช้จ่าย', categories: ['DO_CHARGE_INV'], multi: true, optional: true },
+  { label: 'Slip ค่าใช้จ่าย', categories: ['DO_CHARGE_SLIP'], multi: true, optional: true },
 ];
 
 /** จดหมายแบบประทับตรา — ใช้เฉพาะใบที่ประทับแล้ว ไม่ถอยไปใช้ใบเปล่า */

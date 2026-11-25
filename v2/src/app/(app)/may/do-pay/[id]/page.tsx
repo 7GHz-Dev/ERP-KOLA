@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { DoPayPanel } from '@/components/DoPayPanel';
 import { requireUserReady } from '@/lib/auth';
 import { loadDoPay } from '@/lib/queries/do-files';
-import { extrasOf } from '@/lib/do-claim-batch';
+import { chargesFor, doChargeTopics } from '@/lib/queries/do-charges';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export default async function DoPayPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUserReady(['MAY']);
   const { id } = await params;
-  const data = await loadDoPay(id);
+  const [data, charges, topics] = await Promise.all([loadDoPay(id), chargesFor([id]), doChargeTopics()]);
   if (!data) notFound();
 
   return (
@@ -30,7 +30,8 @@ export default async function DoPayPage({ params }: { params: Promise<{ id: stri
         eta={data.job.eta}
         shipline={data.job.shipline}
         amount={data.job.doPayAmount}
-        extras={extrasOf(data.job)}
+        charges={charges.get(id) ?? []}
+        topics={topics}
         claimedAt={data.job.doClaimedAt}
         nextId={data.nextId}
       />

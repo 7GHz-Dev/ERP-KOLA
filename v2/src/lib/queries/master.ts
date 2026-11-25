@@ -18,6 +18,8 @@ export const MASTER_TYPES = [
   { key: 'loadingTypes', label: 'Loading Type' },
   { key: 'containerTypes', label: 'ขนาดตู้' },
   { key: 'packageTypes', label: 'หน่วยนับ' },
+  // dropdown หัวข้อค่าใช้จ่ายของ MAY ที่หน้ารอแลก DO — ยอดชำระ (ค่ามัดจำตู้ · ค่าแลก DO ล่าช้า · DEM · DET …)
+  { key: 'doCharges', label: 'หัวข้อค่าใช้จ่ายแลก DO' },
   { key: 'settings', label: 'ค่าตั้งต้น' },
 ] as const;
 

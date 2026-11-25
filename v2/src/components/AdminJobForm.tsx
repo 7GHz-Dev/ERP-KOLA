@@ -244,9 +244,6 @@ export function AdminJobForm({ data, options }: { data: AdminJob; options: Optio
         <h2>ค่าแลก DO</h2>
         <div className="extract-grid">
           <Field label="ยอดค่า DO (บาท)"><input name="doPayAmount" inputMode="decimal" defaultValue={num(job.doPayAmount)} /></Field>
-          <Field label="ค่ามัดจำตู้ (บาท)"><input name="doDepositAmount" inputMode="decimal" defaultValue={num(job.doDepositAmount)} /></Field>
-          <Field label="ค่าอื่นๆ (บาท)"><input name="doOtherAmount" inputMode="decimal" defaultValue={num(job.doOtherAmount)} /></Field>
-          <Field label="หัวข้อค่าอื่นๆ"><input name="doOtherLabel" maxLength={60} defaultValue={job.doOtherLabel ?? ''} /></Field>
         </div>
       </section>
 

@@ -6,7 +6,8 @@ import { DoPayCards } from '@/components/DoPayCards';
 import { DoAttachments } from '@/components/DoAttachments';
 import { doAttachmentsFor } from '@/lib/queries/do-files';
 import { formatDateTime } from '@/lib/format';
-import { claimAmounts } from '@/lib/do-claim';
+import { claimSummary } from '@/lib/do-charges';
+import { chargesFor } from '@/lib/queries/do-charges';
 import { doQueueArrivalDates, listJobs, QUEUE } from '@/lib/queries/jobs';
 import { QueueFilter } from '@/components/VesselFilter';
 import { DoPaySelection, DoPayCheckbox } from '@/components/DoPaySelection';
@@ -53,8 +54,13 @@ export default async function MayDoPayPage({
     doQueueArrivalDates(claimed ? 'mayClaimed' : 'mayWait'),
   ]);
   // สลิปมีหลายใบต่องาน ดึงแยกเพราะ currentFiles เก็บได้ใบเดียวต่อหมวด
-  const attachments = await doAttachmentsFor(rows.map((r) => r.id));
+  const [attachments, charges] = await Promise.all([
+    doAttachmentsFor(rows.map((r) => r.id)),
+    // หัวข้อค่าใช้จ่ายหลายหัวข้อต่อ BL (มัดจำ · ล่าช้า · DEM · DET …)
+    chargesFor(rows.map((r) => r.id)),
+  ]);
   const slipsOf = (id: string) => attachments.get(id)?.slips ?? [];
+  const chargesOf = (id: string) => charges.get(id) ?? [];
 
   const columns: Column[] = [
     { label: 'เลือก', render: r => <DoPayCheckbox id={r.id} label={r.blNo ?? r.jobNo} /> },
@@ -69,8 +75,9 @@ export default async function MayDoPayPage({
       label: 'ยอดชำระ', kind: 'wrap', className: 'col-do-pay',
       render: (r) => (
         <div className="do-pay-cell">
-          <Link className="button tiny primary" href={`/may/do-pay/${r.id}`}>ดู</Link>
-          {r.doPayAmount ? <b>{claimAmounts(r.doPayAmount, r.doDepositAmount, r.doOtherAmount, r.doOtherLabel)}</b> : null}
+          <Link className="button tiny primary" href={`/may/do-pay/${r.id}`}>{claimed ? 'ดู / เพิ่มค่าใช้จ่าย' : 'ดู'}</Link>
+          {r.doPayAmount ? <b>{claimSummary(r.doPayAmount, chargesOf(r.id))}</b> : null}
+          {claimed && chargesOf(r.id).some((c) => !c.claimedAt) ? <span className="badge pending">ค่าใช้จ่ายเพิ่มเติม รอตั้งเบิก</span> : null}
         </div>
       ),
     },
@@ -157,7 +164,8 @@ export default async function MayDoPayPage({
 
       {/* จอมือถือใช้การ์ด จอใหญ่ใช้ตาราง สลับด้วย CSS ข้อมูลเป็นชุดเดียวกัน */}
       <div className="only-narrow">
-        <DoPayCards rows={rows} claimed={claimed} slips={Object.fromEntries(rows.map((r) => [r.id, slipsOf(r.id)]))} />
+        <DoPayCards rows={rows} claimed={claimed} slips={Object.fromEntries(rows.map((r) => [r.id, slipsOf(r.id)]))}
+          charges={Object.fromEntries(charges)} />
         {rows.length ? null : (
           <p className="do-cards-empty">
             {claimed ? 'ยังไม่มีงานที่ตั้งเบิกแล้ว' : 'ยังไม่มีงานที่รอตั้งเบิก'}
@@ -172,7 +180,7 @@ export default async function MayDoPayPage({
           rows={rows} total={total} carry={{ ...carry, tab }} sortBy={sortBy} sortDir={sortDir}
           empty={claimed ? 'ยังไม่มีงานที่ตั้งเบิกแล้ว' : 'ยังไม่มีงานที่รอตั้งเบิก'}
           hint={claimed
-            ? 'รายการที่คัดลอกข้อความไปตั้งเบิกแล้ว'
+            ? 'รายการที่คัดลอกข้อความไปตั้งเบิกแล้ว · กด ดู / เพิ่มค่าใช้จ่าย เพื่อเพิ่มหัวข้อ (DEM · DET …) พร้อม Invoice และ Slip แล้วตั้งเบิกเพิ่มเติม'
             : 'กดปุ่ม ดู ที่ต้นแถวเพื่อเปิด Invoice DO คู่กับช่องกรอกยอด · อัป Slip ได้จากในแถว · ในแผงมีปุ่มไปใบถัดไปให้ไล่ทำจนครบ'}
         />
       </div>

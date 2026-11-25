@@ -1,9 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '@/db';
-import { jobs, activityLog } from '@/db/schema';
+import { doCharges, jobs, activityLog } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { readBatchClaims } from '@/lib/do-claim-batch';
 import { newId } from './common';
@@ -27,17 +27,20 @@ export async function markDoClaimedBatch(previous: BatchClaimState, data: FormDa
         // ANN ส่งแลกไปก่อนแล้วก็ยังตั้งเบิกได้ — ตั้งเบิกเป็นขั้นของ MAY ไม่ขึ้นกับการส่งแลก
       }
       const now = new Date();
-      for (const { id, amount, deposit, other, otherLabel } of claims) {
+      for (const { id, amount } of claims) {
         const job = byId.get(id)!;
         await tx.update(jobs).set({
-          doPayAmount: amount, doDepositAmount: deposit, doOtherAmount: other, doOtherLabel: otherLabel,
+          doPayAmount: amount,
           doPayAmountBy: job.doPayAmountBy ?? user.id,
           doPayAmountAt: job.doPayAmountAt ?? now, doClaimedAt: now, doClaimedBy: user.id,
           updatedBy: user.id, updatedAt: now,
         }).where(eq(jobs.id, id));
+        // หัวข้อค่าใช้จ่ายที่บันทึกไว้ตั้งเบิกไปพร้อมค่า DO
+        await tx.update(doCharges).set({ claimedAt: now, claimedBy: user.id, updatedAt: now })
+          .where(and(eq(doCharges.jobId, id), isNull(doCharges.claimedAt)));
         await tx.insert(activityLog).values({
           id: newId('LOG'), userId: user.id, action: 'MARK_DO_CLAIMED', entityType: 'JOB', entityId: id,
-          detail: JSON.stringify({ amount, deposit, other, otherLabel, batch: true }),
+          detail: JSON.stringify({ amount, batch: true }),
         });
       }
     });
@@ -69,13 +72,13 @@ export async function saveDoPayAmountsBatch(data: FormData): Promise<{ ok: boole
         .orderBy(jobs.id).for('update');
       const byId = new Map(records.map(job => [job.id, job]));
       const now = new Date();
-      for (const { id, amount, deposit, other, otherLabel } of claims) {
+      for (const { id, amount } of claims) {
         const job = byId.get(id);
         if (!job || job.isArchived) throw new Error('มี JOB ที่ไม่พบหรือถูกปิดการใช้งาน กรุณารีเฟรชรายการ');
         // ตั้งเบิกไปแล้วไม่ต้องแก้ยอด เพราะยอดถูกล็อกไปกับการตั้งเบิกแล้ว
         if (job.doClaimedAt) continue;
         await tx.update(jobs).set({
-          doPayAmount: amount, doDepositAmount: deposit, doOtherAmount: other, doOtherLabel: otherLabel,
+          doPayAmount: amount,
           doPayAmountBy: job.doPayAmountBy ?? user.id, doPayAmountAt: job.doPayAmountAt ?? now,
           updatedBy: user.id, updatedAt: now,
         }).where(eq(jobs.id, id));

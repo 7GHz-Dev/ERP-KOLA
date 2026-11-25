@@ -140,9 +140,7 @@ async function adminUpdateJobImpl(formData: FormData) {
       draftRejectReason: str('draftRejectReason', 1000),
 
       doPayAmount: num('doPayAmount'),
-      doDepositAmount: num('doDepositAmount'),
-      doOtherAmount: num('doOtherAmount'),
-      doOtherLabel: str('doOtherLabel', 60),
+      // หัวข้อค่าใช้จ่าย (มัดจำ · DEM · DET …) ย้ายไปตาราง do_charges แล้ว — MAY แก้ที่แผงยอดชำระ
 
       updatedBy: user.id,
       updatedAt: new Date(),

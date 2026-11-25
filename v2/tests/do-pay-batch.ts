@@ -4,10 +4,10 @@ import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
 import { doPaySelectionIds } from '../src/lib/do-pay-selection';
 import * as claimBatch from '../src/lib/do-claim-batch';
-import { allClaimText, claimAmountInput, depositInput, otherInput, readBatchClaims } from '../src/lib/do-claim-batch';
+import { allClaimText, claimAmountInput, readBatchClaims } from '../src/lib/do-claim-batch';
 import { claimReportXlsx } from '../src/lib/do-claim-report';
 import ExcelJS from 'exceljs';
-import { claimAmounts, claimText } from '../src/lib/do-claim';
+import { claimSummary, claimText, extraClaimText } from '../src/lib/do-charges';
 import * as doAttachments from '../src/lib/do-attachments';
 
 function compile(path: string, dependencies: Record<string, unknown>) {
@@ -35,6 +35,8 @@ async function main() {
     'drizzle-orm': { and: (...v: unknown[]) => v, eq: (...v: unknown[]) => v, inArray: (...v: unknown[]) => v },
     '@/db/schema': { jobs: {}, files: {} },
     '@/lib/do-letter': {},
+    '@/lib/do-letter-evergreen': {},
+    '@/lib/do-slip-match': {},
     '@/lib/queries/jobs': { sentToPartner: () => null },
     '@/lib/do-attachments': doAttachments,
     '@/db': { db: { select: () => ({ from: () => ({ where: async () => {
@@ -83,31 +85,24 @@ async function main() {
   jobs = jobs.slice(0, 1);
   assert.equal(await loadDoPayBatch(['A', 'B']), null, 'Do not silently omit unavailable jobs');
   assert.equal(allClaimText([
-    { blNo: 'BL-B', eta: '2026-09-13', shipline: 'WANHAI', amount: '18,400' },
-    { blNo: 'BL-A', eta: '2026-09-14', shipline: 'ONE', amount: '2200.50' },
+    { blNo: 'BL-B', eta: '2026-09-13', shipline: 'WANHAI', amount: '18,400', charges: [] },
+    { blNo: 'BL-A', eta: '2026-09-14', shipline: 'ONE', amount: '2200.50', charges: [] },
   ]), 'BL-B=18,400\nETA 13/9/2026 ของ WANHAI\n\nBL-A=2,200.50\nETA 14/9/2026 ของ ONE');
-  // ค่ามัดจำตู้ต่อท้ายด้วย + แยกยอด ไม่บวกรวม · ไม่มีหรือเป็นศูนย์ก็ไม่ต้องมี +
+  // หัวข้อค่าใช้จ่ายต่อท้ายด้วย + แยกยอดพร้อมชื่อหัวข้อ ไม่บวกรวม
+  const dep = { amount: '20000.00', topicName: 'ค่ามัดจำตู้', note: null };
+  const dem = { amount: '1500.00', topicName: 'ค่า Demurrage', note: null };
+  const other = { amount: '50.00', topicName: 'ค่าอื่นๆ', note: 'ค่าล้างตู้' };
   assert.equal(allClaimText([
-    { blNo: 'BL-B', eta: '2026-09-13', shipline: 'WANHAI', amount: '18,400', deposit: '20000' },
-    { blNo: 'BL-A', eta: '2026-09-14', shipline: 'ONE', amount: '2200.50', deposit: '' },
-  ]), 'BL-B=18,400+20,000\nETA 13/9/2026 ของ WANHAI\n\nBL-A=2,200.50\nETA 14/9/2026 ของ ONE');
-  assert.equal(claimText({ blNo: 'X', eta: null, shipline: 'ONE', amount: '100.00', deposit: '0.00' }), 'X=100\nETA  ของ ONE');
-  assert.equal(claimAmounts('18400.00', '5000.50'), '18,400+5,000.50');
-  assert.equal(claimAmounts('18400.00', null), '18,400');
-  assert.equal(depositInput(''), null);
-  assert.equal(depositInput(' 20,000 '), '20000.00');
-  assert.equal(depositInput('abc'), undefined);
-  // ค่าอื่นๆ — ยอดกับหัวข้อต้องมาคู่กัน
-  assert.deepEqual(otherInput('', ''), { amount: null, label: null });
-  assert.deepEqual(otherInput('1,500', '  ค่าล้าง   ตู้ '), { amount: '1500.00', label: 'ค่าล้าง ตู้' });
-  assert.equal(otherInput('1500', ''), undefined);
-  assert.equal(otherInput('', 'ค่าล้างตู้'), undefined);
-  assert.equal(otherInput('abc', 'ค่าล้างตู้'), undefined);
-  assert.equal(otherInput('1', 'x'.repeat(61)), undefined);
-  assert.equal(claimAmounts('18400.00', '20000.00', '1500.00', 'ค่าล้างตู้'), '18,400+20,000+1,500 (ค่าล้างตู้)');
-  assert.equal(claimAmounts('18400.00', null, '1500.00', 'ค่าล้างตู้'), '18,400+1,500 (ค่าล้างตู้)');
-  assert.equal(allClaimText([{ blNo: 'X', eta: null, shipline: 'ONE', amount: '100', other: '50', otherLabel: 'ค่าล่าช้า' }]),
-    'X=100+50 (ค่าล่าช้า)\nETA  ของ ONE');
+    { blNo: 'BL-B', eta: '2026-09-13', shipline: 'WANHAI', amount: '18,400', charges: [dep, dem] },
+    { blNo: 'BL-A', eta: '2026-09-14', shipline: 'ONE', amount: '2200.50', charges: [] },
+  ]), 'BL-B=18,400+20,000 (ค่ามัดจำตู้)+1,500 (ค่า Demurrage)\nETA 13/9/2026 ของ WANHAI\n\nBL-A=2,200.50\nETA 14/9/2026 ของ ONE');
+  assert.equal(claimText({ blNo: 'X', eta: null, shipline: 'ONE', amount: '100.00', charges: [] }), 'X=100\nETA  ของ ONE');
+  assert.equal(claimSummary('18400.00', [dep]), '18,400+20,000 (ค่ามัดจำตู้)');
+  assert.equal(claimSummary('18400.00', []), '18,400');
+  assert.equal(claimSummary('100', [other]), '100+50 (ค่าอื่นๆ: ค่าล้างตู้)');
+  // ค่าใช้จ่ายที่เพิ่มหลังตั้งเบิก — เฉพาะส่วนเพิ่ม ไม่มีค่า DO
+  assert.equal(extraClaimText({ blNo: 'X', eta: '2026-09-13', shipline: 'ONE', charges: [dem, other] }),
+    'X (เพิ่มเติม)=1,500 (ค่า Demurrage)+50 (ค่าอื่นๆ: ค่าล้างตู้)\nETA 13/9/2026 ของ ONE');
   for (const bad of ['', '-1', 'abc', '1,2', '1.234', 'Infinity', '10000000000000000']) assert.equal(claimAmountInput(bad), null);
   assert.equal(claimAmountInput('0'), '0.00');
   const form = new FormData();
@@ -115,43 +110,47 @@ async function main() {
   form.append('jobId', 'A'); form.set('amount:A', '2200.50');
   form.set('amount:UNSELECTED', '999');
   assert.deepEqual(readBatchClaims(form), [
-    { id: 'B', amount: '18400.00', deposit: null, other: null, otherLabel: null },
-    { id: 'A', amount: '2200.50', deposit: null, other: null, otherLabel: null },
+    { id: 'B', amount: '18400.00' },
+    { id: 'A', amount: '2200.50' },
   ]);
+  // ช่องมัดจำ/ค่าอื่นๆ แบบเดิมไม่ถูกอ่านแล้ว (หัวข้อค่าใช้จ่ายบันทึกแยกที่ do_charges)
   form.set('deposit:A', 'bad');
-  assert.throws(() => readBatchClaims(form), /มัดจำ/);
+  assert.deepEqual(readBatchClaims(form)[1], { id: 'A', amount: '2200.50' });
   form.delete('deposit:A');
-  form.set('deposit:B', '20,000');
-  assert.deepEqual(readBatchClaims(form)[0], { id: 'B', amount: '18400.00', deposit: '20000.00', other: null, otherLabel: null });
-  form.set('other:B', '1500');
-  assert.throws(() => readBatchClaims(form), /ค่าอื่นๆ/);
-  form.set('otherLabel:B', 'ค่าล้างตู้');
-  assert.deepEqual(readBatchClaims(form)[0], { id: 'B', amount: '18400.00', deposit: '20000.00', other: '1500.00', otherLabel: 'ค่าล้างตู้' });
-  form.delete('other:B'); form.delete('otherLabel:B');
 
   // รายงาน Excel — ยอดเป็นตัวเลขจริง วันที่เป็นวันที่จริง และมีแถวรวม
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(await claimReportXlsx([
-    { claimedOn: '2026-10-01', arrivedAt: '2026-09-30 17:45', blNo: 'BL-1', doPayAmount: '18400.00', doDepositAmount: '20000.00', doOtherAmount: null, doOtherLabel: null },
-    { claimedOn: '2026-10-02', arrivedAt: null, blNo: 'BL-2', doPayAmount: '2200.50', doDepositAmount: null, doOtherAmount: '1500.00', doOtherLabel: 'ค่าล้างตู้' },
+    { claimedOn: '2026-10-01', arrivedAt: '2026-09-30 17:45', blNo: 'BL-1', doPayAmount: '18400.00', charges: [{ topic: 'ค่ามัดจำตู้', amount: '20000.00', note: null }] },
+    { claimedOn: '2026-10-02', arrivedAt: null, blNo: 'BL-2', doPayAmount: '2200.50', charges: [{ topic: 'ค่าอื่นๆ', amount: '1500.00', note: 'ค่าล้างตู้' }] },
+    { claimedOn: '2026-10-05', arrivedAt: null, blNo: 'BL-1', doPayAmount: null, charges: [
+      { topic: 'ค่า Demurrage', amount: '1000.00', note: null }, { topic: 'ค่า Demurrage', amount: '500.00', note: null }] },
   ]) as any);
   const sheet = wb.worksheets[0];
   assert.deepEqual((sheet.getRow(1).values as unknown[]).slice(1),
-    ['วันที่ตั้งเบิก', 'วันที่ส่งรายการมา', 'เลข BL', 'ยอดค่า DO', 'ยอดค่ามัดจำ', 'ยอดค่าอื่นๆ', 'ระบุ (ค่าอื่นๆ)']);
+    ['วันที่ตั้งเบิก', 'วันที่ส่งรายการมา', 'เลข BL', 'ยอดค่า DO', 'ค่ามัดจำตู้', 'ค่าอื่นๆ', 'ค่า Demurrage', 'หมายเหตุ', 'รวม']);
   assert.equal((sheet.getCell('A2').value as Date).toISOString().slice(0, 10), '2026-10-01');
   assert.equal((sheet.getCell('B2').value as Date).toISOString().slice(0, 16), '2026-09-30T17:45');
   assert.equal(sheet.getCell('B3').value, null);
   assert.equal(sheet.getCell('D3').value, 2200.5);
   assert.equal(sheet.getCell('E3').value, null);
-  assert.equal(sheet.getCell('G3').value, 'ค่าล้างตู้');
-  assert.deepEqual(sheet.getCell('D4').value, { formula: 'SUM(D2:D3)' });
+  assert.equal(sheet.getCell('F3').value, 1500);
+  assert.equal(sheet.getCell('H3').value, 'ค่าอื่นๆ: ค่าล้างตู้');
+  assert.equal(sheet.getCell('D4').value, null, 'Extra claim row has no DO amount');
+  assert.equal(sheet.getCell('G4').value, 1500, 'Same topic twice on one day is summed');
+  assert.equal(sheet.getCell('H4').value, 'ตั้งเบิกเพิ่มเติม');
+  assert.deepEqual(sheet.getCell('I2').value, { formula: 'SUM(D2:G2)' });
+  assert.deepEqual(sheet.getCell('D5').value, { formula: 'SUM(D2:D4)' });
+  assert.deepEqual(sheet.getCell('I5').value, { formula: 'SUM(I2:I4)' });
+  const jobsTable = {};
+  const chargesTable = {};
   let authorized = true;
   let mutations: any[] = [];
   let records: any[] = [{ id: 'A', jobNo: 'JOB-A' }, { id: 'B', jobNo: 'JOB-B' }];
   const { markDoClaimedBatch } = compile('src/lib/actions/do-claim-batch.ts', {
     'next/cache': { revalidatePath: () => {} },
-    'drizzle-orm': { eq: (...args: unknown[]) => args, inArray: (...args: unknown[]) => args },
-    '@/db/schema': { jobs: {}, activityLog: {} },
+    'drizzle-orm': { eq: (...args: unknown[]) => args, inArray: (...args: unknown[]) => args, and: (...args: unknown[]) => args, isNull: (...args: unknown[]) => args },
+    '@/db/schema': { jobs: jobsTable, activityLog: {}, doCharges: chargesTable },
     '@/lib/auth': { requireActiveSession: async (roles: string[]) => {
       assert.deepEqual(roles, ['MAY']); if (!authorized) throw new Error('FORBIDDEN'); return { id: 'MAY-1' };
     } },
@@ -160,7 +159,10 @@ async function main() {
       const staged: any[] = [];
       await work({
         select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ for: async () => records }) }) }) }),
-        update: () => ({ set: (value: any) => ({ where: async (condition: any) => { staged.push({ value, id: condition[1] }); } }) }),
+        update: (table: unknown) => ({ set: (value: any) => ({ where: async (condition: any) => {
+          if (table === jobsTable) staged.push({ value, id: condition[1] });
+          else if (table === chargesTable) staged.push({ charges: true, value, id: condition[0][1] });
+        } }) }),
         insert: () => ({ values: async () => {} }),
       });
       mutations.push(...staged);
@@ -178,9 +180,12 @@ async function main() {
   const result = await markDoClaimedBatch(initial, form);
   assert.equal(result.error, '');
   assert.deepEqual(result.completed, ['B', 'A']);
-  assert.deepEqual(mutations.map(item => [item.id, item.value.doPayAmount, item.value.doDepositAmount]),
-    [['B', '18400.00', '20000.00'], ['A', '2200.50', null]]);
-  assert.ok(mutations.every(item => item.value.doClaimedBy === 'MAY-1'));
+  assert.deepEqual(mutations.filter(item => !item.charges).map(item => [item.id, item.value.doPayAmount]),
+    [['B', '18400.00'], ['A', '2200.50']]);
+  // หัวข้อค่าใช้จ่ายของแต่ละงานตั้งเบิกไปพร้อมค่า DO
+  assert.deepEqual(mutations.filter(item => item.charges).map(item => item.id), ['B', 'A']);
+  assert.ok(mutations.filter(item => item.charges).every(item => item.value.claimedBy === 'MAY-1'));
+  assert.ok(mutations.filter(item => !item.charges).every(item => item.value.doClaimedBy === 'MAY-1'));
   /*
    * ANN ส่งแลกไปก่อนแล้ว MAY ยังต้องตั้งเบิกได้
    * ของจริงเกิดบ่อย — ANN ส่งแลกไม่กี่นาทีหลัง MAY กรอกยอด
@@ -190,8 +195,8 @@ async function main() {
   records = [{ id: 'A', jobNo: 'JOB-A', doExchangedAt: new Date() }, { id: 'B', jobNo: 'JOB-B', doExchangedAt: new Date() }];
   const afterExchange = await markDoClaimedBatch(initial, form);
   assert.equal(afterExchange.error, '', 'Jobs ANN already exchanged must still be claimable');
-  assert.equal(mutations.length, 2);
-  assert.ok(mutations.every(item => item.value.doClaimedAt instanceof Date));
+  assert.equal(mutations.filter(item => !item.charges).length, 2);
+  assert.ok(mutations.filter(item => !item.charges).every(item => item.value.doClaimedAt instanceof Date));
   mutations = [];
   form.set('amount:A', 'bad');
   assert.ok((await markDoClaimedBatch(initial, form)).error);

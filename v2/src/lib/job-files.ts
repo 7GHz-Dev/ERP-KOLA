@@ -14,6 +14,8 @@ import { buildKey, ensureBucket, uploadFile } from '@/lib/storage';
 export async function storeJobFileVersion(input: {
   jobId: string; category: string; bytes: Buffer; fileName: string; mimeType: string;
   userId: string; note?: string; changeReason?: string; multi?: boolean; isAcknowledged?: boolean;
+  /** Invoice / Slip ของหัวข้อค่าใช้จ่ายแลก DO */
+  doChargeId?: string | null;
 }) {
   const [current] = input.multi ? [] : await db
     .select()
@@ -35,6 +37,7 @@ export async function storeJobFileVersion(input: {
     mimeType: input.mimeType || 'application/octet-stream',
     sizeBytes: input.bytes.length,
     note: input.note ?? '',
+    doChargeId: input.doChargeId ?? null,
     changeReason: current ? input.changeReason ?? '' : '',
     isCurrent: true,
     isAcknowledged: input.isAcknowledged ?? true,

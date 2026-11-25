@@ -42,43 +42,4 @@ export function claimEta(value: string | Date | null | undefined): string {
   return `${Number(day)}/${Number(month)}/${year}`;
 }
 
-/**
- * ยอดค่า DO ตามด้วย +มัดจำ และ +ค่าอื่นๆ (หัวข้อ) เมื่อมี
- * ใช้ทั้งในข้อความเบิกและที่แสดงยอดในตาราง
- */
-export function claimAmounts(
-  amount: ClaimInput['amount'],
-  deposit?: ClaimInput['deposit'],
-  other?: ClaimInput['other'],
-  otherLabel?: ClaimInput['otherLabel'],
-): string {
-  const extra = Number(deposit) > 0 ? `+${claimAmount(deposit)}` : '';
-  const label = (otherLabel ?? '').trim();
-  const rest = Number(other) > 0 ? `+${claimAmount(other)}${label ? ` (${label})` : ''}` : '';
-  return `${claimAmount(amount)}${extra}${rest}`;
-}
-
-export type ClaimInput = {
-  blNo: string | null;
-  eta: string | Date | null;
-  shipline: string | null;
-  amount: string | number | null;
-  /** ค่ามัดจำตู้ — ไม่มีก็ไม่ต้องส่ง ข้อความจะเหลือแค่ยอดค่า DO */
-  deposit?: string | number | null;
-  /** ค่าอื่น ๆ ที่ MAY ระบุหัวข้อเอง — มาคู่กับ otherLabel */
-  other?: string | number | null;
-  otherLabel?: string | null;
-};
-
-/**
- * ข้อความเบิกเต็มสองบรรทัด — ช่องไหนไม่มีค่าก็ปล่อยว่างไว้ให้เห็นว่ายังขาด
- *
- * งานที่มีค่ามัดจำตู้หรือค่าอื่น ๆ เขียนต่อท้ายด้วย + แยกเป็นก้อน ไม่บวกรวมให้
- * เช่น CULVYOK2600762=18,400+20,000+1,500 (ค่าล้างตู้)
- * คนเบิกจะได้เห็นว่าก้อนไหนเป็นมัดจำที่ได้คืน ก้อนไหนเป็นค่าอะไร
- */
-export function claimText({ blNo, eta, shipline, amount, deposit, other, otherLabel }: ClaimInput): string {
-  const first = `${blNo ?? ''}=${claimAmounts(amount, deposit, other, otherLabel)}`;
-  const second = `ETA ${claimEta(eta)} ของ ${shipline ?? ''}`;
-  return `${first}\n${second}`;
-}
+// ข้อความเบิกเต็ม (ค่า DO + ทุกหัวข้อค่าใช้จ่าย) อยู่ที่ lib/do-charges.ts

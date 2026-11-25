@@ -3,12 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { approvals, files, jobs } from '@/db/schema';
+import { approvals, doCharges, files, jobs } from '@/db/schema';
 import { requireActiveSession } from '@/lib/auth';
 import { requireJobActor } from '@/lib/job-actor';
 import { storeJobFileVersion } from '@/lib/job-files';
 import { storeInvoicePdf } from '@/lib/eoffice-bundle';
-import { DO_DOC_CATEGORIES, DO_SLIP_CATEGORIES, isDoMultiCategory } from '@/lib/do-attachments';
+import { DO_CHARGE_CATEGORIES, DO_DOC_CATEGORIES, DO_SLIP_CATEGORIES, isDoMultiCategory } from '@/lib/do-attachments';
 import { logActivity, newId, recordStatus, required, runAction, text } from './common';
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -34,6 +34,9 @@ const UPLOAD_ROLES: Record<string, string[]> = {
   // MAY อัป Slip ได้ด้วย เป็นคนจ่ายเงินค่าแลก D/O จึงถือสลิปตัวจริงอยู่ในมือ
   ...Object.fromEntries(DO_SLIP_CATEGORIES.map((c) => [c, ['ANN', 'MAY']])),
   ...Object.fromEntries(DO_DOC_CATEGORIES.map((c) => [c, ['ANN']])),
+  // Invoice / Slip ของหัวข้อค่าใช้จ่าย — MAY เป็นคนเบิกจ่ายและถือเอกสารตัวจริง
+  DO_CHARGE_INV: ['MAY', 'ANN'],
+  DO_CHARGE_SLIP: ['MAY', 'ANN'],
   DO_MERGED: ['ANN'],
   INVOICE_GOODS: ['NAMKANG'],
   SURRENDER: ['NAMKANG'],
@@ -78,13 +81,27 @@ async function uploadJobFileImpl(formData: FormData) {
     .where(and(eq(files.jobId, jobId), eq(files.category, category), eq(files.isCurrent, true)))
     .limit(1);
 
+  /*
+   * Invoice / Slip ของหัวข้อค่าใช้จ่ายแลก DO — ต้องผูกกับหัวข้อของงานนี้
+   * หมายเหตุของไฟล์ = ชื่อหัวข้อ ตารางไฟล์และชุดแลก DO จะได้บอกได้ว่าเป็นของค่าอะไร
+   */
+  let doChargeId: string | null = null;
+  let chargeNote = '';
+  if (DO_CHARGE_CATEGORIES.includes(category)) {
+    const [charge] = await db.select({ id: doCharges.id, jobId: doCharges.jobId, topicName: doCharges.topicName, note: doCharges.note })
+      .from(doCharges).where(eq(doCharges.id, text(formData.get('doChargeId'), 80))).limit(1);
+    if (!charge || charge.jobId !== jobId) throw new Error('ไม่พบหัวข้อค่าใช้จ่ายของงานนี้ — รีเฟรชหน้าแล้วลองใหม่');
+    doChargeId = charge.id;
+    chargeNote = charge.topicName;
+  }
+
   const changeReason = text(formData.get('changeReason'), 500);
   // เปลี่ยนไฟล์ Invoice สินค้าไม่ต้องระบุเหตุผลแล้ว (ทีมขอ) — เวอร์ชันเก่ายังเก็บไว้ในประวัติไฟล์
 
   const bytes = Buffer.from(await blob.arrayBuffer());
   const { id, version, current } = await storeJobFileVersion({
     jobId, category, bytes, fileName: blob.name, mimeType: blob.type,
-    userId: user.id, note: text(formData.get('note'), 500), changeReason, multi,
+    userId: user.id, note: doChargeId ? chargeNote : text(formData.get('note'), 500), changeReason, multi, doChargeId,
     // เปลี่ยน Invoice สินค้าไม่ต้องให้ใครกดรับทราบ / ไม่ทำแถวสีแดงแล้ว (ทีมขอ)
   });
 
@@ -142,7 +159,8 @@ async function removeDoAttachmentImpl(formData: FormData) {
 
   const [job] = await db.select({ doExchangedAt: jobs.doExchangedAt })
     .from(jobs).where(eq(jobs.id, file.jobId)).limit(1);
-  if (job?.doExchangedAt) throw new Error('งานนี้ส่งแลก DO แล้ว เอาเอกสารออกไม่ได้');
+  // ไฟล์ของหัวข้อค่าใช้จ่ายมักมาหลังส่งแลกแล้ว (DEM · DET) จึงเอาออกได้เสมอ
+  if (job?.doExchangedAt && !DO_CHARGE_CATEGORIES.includes(file.category)) throw new Error('งานนี้ส่งแลก DO แล้ว เอาเอกสารออกไม่ได้');
 
   await db.update(files).set({ isCurrent: false }).where(eq(files.id, file.id));
   await logActivity(user.id, 'REMOVE_FILE', 'FILE', file.id,
