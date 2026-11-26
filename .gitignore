@@ -30,3 +30,4 @@ v2/.env.local
 .vercel
 .env*
 outputs/
+.superpowers/
