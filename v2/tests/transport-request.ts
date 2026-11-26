@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  blCandidates, classifyDocFile, keyOf, mergeWithJob, parsePastedSheet, sanitizeAiRows, toIsoDate,
+  blCandidates, classifyDocFile, docStatusBody, findJob, keyOf, mergeWithJob, parsePastedSheet, sanitizeAiRows, toIsoDate,
   type JobLite, type TrRow,
 } from '../src/lib/transport-request/parse';
 
@@ -92,5 +92,14 @@ assert.deepEqual(
   { kind: 'EOFFICE', declarationNo: '', blHint: '', by: 'text' },
 );
 assert.deepEqual(classifyDocFile('x.pdf'), { kind: null, declarationNo: '', blHint: '', by: '' });
+
+// ---- ค้นงาน / คำตอบ doc-status ----
+const byKey = new Map<string, JobLite>([['AMP0574862', { ...job, id: 'J2', jobNo: 'KL-002', blNo: 'AMP0574862', doExchangedAt: '2026-11-21T00:00:00Z' }]]);
+assert.equal(findJob('KG1042026-74915(AMP0574862)', byKey)?.id, 'J2');
+assert.equal(findJob('AMP057486', byKey), null);
+const status = docStatusBody(['AMP0574862', 'ZZ1'], byKey);
+assert.equal(status.ok, true);
+assert.deepEqual(status.items.ZZ1, { found: false });
+assert.deepEqual(status.items.AMP0574862, { found: true, jobNo: 'KL-002', doExchangedAt: '2026-11-21T00:00:00Z' });
 
 console.log('transport-request: PASS');
