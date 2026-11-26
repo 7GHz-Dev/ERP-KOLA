@@ -112,6 +112,9 @@ const NAV: NavGroup[] = [
       { href: '/may/do-pay', label: 'รอแลก DO — ยอดชำระ', count: 'mayClaimWait' },
       { href: '/may/do-slips', label: 'อัป Slip ค่าแลก DO หลายรูป' },
       { href: '/may/haul', label: 'แพลนลากตู้', count: 'haulPlanNew' },
+      // ชั่วคราว — ระหว่างที่ KOLA ยังส่งแพลนลากตู้ / ใบขน / E-Office ให้ SHIPME เองไม่ได้ (docs/SHIPME-TRANSPORT-REQUEST.md)
+      { href: '/may/transport-request', label: 'ส่ง Transport Request → SHIPME (ชั่วคราว)' },
+      { href: '/may/transport-docs', label: 'อัปใบขน / E-Office → SHIPME (ชั่วคราว)' },
     ],
   },
   {

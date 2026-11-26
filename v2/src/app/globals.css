@@ -3095,3 +3095,48 @@ img.cgi-doc-file { overflow: auto; }
 
 /* Upload Invoice of D/O — ผลการบันทึกใต้ปุ่ม (ขึ้นบรรทัดใหม่ เต็มแถวปุ่ม) */
 .do-buttons .do-save-note { flex-basis: 100%; text-align: right; min-height: 1.2em; }
+
+/* ---- MAY: ส่ง Transport Request / ใบขน·E-Office → SHIPME (ชั่วคราว) ---- */
+.tr-import, .td-upload { display: flex; flex-direction: column; gap: 12px; padding-bottom: 48px; }
+.tr-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.tr-modes { display: flex; gap: 6px; }
+.tr-input { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.tr-input .drop-zone { align-self: stretch; }
+.tr-hint { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.tr-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tr-thumbs figure { position: relative; margin: 0; }
+.tr-thumbs img { display: block; width: 160px; height: 90px; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; }
+.tr-thumbs .icon-button { position: absolute; top: 4px; right: 4px; background: var(--surface); }
+/* ตารางกว้างกว่าจอมือถือ — เลื่อนในกรอบ ไม่ดันทั้งหน้า */
+.tr-scroll { overflow-x: auto; border: 1px solid #9aa9b5; border-radius: 6px; background: var(--surface); }
+.tr-preview { border-collapse: collapse; width: 100%; min-width: 1240px; font-size: 13px; }
+.tr-preview th, .tr-preview td { border: 1px solid #c3ccd4; padding: 4px 6px; vertical-align: top; }
+.tr-preview thead th { position: sticky; top: 0; background: #e8edf1; color: var(--ink); font-weight: 700; text-align: center; white-space: nowrap; }
+/* สีหัวตารางเดียวกับตารางขนส่งของ SHIPME */
+.tr-preview th.tr-h-blue, .tr-preview th.tr-h-no { background: #9ec5f8; }
+.tr-preview th.tr-h-yellow { background: #ffe08a; }
+.tr-preview input, .tr-preview textarea {
+  width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid transparent; border-radius: 4px;
+  padding: 3px 4px; font: inherit; background: transparent; resize: vertical;
+}
+.tr-preview input:hover, .tr-preview textarea:hover { border-color: var(--line); }
+.tr-preview input:focus, .tr-preview textarea:focus { border-color: var(--blue); background: var(--surface); outline: none; }
+.tr-preview td:nth-child(2) { min-width: 128px; }
+.tr-preview td:nth-child(3) { min-width: 220px; }
+.tr-preview td:nth-child(5) { min-width: 250px; }
+.tr-preview td:nth-child(8) { min-width: 96px; }
+.tr-preview td:nth-child(6) { min-width: 130px; }
+.tr-preview td:nth-child(12) { min-width: 200px; }
+.tr-mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.tr-num { text-align: center; }
+.tr-preview td.tr-num, .tr-preview input.tr-num { width: 56px; }
+.tr-short { min-width: 80px; }
+.tr-no { text-align: center; color: var(--muted); width: 32px; }
+.tr-sub { display: block; font-size: 11px; color: var(--muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-muted { color: var(--muted); }
+.tr-notes span { display: block; font-size: 12px; color: var(--amber); }
+.tr-error { display: block; font-size: 12px; color: var(--red); }
+.tr-row-error td { background: var(--red-soft); }
+.tr-preview tfoot td { font-weight: 700; background: #f6f8fa; }
+.tr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tr-summary { font-size: 13px; color: var(--muted); }
