@@ -18,12 +18,12 @@ import type { ReadValues } from '@/lib/read-layers';
  */
 
 /** รุ่นที่ใช้ — Sonnet คุ้มสุดสำหรับงานอ่านเอกสาร */
-const MODEL = 'claude-sonnet-5';
+export const MODEL = 'claude-sonnet-5';
 
 /** ราคาต่อ 1 ล้าน token (ดอลลาร์) — ใช้ประเมินค่าใช้จ่ายคร่าว ๆ */
-const PRICE_IN = 3.0;
-const PRICE_OUT = 15.0;
-const USD_THB = 33;
+export const PRICE_IN = 3.0;
+export const PRICE_OUT = 15.0;
+export const USD_THB = 33;
 
 export function aiConfigured(): boolean {
   loadEnv();
