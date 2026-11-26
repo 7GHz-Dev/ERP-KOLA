@@ -39,6 +39,8 @@ export function TransportRequestImport({ shipmeReady, aiReady }: { shipmeReady: 
   const [checked, setChecked] = useState<Checked | null>(null);
   const [busy, setBusy] = useState<'' | 'read' | 'check' | 'push'>('');
   const [message, setMessage] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
+  /** วันที่ TRANSPORT ที่จะตั้งให้หลายแถวทีเดียว */
+  const [bulkDate, setBulkDate] = useState('');
   const confirmDialog = useRef<HTMLDialogElement>(null);
 
   // วางรูปด้วย Ctrl+V ได้ทั้งหน้า (ภาพหน้าจอจากชีตมักอยู่ในคลิปบอร์ด)
@@ -86,6 +88,14 @@ export function TransportRequestImport({ shipmeReady, aiReady }: { shipmeReady: 
   function edit(line: number, patch: Partial<TrRow>) {
     setRows((cur) => cur.map((r) => (r.line === line ? { ...r, ...patch } : r)));
     setChecked(null);
+  }
+  /** ตั้งวันที่ TRANSPORT ทีเดียว — ทุกแถว หรือเฉพาะแถวที่ยังไม่มีวันที่ · แก้แล้วต้องตรวจกับ SHIPME ใหม่ */
+  function setAllDates(onlyEmpty: boolean) {
+    if (!bulkDate) return;
+    const n = rows.filter((r) => !onlyEmpty || !r.transportDate).length;
+    setRows((cur) => cur.map((r) => (!onlyEmpty || !r.transportDate ? { ...r, transportDate: bulkDate } : r)));
+    setChecked(null);
+    setMessage({ tone: 'ok', text: `ตั้งวันที่ TRANSPORT ${dmy(bulkDate)} ให้ ${n} แถวแล้ว — กด "ตรวจกับ SHIPME" ใหม่ก่อนส่ง` });
   }
   function remove(line: number) {
     setRows((cur) => renumber(cur.filter((r) => r.line !== line)));
@@ -183,6 +193,19 @@ export function TransportRequestImport({ shipmeReady, aiReady }: { shipmeReady: 
 
       {rows.length ? (
         <>
+          {/* ตั้งวันที่ TRANSPORT ได้ทีเดียว (ทีมขอ) — ยังแก้รายแถวในตารางได้ */}
+          <div className="tr-toolbar tr-bulk-date">
+            <label className="mini">
+              <span>ตั้งวันที่ TRANSPORT ทีเดียว</span>
+              <input type="date" value={bulkDate} disabled={!!busy} onChange={(e) => setBulkDate(e.target.value)} />
+            </label>
+            <button type="button" className="button primary" disabled={!bulkDate || !!busy} onClick={() => setAllDates(false)}>
+              ใช้กับทุกแถว ({rows.length})
+            </button>
+            <button type="button" className="button" disabled={!bulkDate || !!busy || rows.every((r) => r.transportDate)} onClick={() => setAllDates(true)}>
+              เฉพาะแถวที่ยังว่าง ({rows.filter((r) => !r.transportDate).length})
+            </button>
+          </div>
           <div className="tr-scroll">
             <table className="tr-preview">
               <thead>

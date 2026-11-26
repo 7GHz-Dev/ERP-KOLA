@@ -3147,3 +3147,6 @@ img.cgi-doc-file { overflow: auto; }
 .td-files td .button.tiny { margin-top: 4px; }
 .td-old td { color: var(--muted); }
 .td-sent { display: flex; flex-direction: column; gap: 6px; }
+
+/* MAY Transport Request — แถบตั้งวันที่ TRANSPORT ทีเดียว เหนือตาราง */
+.tr-bulk-date { margin: 8px 0; padding: 8px 10px; background: var(--blue-soft); border: 1px solid var(--line); border-radius: 8px; }
