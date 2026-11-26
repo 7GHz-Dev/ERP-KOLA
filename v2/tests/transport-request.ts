@@ -82,6 +82,10 @@ assert.equal(mergeWithJob(row(), { ...job, doExchangedAt: '2026-11-20T03:00:00Z'
 
 // ---- แยกไฟล์ใบขน / E-Office ----
 assert.deepEqual(classifyDocFile('A0310691002615.pdf'), { kind: 'DECL', declarationNo: 'A0310691002615', blHint: '', by: 'filename' });
+assert.deepEqual(
+  classifyDocFile('A0310691002615.pdf', 'ใบตราส่งเลขที่ (EGLV060600257813)'),
+  { kind: 'DECL', declarationNo: 'A0310691002615', blHint: 'EGLV060600257813', by: 'filename' },
+);
 assert.deepEqual(classifyDocFile('AMP0572751A E-744810.pdf'), { kind: 'EOFFICE', declarationNo: '', blHint: 'AMP0572751A', by: 'filename' });
 assert.deepEqual(
   classifyDocFile('scan001.pdf', 'ใบตราส่งเลขที่ (EGLV060600257813) ... เลขที่ใบขนฯ A031-0-6910-02615'),

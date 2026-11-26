@@ -173,19 +173,20 @@ const DECL_RE = /A\d{3}-?\d-?\d{4}-?\d{5}/i;
  */
 export function classifyDocFile(fileName: string, pdfText = ''): DocGuess {
   const base = String(fileName ?? '').replace(/\.[^.]+$/, '');
+  const text = String(pdfText ?? '');
+  const blInText = () => {
+    const bl = /\(\s*([A-Z]{2,}[A-Z0-9-]{6,})\s*\)/.exec(text);
+    return bl ? keyOf(bl[1]) : '';
+  };
   const decl = DECL_RE.exec(base);
-  if (decl) return { kind: 'DECL', declarationNo: keyOf(decl[0]), blHint: '', by: 'filename' };
+  if (decl) return { kind: 'DECL', declarationNo: keyOf(decl[0]), blHint: blInText(), by: 'filename' };
   if (/(^|[^A-Z0-9])E-?\d{5,}/i.test(base)) {
     const blHint = base.replace(/(^|[^A-Z0-9])E-?\d{5,}/gi, ' ').split(/[\s_]+/).map(keyOf)
       .find((t) => t.length >= 6 && /[A-Z]/.test(t) && /\d/.test(t)) ?? '';
     return { kind: 'EOFFICE', declarationNo: '', blHint, by: 'filename' };
   }
-  const text = String(pdfText ?? '');
   if (/คำร้องขอนำของ/.test(text)) return { kind: 'EOFFICE', declarationNo: '', blHint: '', by: 'text' };
   const inText = DECL_RE.exec(text);
-  if (inText) {
-    const bl = /\(\s*([A-Z]{2,}[A-Z0-9-]{6,})\s*\)/.exec(text);
-    return { kind: 'DECL', declarationNo: keyOf(inText[0]), blHint: bl ? keyOf(bl[1]) : '', by: 'text' };
-  }
+  if (inText) return { kind: 'DECL', declarationNo: keyOf(inText[0]), blHint: blInText(), by: 'text' };
   return { kind: null, declarationNo: '', blHint: '', by: '' };
 }

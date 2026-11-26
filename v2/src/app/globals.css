@@ -3140,3 +3140,10 @@ img.cgi-doc-file { overflow: auto; }
 .tr-preview tfoot td { font-weight: 700; background: #f6f8fa; }
 .tr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .tr-summary { font-size: 13px; color: var(--muted); }
+.td-files { min-width: 980px; }
+.td-files td:nth-child(2) { min-width: 240px; }
+.td-files td:nth-child(4) { min-width: 200px; }
+.td-name { display: block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-files td .button.tiny { margin-top: 4px; }
+.td-old td { color: var(--muted); }
+.td-sent { display: flex; flex-direction: column; gap: 6px; }
